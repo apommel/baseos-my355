@@ -11,7 +11,7 @@ However, BaseOS does not have a user interface of its own. It is designed to
 run another existing frontend. Currently it only supports NextUI which is in
 beta for Anbernic H700 devices.
 
-**[Install BaseOS](INSTALL.md)**
+**[Installation Guide](https://github.com/pvaibhav/BaseOS/wiki/BaseOS-Install-Guide)**
 
 ## ⚡ Boot duration
 
@@ -54,7 +54,7 @@ one-card or two-card configurations.
 - Anbernic RG40XX H
 - Anbernic RG40XX V
 - Anbernic RG CubeXX
-- Anbernic RG SP *(not yet confirmed on hardware)*
+- Anbernic RG SP
 
 Development setup, build instructions, testing, and technical documentation are in
 **[CONTRIBUTING.md](CONTRIBUTING.md)**.
