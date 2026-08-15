@@ -1,25 +1,24 @@
-# BaseOS
+# What is BaseOS?
 
-BaseOS is a minimal operating system for Anbernic RG XX handhelds.
+BaseOS is a minimal but feature-complete operating system for Anbernic RG XX handhelds.
 
 If you're tired of slow boot times, high battery consumption, or less than ideal
 support for hardware features on other custom firmwares, BaseOS is for you.
 
-It is designed as a drop-in replacement for the stock OS.
+It is designed as a drop-in replacement for the stock OS. However, BaseOS does not have a user interface of its own. It will boot up as fast as possible, then hand off to your frontend of choice.
 
-However, BaseOS does not have a user interface of its own. It is designed to
-run another existing frontend. Currently it only supports NextUI which is in
-beta for Anbernic H700 devices.
+Currently, that frontend is [NextUI](https://nextui.loveretro.games), but more might be added.
 
-**[Installation Guide](https://github.com/pvaibhav/BaseOS/wiki/BaseOS-Install-Guide)**
+[Install BaseOS](https://github.com/pvaibhav/BaseOS/wiki/BaseOS-Install-Guide)
 
-## ⚡ Boot duration
+## Boot duration
 
-* **7.14 s** — power LED to NextUI on RG40XXV.
-* **2.96 s BaseOS** — measured kernel start to frontend execution, our primary
-optimization target.
+We have a hard ceiling of 3.0 sec boot time. On top of that is NextUI which takes another 4.5 sec for a total of around 7.5 sec startup time.
 
-Stock Anbernic + NextUI baseline: **17.5 s** (manually measured with a stopwatch).
+* **2.96 s BaseOS only** - power LED to frontend handoff.
+* **7.14 s BaseOS + NextUI** - power LED to NextUI, ready-to-game on RG40XXV.
+
+By comparison, stock Anbernic OS + NextUI takes 17.5 sec (manually measured with a stopwatch). Knulli takes 22 sec.
 
 ## What BaseOS provides
 
@@ -34,12 +33,9 @@ Stock Anbernic + NextUI baseline: **17.5 s** (manually measured with a stopwatch
 - SSH/SFTP over Wi-Fi and adb over USB active by default.
 - USB storage mode (hold MENU when powering on).
 
-Currently BaseOS only supports NextUI as its frontend. Additional frontends
-are planned for future.
-
 ## Installation
 
-Follow **[INSTALL.md](INSTALL.md)** for flashing, first boot, and NextUI setup on
+Follow **[installation guide](https://github.com/pvaibhav/BaseOS/wiki/BaseOS-Install-Guide)** for flashing, first boot, and NextUI setup on
 one-card or two-card configurations.
 
 ## Supported devices
@@ -64,12 +60,9 @@ Development setup, build instructions, testing, and technical documentation are 
 For reliable adb, connect a data-capable USB-C cable before powering on. If it
 is disconnected, restart with the cable connected.
 
-To access the SD card as a USB drive, connect the USB cable first, then hold
-**MENU** while powering on. Keep holding it until the USB-storage message
-appears. BaseOS shares the complete TF2 card when one is inserted; otherwise it
-shares TF1's data partition. adb remains available.
+For USB mass storage, press and hold the MENU key while plugging in the USB cable. If your computer provides power, your handheld will start in mass storage mode. If it doesn't start, press and hold power for 3-4 sec. Let go when it start, but *keep pressing the MENU button* till you finally see "USB MASS STORAGE" on the screen. Then you can let go.
 
-Eject the drive on the computer before restarting the handheld. Restart without
+NOTE: Eject the drive on the computer before restarting the handheld. Restart without
 holding MENU to return to normal.
 
 ## How does it work?
@@ -82,4 +75,4 @@ cut down everything else running in the background or increasing the boot
 duration. Some parts of the stock OS are simulated to make them faster
 yet compatible.
 
-The current version is always based on the latest stock OS release.
+The current version is generally based on the latest stock/stockmod OS release.
