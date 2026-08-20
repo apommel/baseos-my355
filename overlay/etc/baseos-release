@@ -1,0 +1,7 @@
+BASEOS_TARGET=my355
+BASEOS_DEVICE=my355
+BASEOS_MODEL="Miyoo Flip"
+BASEOS_MODEL_STRING=miyoo355
+# fbsplash reads this. The Flip's 640x480 panel is mounted upright, so no
+# rotation is applied — unlike the RG28XX, whose panel is turned 90 CCW.
+BASEOS_PANEL_ROTATION_CCW=0

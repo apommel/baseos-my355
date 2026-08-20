@@ -15,6 +15,19 @@
 
 SDCARD=/mnt/SDCARD
 USERDATA_DIR="$SDCARD/.userdata/my355/userdata"
+LOG=/tmp/nextui-session.log
+
+log() {
+	line="$(/bin/cut -d" " -f1 /proc/uptime) $*"
+	echo "$line" >> "$LOG" 2>/dev/null
+	[ -d "$SDCARD" ] && echo "$line" >> "$SDCARD/baseos-session.log" 2>/dev/null
+}
+
+# The panel is this device's only output. Ordinary boots never call this — the
+# bootloader logo stays untouched until the frontend draws its first frame.
+splash() {
+	[ -x /usr/bin/baseos-splash ] && /usr/bin/baseos-splash --important "$@" 2>/dev/null
+}
 
 # The card is mounted by rcS; give a late-enumerating one a bounded moment.
 i=0
@@ -24,8 +37,9 @@ while [ "$i" -lt 20 ]; do
 	i=$((i + 1))
 done
 if ! grep -q " $SDCARD " /proc/mounts; then
-	# Nothing to hand off to. Sleep rather than spin: init would respawn us
-	# in a tight loop otherwise, and there is no display API here yet to say so.
+	log "no card mounted"
+	splash -1 "INSERT SD CARD"
+	# Sleep rather than spin: init respawns us, so pace the retry.
 	/bin/sleep 5
 	exit 0
 fi
@@ -91,8 +105,16 @@ if [ -x "$UPDATER" ]; then
 	# Stock calls the updater, not launch.sh directly: it is what installs
 	# MinUI.zip/*.pakz payloads before starting the frontend. Keeping that
 	# entry point is what makes updates behave identically.
+	#
+	# The H700 port bypasses it and runs the platform script itself, because
+	# NextUI's installer UI needs libSDL2/_image/_ttf which that rootfs does
+	# not ship. This one does — they are in the measured harvest — so NextUI
+	# can draw its own installer and the flow matches stock exactly.
+	log "exec $UPDATER"
 	exec "$UPDATER"
 fi
 
+log "no frontend on card"
+splash -1 "ADD FRONTEND TO SD CARD"
 /bin/sleep 5
 exit 0

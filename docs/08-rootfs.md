@@ -67,7 +67,7 @@ kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init
 
 `init=/init` is not optional; see [06](06-card-image-build.md).
 
-`rcS` is short — measured at **50 ms** (`rcS-start 1.52`, `rcS-done 1.57`) — and
+`rcS` is short — measured at **60 ms** (`rcS-start 1.43`, `rcS-done 1.49`) — and
 shorter than the H700 equivalent because this kernel does more for us:
 
 | H700 does | my355 does not need to |
@@ -114,12 +114,12 @@ It never blocks boot: no `set -e`, every failure path returns quietly, and `rcS`
 backgrounds it. Because it must fail quietly, it **logs** to `/data/usb-gadget.log`
 — persistent, and the only way to diagnose it on a device with no console.
 
-> **Unlike H700, a cable is probably not required before power-on.** That port's
-> restriction comes from the sunxi OTG role manager, which clears the UDC binding
-> on disconnect and wedges the kernel if its role attributes are touched
-> ([h700/08](../h700/08-usb-adb-and-otg.md)). RK3566 uses dwc3 with plain configfs
-> and VBUS detection, and we only ever write `UDC`. Hot-plug after boot is
-> expected to work but is **untested**.
+> **Unlike H700, a cable is not required before power-on — verified.** That
+> port's restriction comes from the sunxi OTG role manager, which clears the UDC
+> binding on disconnect and wedges the kernel if its role attributes are touched
+> ([h700/08](../h700/08-usb-adb-and-otg.md)). RK3566 uses dwc3 with plain
+> configfs and VBUS detection, and we only ever write `UDC`. Hot-plugging after
+> boot works, which is also how a clean boot time gets measured.
 
 ## NextUI compatibility
 
@@ -145,6 +145,18 @@ slot because it is the only slot the SPL can boot from.
 
 Verified on hardware: both bind mounts appear in `/proc/mounts` on a booted
 BaseOS system, and the session idles correctly when no frontend is present.
+
+## Status messages
+
+This device has no console, so `fbsplash` — built from the shared
+`src/fbsplash.c`, static, freetype — is the only way to tell the owner anything.
+It reads panel geometry from the framebuffer and rotation from
+`/etc/baseos-release` (`BASEOS_PANEL_ROTATION_CCW=0`; the Flip's 640x480 panel is
+upright). `usr/bin/baseos-splash` wraps it, and ordinary boots never call it:
+the bootloader logo stays untouched until the frontend draws its first frame.
+
+`nextui-session` shows `INSERT SD CARD` and `ADD FRONTEND TO SD CARD`, and logs
+to `/tmp/nextui-session.log`, mirrored to `baseos-session.log` on the card.
 
 ## Not yet done
 

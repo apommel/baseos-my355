@@ -116,6 +116,11 @@ panic. The H700 port sets `init=/init` too ([docs/01](../h700/01-rootfs-and-init
 
 `rkbootimg.py info` reports the budget, so this cannot be discovered the hard way.
 
+The logo is the project wordmark, cropped from `assets/bootlogo.bmp` and scaled
+to `--size` (default `240x48`). The artwork's near-black gradient backdrop is
+subtracted so it composites to true black — otherwise it shows as a lighter
+rectangle against the panel.
+
 ### Check the logo before spending a boot
 
 `mkbootlogo_my355.py` prints a percent-painted figure and `--preview` renders

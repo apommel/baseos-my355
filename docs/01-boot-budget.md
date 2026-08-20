@@ -25,6 +25,56 @@ where U-Boot prints `Total: 3295.512/3340.136 ms` immediately before
 That is the direct analogue of BaseOS's `boot-frontend-exec`, which is **2.96 s** on
 RG40XXV ([05](../h700/05-runtime-power-network.md)).
 
+## BaseOS, measured
+
+With USB attached **after** power-on (see the caveat below):
+
+| phase | stock | BaseOS | |
+|---|---|---|---|
+| pre-kernel (SPL + U-Boot) | 4.26 s from NAND | **4.96 s** from SD | +0.7 s |
+| kernel → `/init` | 1.61 s | 1.52 s | |
+| userland → frontend hand-off | **9.90 s** | **0.06 s** | `rcS` 1.43 → 1.49 |
+| adb bound | — | 1.77 s uptime (8.25 s from power-on) | |
+
+**Stock reaches `launch.sh` at 15.8 s. BaseOS finishes its own init 60 ms after
+`/init` starts.** Essentially the entire vendor userland — `mount -a` over SPI
+NAND, `udevadm settle --timeout=30`, then eight serialised `S*` scripts — is gone.
+
+> **Measuring caveat.** With a USB cable attached at power-on, U-Boot runs its
+> charge animation (`/charge-animation`, `rockchip,uboot-charge`) before booting,
+> and that time lands in the arch counter. It inflated readings to 7.18 s and
+> 8.61 s. Measure with USB unplugged and attach it afterwards — adb hot-plug
+> works on this device.
+
+## Why the bootloader dominates, and how it compares to H700
+
+| | H700 | my355 |
+|---|---|---|
+| pre-kernel | ~1.5–2.5 s | **4.96 s** |
+| kernel → init | 2.04 s | 1.52 s |
+| userland (`rcS`) | 0.55 s | **0.06 s** |
+
+Our userland is ~9x faster than H700's and our kernel phase is faster too. **The
+whole difference is the bootloader** — roughly 2.5–3.5 s of it.
+
+Levers, in order of size:
+
+1. **The kernel is stored uncompressed.** The boot image carries a raw 34.9 MiB
+   arm64 `Image` (header `image_size` 35.6 MiB), and U-Boot reads all of it off
+   the SD card every boot. It gzips to 13.3 MiB. This U-Boot supports LZ4
+   (`lz4 compressed`, `(Uncompress to` are both in the binary, and the 2024
+   firmware shipped an LZ4 kernel), so compressing it should cut well over half
+   the read. Biggest single win, and it does not require replacing anything.
+2. **Ship our own U-Boot.** The card already carries the `uboot` partition, so
+   nothing stops us putting a lean mainline U-Boot there instead of the vendor's
+   2017.09 — which spends its time on AVB/trusty probing, a charge-animation
+   path, GPT repair and a full DRM bring-up before it will boot anything.
+3. **Shrink what U-Boot reads.** The resource image is already rebuilt at
+   442 880 bytes rather than the stock 943 616.
+
+The kernel phase (1.52 s) has its own known cost: `rtl8733bu` probes for ~0.7 s
+of it, but making it a module would break "vendor kernel untouched".
+
 ## Where the 9.9 s of userland goes
 
 Sequential, all blocking, all before `S60mainui`:

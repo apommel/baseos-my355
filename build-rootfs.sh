@@ -7,6 +7,11 @@
 #      SDL2, adbd, wpa_supplicant; a verified closure, see prepare-stock-my355.sh
 #   3. the merged-/usr skeleton the harvest assumes
 #   4. overlay-my355/ — init, inittab, rcS, the frontend session
+#
+# fbsplash is built from the shared src/fbsplash.c: this device has no console,
+# so a status message on the panel is the only way to say "insert a card" or
+# "installing frontend". It reads panel geometry from the framebuffer and
+# rotation from /etc/baseos-release.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -22,7 +27,8 @@ mkdir -p "$WORK"
 }
 
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
-  -v "$WORK":/work -v "$HERE/overlay-my355":/overlay:ro alpine:3.20 sh -euc '
+  -v "$WORK":/work -v "$HERE/overlay-my355":/overlay:ro \
+  -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro alpine:3.20 sh -euc '
   apk add -q busybox-static
   R=/tmp/rootfs; rm -rf "$R"; mkdir -p "$R"
 
@@ -48,10 +54,20 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   #    both provide a name.
   tar -xf /work/prepared/stock-harvest.tar -C "$R"
 
+  # fbsplash: the panel is the only output device this hardware has.
+  apk add -q build-base linux-headers pkgconf \
+    freetype-dev freetype-static zlib-static libpng-static bzip2-static brotli-static
+  gcc -static -O2 $(pkg-config --cflags freetype2) -o "$R"/usr/bin/fbsplash \
+    /src/fbsplash.c $(pkg-config --static --libs freetype2)
+  strip "$R"/usr/bin/fbsplash
+  mkdir -p "$R"/usr/share/baseos
+  cp /assets/boot.ttf "$R"/usr/share/baseos/boot.ttf
+
   # 3. The overlay wins over everything.
   cp -a /overlay/. "$R"/
   chmod +x "$R"/init "$R"/etc/init.d/rcS "$R"/etc/init.d/rcK \
-           "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb
+           "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb \
+           "$R"/usr/bin/baseos-splash
 
   # /etc/localtime is a symlink into tmpfs because the root may be read-only.
   ln -sf /run/localtime "$R"/etc/localtime
