@@ -3,3 +3,5 @@ work/
 *.o
 __pycache__/
 *.pyc
+*.img
+*.img.gz
