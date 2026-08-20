@@ -1,0 +1,11 @@
+#!/bin/sh
+# PID 1 entry point.
+#
+# The kernel is told to run this explicitly via `init=/init` on the command
+# line, because for a DISK root it would otherwise only try /sbin/init,
+# /etc/init, /bin/init and /bin/sh — `/init` is the initramfs convention.
+# Getting that wrong costs a silent hang: the kernel finds /bin/sh, execs it,
+# and the shell waits forever on a console this device does not have.
+# See docs/my355/06-card-image-build.md.
+
+exec /bin/busybox init

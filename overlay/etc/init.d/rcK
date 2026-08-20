@@ -1,0 +1,6 @@
+#!/bin/sh
+# Shutdown. Persist what must survive, then let busybox init unmount the rest.
+/bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null
+/bin/sync
+/bin/umount /mnt/SDCARD 2>/dev/null
+/bin/umount /data 2>/dev/null

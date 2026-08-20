@@ -44,17 +44,17 @@ before drawing any conclusion about mainline on this device.
 
 Ordered by what currently blocks progress.
 
-- **The rootfs harvest.** `mtd3` is **squashfs**, so the H700 `debugfs` extraction
-  in `prepare-stock.sh` does not apply — it needs `unsquashfs`. The harvest is far
-  smaller than H700's: glibc 2.36, the three `/usr/miyoo/lib` libraries
-  (`libgamename`, `libshmvar`, `libtmenu`), `/usr/miyoo/bin/miyoo_inputd`, and the
-  transitive closure of those.
-- **Reproducing `runmiyoo.sh` — the compatibility crux.** Stock bind-mounts
-  `/userdata` onto `/mnt/SDCARD/.userdata/my355/userdata`, synthesises a first-run
-  `system.json` (vol, brightness, keymap…), and binds `/run/bluetooth_fix` over
-  `/userdata/bluetooth`. `wpa_supplicant.conf`, `system.json` and BT pairings all
-  live there. Get this wrong and NextUI comes up with different settings — the one
-  divergence the port is explicitly trying to avoid.
+- **Launch NextUI from BaseOS.** Everything else is in place; the card's
+  `primary` partition is empty so `nextui-session` idles. This is the real test of
+  the compatibility work in [08](08-rootfs.md), and it is now debuggable over adb.
+- **Measure the boot budget cold**, with USB unplugged — U-Boot's charge
+  animation inflates the arch counter when a cable is attached, which invalidated
+  two earlier readings.
+- **Find the real resource-size threshold.** 465 408 bytes boots, 943 616 hangs
+  U-Boot before display init. The build stays under the proven figure, but the
+  actual limit is unknown and worth pinning down.
+- **Is a cable required before power-on?** H700 needs it, for sunxi OTG reasons
+  that do not apply to RK3566's dwc3. Expected to work; untested.
 - **Which card holds the frontend.** BaseOS takes the right slot (the only
   boot-capable one), so a NextUI card moves to the left and BaseOS mounts it at
   `/mnt/SDCARD` — or falls back to its own `primary` partition, as H700 does
@@ -99,4 +99,4 @@ preloader write.
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)

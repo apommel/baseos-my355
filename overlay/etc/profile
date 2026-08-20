@@ -1,0 +1,6 @@
+export PATH=/mnt/SDCARD/.system/my355/bin:/usr/miyoo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export LD_LIBRARY_PATH=/mnt/SDCARD/.system/my355/lib:/usr/miyoo/lib
+export PS1='[\u@nextui \W]# '
+export TERM=vt100
+export LANG=C
+export PLATFORM=my355

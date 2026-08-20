@@ -8,34 +8,32 @@
 #
 # This requires GammaLoader's preloader in mtd5; see docs/my355/02-sd-boot.md.
 #
-# Inputs come from a verified NAND backup of the target unit
-# (docs/my355/03-nand-backup-and-recovery.md):
-#   mtd1-uboot.img   stock Rockchip U-Boot FIT, used verbatim
-#   mtd2-boot.img    stock Android boot image; the kernel stays byte-for-byte
-#                    identical, only the DTB's bootargs and logo are rewritten
+# Inputs come from ./prepare-stock-my355.sh, in work/my355/prepared:
+#   uboot.img   stock Rockchip U-Boot FIT, used verbatim
+#   boot.img    stock Android boot image; the kernel stays byte-for-byte
+#               identical, only the DTB's bootargs and logo are rewritten
 #
 # Environment:
 #   MY355_DIAG=1     bring-up aids: kernel-side LED heartbeat + panic=10
 #                    (see docs/my355/07-bringup-and-diagnostics.md)
 #
-# Usage: ./build-image-my355.sh [NAND_BACKUP_DIR]
+# Usage: ./build-image-my355.sh
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools/docker-platform.sh
 . "$HERE/tools/docker-platform.sh"
 
-NAND="${1:-$HOME/Development/miyoo-flip-nand-backup}"
 WORK="$HERE/work/my355"
+PREPARED="$WORK/prepared"
 OUT="$WORK/baseos-my355.img"
 ROOTFS_TAR="$WORK/rootfs.tar"
-UBOOT_SRC="$NAND/mtd1-uboot.img"
-BOOT_SRC="$NAND/mtd2-boot.img"
+UBOOT_SRC="$PREPARED/uboot.img"
+BOOT_SRC="$PREPARED/boot.img"
 
 for f in "$UBOOT_SRC" "$BOOT_SRC"; do
   [ -f "$f" ] || {
-    echo "missing $f" >&2
-    echo "  see docs/my355/03-nand-backup-and-recovery.md" >&2
+    echo "missing $f (run ./prepare-stock-my355.sh)" >&2
     exit 1
   }
 done
@@ -68,10 +66,13 @@ if [ "${MY355_DIAG:-0}" = "1" ]; then
   echo "== diagnostics enabled (panic=10, LED heartbeat) =="
 fi
 
-# A distinct boot logo is the only way to tell, on a device with no console,
-# whether U-Boot came from this card or from internal NAND.
-python3 "$HERE/tools/rkbootimg.py" extract "$BOOT_SRC" "$WORK/vendor-res" >/dev/null
-python3 "$HERE/tools/mkbootlogo_my355.py" "$WORK/vendor-res/logo.bmp" "$WORK/baseos-logo.bmp"
+# The BaseOS wordmark, cropped from the shared artwork so branding matches the
+# H700 port. Size keeps the rebuilt resource image well under the largest one
+# proven to boot (tools/rkbootimg.py, RESOURCE_SAFE_BYTES).
+MY355_LOGO_SIZE="${MY355_LOGO_SIZE:-240x48}"
+MY355_LOGO_ASSET="${MY355_LOGO_ASSET:-$HERE/assets/bootlogo.bmp}"
+python3 "$HERE/tools/mkbootlogo_my355.py" "$MY355_LOGO_ASSET" \
+  "$WORK/baseos-logo.bmp" --size "$MY355_LOGO_SIZE" --preview
 
 echo "== repointing the vendor boot image at the card =="
 python3 "$HERE/tools/rkbootimg.py" setargs "$BOOT_SRC" "$WORK/boot-sd.img" \
@@ -81,7 +82,7 @@ python3 "$HERE/tools/rkbootimg.py" setargs "$BOOT_SRC" "$WORK/boot-sd.img" \
 
 echo "== composing $OUT =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
-  -v "$WORK":/work -v "$HERE/tools":/tools:ro -v "$NAND":/nand:ro \
+  -v "$WORK":/work -v "$HERE/tools":/tools:ro \
   -e OUT_NAME="$(basename "$OUT")" \
   -e UBOOT_START="$MY355_UBOOT_START" -e BOOT_START="$MY355_BOOT_START" \
   -e ROOTFS_START="$MY355_ROOTFS_START" -e SLOT_SECTORS="$MY355_SLOT_SECTORS" \
@@ -95,7 +96,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   python3 /tools/mkgpt_my355.py "$OUT"
 
   # The vendor chain: U-Boot verbatim, boot image with only the DTB rewritten.
-  dd if=/nand/mtd1-uboot.img of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none
+  dd if=/work/prepared/uboot.img of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none
   dd if=/work/boot-sd.img    of="$OUT" bs=512 seek="$BOOT_START"  conv=notrunc status=none
 
   # This kernel is 5.10.160. orphan_file needs 5.15+, so it must be off; the

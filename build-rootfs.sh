@@ -1,80 +1,63 @@
 #!/bin/sh
-# Build a rootfs tarball for my355 (Miyoo Flip).
+# Build the my355 (Miyoo Flip) rootfs tarball.
 #
-# Currently only --smoke is implemented: a BusyBox-only rootfs whose sole job is
-# to prove the boot chain reaches userspace on a device that can show nothing.
-# This kernel has neither a UART attached nor CONFIG_FRAMEBUFFER_CONSOLE, so a
-# successful boot and a dead one look identical. The smoke rootfs therefore
-# signals two ways:
-#
-#   * it drives the `work` LED in a 1 s square wave, which stops the moment PID 1
-#     dies — distinguishable by eye from the kernel's own `heartbeat` double-thump
-#   * it appends stage markers to /BOOT-STAGE on the root filesystem, readable
-#     afterwards from stock with the card in the LEFT slot
-#
-# See docs/my355/07-bringup-and-diagnostics.md.
-#
-# The real harvest (glibc 2.36 + /usr/miyoo libs from mtd3's squashfs) is next;
-# note mtd3 is squashfs, so it needs unsquashfs rather than the H700 debugfs path.
+# Four sources, assembled in this order so each can override the last:
+#   1. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
+#   2. the stock harvest (work/my355/prepared/stock-harvest.tar) — glibc, Mali,
+#      SDL2, adbd, wpa_supplicant; a verified closure, see prepare-stock-my355.sh
+#   3. the merged-/usr skeleton the harvest assumes
+#   4. overlay-my355/ — init, inittab, rcS, the frontend session
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/tools/docker-platform.sh"
 WORK="$HERE/work/my355"
+PREPARED="$WORK/prepared"
 mkdir -p "$WORK"
 
-MODE="${1:---smoke}"
-[ "$MODE" = "--smoke" ] || { echo "only --smoke is implemented so far" >&2; exit 2; }
+
+[ -f "$PREPARED/stock-harvest.tar" ] || {
+  echo "missing $PREPARED/stock-harvest.tar (run ./prepare-stock-my355.sh)" >&2
+  exit 1
+}
 
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
-  -v "$WORK":/work alpine:3.20 sh -euc '
+  -v "$WORK":/work -v "$HERE/overlay-my355":/overlay:ro alpine:3.20 sh -euc '
   apk add -q busybox-static
-  R=/tmp/rootfs; rm -rf "$R"
-  mkdir -p "$R"/bin "$R"/sbin "$R"/proc "$R"/sys "$R"/dev "$R"/mnt/data "$R"/tmp
-  cp /bin/busybox.static "$R"/bin/busybox
-  ln -sf busybox "$R"/bin/sh
+  R=/tmp/rootfs; rm -rf "$R"; mkdir -p "$R"
 
-  cat > "$R"/init <<"INIT"
-#!/bin/sh
-# Diagnostic init. This device has no UART and no CONFIG_FRAMEBUFFER_CONSOLE, so
-# every signal has to be either a file left on disk or the LED.
-BB=/bin/busybox
+  # Merged /usr, matching the stock rootfs the harvest came from.
+  mkdir -p "$R"/usr/bin "$R"/usr/sbin "$R"/usr/lib "$R"/usr/share
+  ln -sf usr/bin  "$R"/bin
+  ln -sf usr/sbin "$R"/sbin
+  ln -sf usr/lib  "$R"/lib
+  ln -sf lib      "$R"/lib64
 
-# Earliest possible evidence: root is mounted rw via the cmdline, so this lands
-# before anything else can fail. Distinguishes "init never ran" from "init died".
-echo "stage1: init entered" > /BOOT-STAGE
+  mkdir -p "$R"/proc "$R"/sys "$R"/dev "$R"/tmp "$R"/run "$R"/var \
+           "$R"/data "$R"/mnt/SDCARD "$R"/root "$R"/etc
 
-$BB mount -t proc proc /proc
-$BB mount -t sysfs sysfs /sys
-echo "stage2: proc+sys mounted" >> /BOOT-STAGE
-$BB cat /proc/cmdline >> /BOOT-STAGE
-$BB uname -a >> /BOOT-STAGE
+  # 1. BusyBox and its applet links (mount, sh, init, getty, ... — rcS calls
+  #    them by path, so the links must exist).
+  cp /bin/busybox.static "$R"/usr/bin/busybox
+  chroot "$R" /usr/bin/busybox --install -s 2>/dev/null || \
+    for a in $(chroot "$R" /usr/bin/busybox --list); do
+      ln -sf /usr/bin/busybox "$R"/usr/bin/"$a" 2>/dev/null || true
+    done
 
-# Drive the LED ourselves rather than trusting a trigger: an active blink proves
-# PID 1 is still alive, and stops the instant it is not.
-echo none > /sys/class/leds/work/trigger 2>/dev/null
-echo "stage3: led trigger cleared" >> /BOOT-STAGE
+  # 2. The stock harvest. Applied after BusyBox so vendor binaries win where
+  #    both provide a name.
+  tar -xf /work/prepared/stock-harvest.tar -C "$R"
 
-if $BB mount -t ext4 /dev/mmcblk1p4 /mnt/data 2>/dev/null; then
-  echo "stage4: data partition mounted" >> /BOOT-STAGE
-  $BB cp /BOOT-STAGE /mnt/data/smoke.log 2>/dev/null
-  $BB umount /mnt/data
-fi
-$BB sync
+  # 3. The overlay wins over everything.
+  cp -a /overlay/. "$R"/
+  chmod +x "$R"/init "$R"/etc/init.d/rcS "$R"/etc/init.d/rcK \
+           "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb
 
-while :; do
-  echo 0   > /sys/class/leds/work/brightness 2>/dev/null
-  $BB sleep 1
-  echo 255 > /sys/class/leds/work/brightness 2>/dev/null
-  $BB sleep 1
-done
-INIT
-  chmod +x "$R"/init
-  # Belt and braces: the cmdline carries init=/init, but providing /sbin/init
-  # means the rootfs also works under the kernel default search order.
-  ln -sf ../init "$R"/sbin/init
+  # /etc/localtime is a symlink into tmpfs because the root may be read-only.
+  ln -sf /run/localtime "$R"/etc/localtime
 
   tar -cf /work/rootfs.tar -C "$R" .
-  echo "  rootfs.tar: $(tar -tf /work/rootfs.tar | wc -l) entries, $(stat -c %s /work/rootfs.tar) bytes"
+  echo "  rootfs: $(tar -tf /work/rootfs.tar | wc -l) entries, $(stat -c %s /work/rootfs.tar) bytes"
+  echo "  busybox applets: $(chroot "$R" /usr/bin/busybox --list | wc -l)"
 '
 echo "rootfs: $WORK/rootfs.tar"

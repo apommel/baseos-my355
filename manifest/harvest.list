@@ -1,0 +1,73 @@
+# my355 (Miyoo Flip) stock harvest allowlist.
+# One device path per line; comments and blanks ignored.
+# Directories are captured recursively; symlinks are dereferenced (tar -h), so
+# list soname paths — what the dynamic linker actually requests — not the
+# fully-versioned real files.
+#
+# Derived from the on-device runtime closure of the whole NextUI stack, read
+# from /proc/<pid>/maps while it was running (2026-08-20). Not guessed: every
+# entry below was observed mapped, or is required by a binary that is.
+# See docs/my355/08-rootfs.md.
+#
+# Note this is much smaller than the H700 list. NextUI on my355 ships its own
+# SDL/tinyalsa/sqlite in .system/my355/lib, so the vendor ALSA stack is not
+# needed, and miyoo_inputd does not link /usr/miyoo/lib at all.
+
+## dynamic linker + glibc
+/usr/lib/ld-linux-aarch64.so.1
+/usr/lib/libc.so.6
+/usr/lib/libm.so.6
+/usr/lib/libdl.so.2
+/usr/lib/libpthread.so.0
+/usr/lib/librt.so.1
+/usr/lib/libcrypt.so.1
+/usr/lib/libresolv.so.2
+/usr/lib/libnss_files.so.2
+/usr/lib/libnss_dns.so.2
+/usr/lib/libgcc_s.so.1
+/usr/lib/libstdc++.so.6
+/usr/lib/libatomic.so.1
+
+## GPU: Mali blob + the EGL/GLES shims NextUI's GFX_init opens
+/usr/lib/libmali.so.1
+/usr/lib/libmali_hook.so.1
+/usr/lib/libEGL.so.1
+/usr/lib/libGLESv2.so.2
+/usr/lib/libgbm.so.1
+/usr/lib/libdrm.so.2
+
+## SDL2 + font/image stack used by the frontend
+/usr/lib/libSDL2-2.0.so.0
+/usr/lib/libSDL2_image-2.0.so.0
+/usr/lib/libSDL2_ttf-2.0.so.0
+/usr/lib/libfreetype.so.6
+/usr/lib/libpng16.so.16
+/usr/lib/libz.so.1
+/usr/lib/libiconv.so.2
+/usr/lib/libexpat.so.1
+
+## input: the one vendor binary NextUI's launch.sh starts
+/usr/miyoo/bin/miyoo_inputd
+
+## dev access over USB — adbd is 133 KB and needs only glibc + these
+/usr/bin/adbd
+/usr/lib/libcrypto.so.1.1
+/usr/lib/libssl.so.1.1
+
+## WiFi
+/usr/sbin/wpa_supplicant
+/usr/sbin/wpa_cli
+/usr/lib/libnl-3.so.200
+/usr/lib/libnl-genl-3.so.200
+
+## D-Bus (BlueZ depends on it; also observed mapped at runtime)
+/usr/bin/dbus-daemon
+/usr/lib/libdbus-1.so.3
+/etc/dbus-1
+/usr/share/dbus-1
+
+## misc runtime deps observed mapped
+/usr/lib/libudev.so.1
+/usr/lib/libncurses.so.6
+/usr/lib/libreadline.so.8
+/usr/lib/libhistory.so.8

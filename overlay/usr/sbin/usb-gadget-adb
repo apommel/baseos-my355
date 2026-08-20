@@ -1,0 +1,97 @@
+#!/bin/sh
+# Bring up the BaseOS USB gadget so adb works over the USB-C port.
+#
+# Reproduces the configfs gadget stock builds with its 700-line vendor
+# usbdevice script, reduced to what adb actually needs. The shape was read off
+# a running stock unit rather than derived from the script:
+#
+#   gadget   rockchip           idVendor 0x2207  idProduct 0x0006
+#   function ffs.adb            functionfs mounted at /dev/usb-ffs/adb
+#   config   b.1 "adb"
+#   UDC      fcc00000.dwc3      (the only entry in /sys/class/udc)
+#
+# This is a convenience and NEVER a boot dependency: no `set -e`, every failure
+# path returns quietly, and rcS backgrounds it so it cannot serialise boot.
+#
+# Because it must not fail loudly, it logs instead. /data is persistent and
+# survives a power cut, so a boot where adb never appeared can still be
+# diagnosed afterwards by reading the card — the only way to see anything on a
+# device with no console. See docs/my355/07-bringup-and-diagnostics.md.
+#
+# Ordering is load-bearing. adbd must be running and have written its
+# descriptors into functionfs BEFORE the UDC is bound, or the host sees a
+# gadget with no endpoints and enumeration fails.
+
+# Stock runs adbd with these; ADB_TCP_PORT in particular decides which port the
+# daemon's TCP listener uses (5037 is the host-server port and is the wrong one).
+export ADB_TCP_PORT="${ADB_TCP_PORT:-5555}"
+export ADBD_SHELL="${ADBD_SHELL:-/bin/sh}"
+export USB_FUNCS="${USB_FUNCS:-adb}"
+export HOME=/
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin
+
+LOG="${BASEOS_GADGET_LOG:-/data/usb-gadget.log}"
+step() { echo "$(cut -d" " -f1 /proc/uptime) $*" >> "$LOG" 2>/dev/null; }
+
+SYS="${BASEOS_SYS_ROOT:-/sys}"
+CONFIGFS="$SYS/kernel/config"
+G="$CONFIGFS/usb_gadget/rockchip"
+FFS="${BASEOS_FFS_DIR:-/dev/usb-ffs/adb}"
+ADBD="${BASEOS_ADBD:-/usr/bin/adbd}"
+
+: > "$LOG" 2>/dev/null
+step "start"
+[ -x "$ADBD" ] || { step "no adbd at $ADBD"; exit 0; }
+
+grep -q ' /sys/kernel/config ' /proc/mounts 2>/dev/null || \
+	/bin/mount -t configfs none "$CONFIGFS" 2>/dev/null || { step "configfs mount failed"; exit 0; }
+step "configfs ok"
+
+udc=$(ls "$SYS/class/udc" 2>/dev/null | head -1)
+[ -n "$udc" ] || { step "no UDC in $SYS/class/udc"; exit 0; }
+step "udc=$udc"
+
+# androidboot.serialno is what stock advertises; fall back to the machine id so
+# two units are never indistinguishable to a host.
+serial=$(sed 's/ /\n/g' /proc/cmdline 2>/dev/null | sed -n 's/^androidboot.serialno=//p')
+[ -n "$serial" ] || serial=$(cat /etc/machine-id 2>/dev/null) || serial=my355
+
+mkdir -p "$G" 2>/dev/null || { step "cannot create gadget $G"; exit 0; }
+step "gadget created"
+printf '0x2207' > "$G/idVendor"       2>/dev/null
+printf '0x0006' > "$G/idProduct"      2>/dev/null
+printf '0x0310' > "$G/bcdDevice"      2>/dev/null
+printf '0x0201' > "$G/bcdUSB"         2>/dev/null
+mkdir -p "$G/strings/0x409" 2>/dev/null
+printf 'rockchip' > "$G/strings/0x409/manufacturer" 2>/dev/null
+printf 'miyoo355' > "$G/strings/0x409/product"      2>/dev/null
+printf '%s' "$serial" > "$G/strings/0x409/serialnumber" 2>/dev/null
+
+mkdir -p "$G/functions/ffs.adb" 2>/dev/null
+mkdir -p "$G/configs/b.1/strings/0x409" 2>/dev/null
+printf 'adb' > "$G/configs/b.1/strings/0x409/configuration" 2>/dev/null
+printf '500' > "$G/configs/b.1/MaxPower" 2>/dev/null
+[ -e "$G/configs/b.1/f-ffs.adb" ] || \
+	ln -s "$G/functions/ffs.adb" "$G/configs/b.1/f-ffs.adb" 2>/dev/null
+
+# uid/gid match what the vendor script passes; adbd expects to own these nodes.
+mkdir -p "$FFS" 2>/dev/null
+grep -q " $FFS " /proc/mounts 2>/dev/null || \
+	/bin/mount -t functionfs -o uid=2000,gid=2000 adb "$FFS" 2>/dev/null || \
+	{ step "functionfs mount failed"; exit 0; }
+step "functionfs mounted: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
+
+# adbd writes the descriptors into functionfs; give it a bounded moment to do so.
+"$ADBD" >>"$LOG" 2>&1 &
+step "adbd started (pid $!) ADB_TCP_PORT=$ADB_TCP_PORT lo=$(/sbin/ifconfig lo 2>/dev/null | grep -c 'inet addr')"
+i=0
+while [ "$i" -lt 100 ]; do
+	[ -e "$FFS/ep1" ] && break
+	/bin/sleep 0.1
+	i=$((i + 1))
+done
+step "after wait: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
+
+printf '%s' "$udc" > "$G/UDC" 2>/dev/null
+step "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
+exit 0

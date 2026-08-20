@@ -1,0 +1,98 @@
+#!/bin/sh
+# Frontend session. Respawned by init; replaces the vendor chain
+# S60mainui -> runmiyoo.sh -> .tmp_update/updater.
+#
+# The contract this file exists to satisfy: starting NextUI from BaseOS must
+# behave EXACTLY as starting it from stock, differing only in which SD slot the
+# card is in. NextUI itself is slot-agnostic — nothing in my355.sh or
+# MinUI.pak/launch.sh names a block device — so the burden is entirely here, in
+# reproducing the environment stock's runmiyoo.sh sets up.
+#
+# The load-bearing part is /userdata. Stock bind-mounts it onto the frontend
+# card because the Flip's internal userdata partition corrupts, and NextUI's
+# settings, wpa_supplicant.conf and Bluetooth pairings all live there. Same
+# paths and the same first-run defaults, or the frontend comes up different.
+
+SDCARD=/mnt/SDCARD
+USERDATA_DIR="$SDCARD/.userdata/my355/userdata"
+
+# The card is mounted by rcS; give a late-enumerating one a bounded moment.
+i=0
+while [ "$i" -lt 20 ]; do
+	grep -q " $SDCARD " /proc/mounts && break
+	/bin/sleep 0.5
+	i=$((i + 1))
+done
+if ! grep -q " $SDCARD " /proc/mounts; then
+	# Nothing to hand off to. Sleep rather than spin: init would respawn us
+	# in a tight loop otherwise, and there is no display API here yet to say so.
+	/bin/sleep 5
+	exit 0
+fi
+
+# --- /userdata, exactly as stock arranges it -------------------------------
+if [ ! -d "$USERDATA_DIR" ]; then
+	/bin/mkdir -p "$USERDATA_DIR"
+	/bin/mkdir -p "$USERDATA_DIR/bin" "$USERDATA_DIR/bluetooth" \
+	              "$USERDATA_DIR/cfg" "$USERDATA_DIR/lib/bluetooth" \
+	              "$USERDATA_DIR/localtime" "$USERDATA_DIR/timezone"
+	/bin/sync
+fi
+
+# First-run defaults, byte-identical to the vendor script's heredoc: NextUI
+# reads these on first launch and they decide volume, brightness and keymap.
+if [ ! -f "$USERDATA_DIR/system.json" ]; then
+	cat > "$USERDATA_DIR/system.json" <<'JSON'
+{
+        "vol": 7,
+        "keymap": "L2,L,R2,R,X,A,B,Y",
+        "mute": 0,
+        "bgmvol": 0,
+        "brightness": 6,
+        "language": "en.lang",
+        "hibernate": 0,
+        "lumination": 10,
+        "hue": 10,
+        "saturation": 10,
+        "contrast": 10,
+        "theme": "",
+        "fontsize": 24,
+        "audiofix": 1,
+        "wifi": 0,
+        "runee": 0,
+        "turboA": 0,
+        "turboB": 0,
+        "turboX": 0,
+        "turboY": 0,
+        "turboL": 0,
+        "turboR": 0,
+        "turboL2": 0,
+        "turboR2": 0,
+        "bluetooth": 0
+}
+JSON
+	/bin/sync
+fi
+
+/bin/mkdir -p /userdata
+grep -q ' /userdata ' /proc/mounts || /bin/mount --bind "$USERDATA_DIR" /userdata
+
+# BlueZ names its pairing files by MAC address, which FAT32 rejects. Stock
+# shadows that one directory with a tmpfs; do the same or Bluetooth fails.
+/bin/mkdir -p /run/bluetooth_fix
+grep -q ' /userdata/bluetooth ' /proc/mounts || \
+	/bin/mount --bind /run/bluetooth_fix /userdata/bluetooth
+
+# --- hand off ---------------------------------------------------------------
+/bin/cut -d" " -f1 /proc/uptime > /run/boot-frontend-exec
+
+UPDATER="$SDCARD/.tmp_update/updater"
+if [ -x "$UPDATER" ]; then
+	# Stock calls the updater, not launch.sh directly: it is what installs
+	# MinUI.zip/*.pakz payloads before starting the frontend. Keeping that
+	# entry point is what makes updates behave identically.
+	exec "$UPDATER"
+fi
+
+/bin/sleep 5
+exit 0

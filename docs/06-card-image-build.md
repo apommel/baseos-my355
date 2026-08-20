@@ -60,12 +60,32 @@ kernel stays byte-for-byte vendor (`sha256 113c2d26…`); only these change:
 | what | why |
 |---|---|
 | `/chosen/bootargs` in `rk-kernel.dtb` | repoint `root=` at the card |
-| `logo.bmp`, `logo_kernel.bmp` | tell, on a console-less device, whether U-Boot came from the card or NAND |
+| `logo.bmp`, `logo_kernel.bmp` | tell, on a console-less device, whether U-Boot came from the card or NAND. Size is ours to choose — see below |
 | `linux,default-trigger` on `/leds/work` | diagnostics only (`MY355_DIAG=1`) |
 | the header's SHA1 `id` | **mandatory** — see below |
 
-The tool refuses to write if the DTB, the resource image or the boot image
-changes size, which is what keeps the kernel provably untouched.
+The kernel and every other resource entry are copied verbatim; the tool asserts
+the kernel hash and the resource entry set after writing.
+
+### The resource image is rebuilt, not patched
+
+Early versions patched the vendor resource in place, which forced our logo to
+match the vendor's exact byte count. That turned out to matter for a reason
+nothing warned about:
+
+**A 943 616-byte resource hangs this U-Boot before display init** — no backlight,
+no logo, nothing. 465 408 bytes boots. The stock image's two 480x198 logos are
+what push it over; the exact threshold is unmeasured, somewhere between the two.
+
+Symptom to recognise: *the backlight never lights at all*. That is different from
+a blank logo, and it means U-Boot never reached display init — it reads the
+resource image, and uses `rk-kernel.dtb` from it as its own control device tree,
+before it touches the display.
+
+`ResourceImage.build()` therefore composes a fresh resource image, so the logo is
+sized for looks and for headroom rather than to match the vendor. The default
+`240x48` lands the resource at **442 880 bytes**, comfortably under the largest
+size proven to boot. `rkbootimg.py` warns above `RESOURCE_SAFE_BYTES`.
 
 ### The boot image `id` is verified
 
@@ -95,6 +115,14 @@ console that does not exist: LED alive, root mounted, nothing happening, no
 panic. The H700 port sets `init=/init` too ([docs/01](../h700/01-rootfs-and-init.md) §3).
 
 `rkbootimg.py info` reports the budget, so this cannot be discovered the hard way.
+
+### Check the logo before spending a boot
+
+`mkbootlogo_my355.py` prints a percent-painted figure and `--preview` renders
+ASCII, both run by the build. A logo that renders almost blank looks exactly like
+a boot failure on this device, and did once: the vendor BMP is **top-down**
+(`height = -198`), and using the raw negative height in the scale calculation
+silently produced 5x7-pixel text.
 
 ## ext4 features
 
@@ -128,4 +156,4 @@ Then the card goes in the **right slot** — the only slot in the SPL's boot ord
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)

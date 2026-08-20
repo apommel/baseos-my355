@@ -19,9 +19,14 @@ This costs a **2 MiB** change to internal NAND (the preloader) and nothing else 
 stock U-Boot, kernel, rootfs and BL31 are all untouched. ROCKNIX also boots this
 way, so the mainline path is open too.
 
-What remains is the rootfs itself: harvesting glibc and the vendor libraries from
-`mtd3`, and reproducing what stock's `runmiyoo.sh` does so NextUI behaves
-identically. See the [port plan](04-port-plan.md).
+**BaseOS boots on this device and adb works over USB.** PID 1 is BusyBox init,
+`rcS` completes in **50 ms**, the harvested vendor libraries execute
+(`wpa_supplicant v2.9`, `dbus-daemon 1.12.20`), and `/proc/cmdline` reports
+`storagemedia=sd`.
+
+What remains is launching NextUI from it — the card's `primary` partition is
+still empty, so `nextui-session` correctly idles. See the
+[port plan](04-port-plan.md).
 
 **As of 2026-08-20 this unit runs:**
 
@@ -49,6 +54,7 @@ from either the stock system or ROCKNIX.
 | [05 · Investigation log](05-investigation-log.md) | Experiments, SPL disassembly, and every retracted theory. |
 | [06 · Building a BaseOS card](06-card-image-build.md) | Card layout, boot image surgery, build and flash. |
 | [07 · Bring-up and diagnostics](07-bringup-and-diagnostics.md) | How to debug a device that can print nothing. |
+| [08 · The rootfs](08-rootfs.md) | Harvest, overlay, init, adb, NextUI compatibility. |
 
 ## If you only read one thing
 
@@ -65,4 +71,4 @@ Details in [SD boot](02-sd-boot.md). Building a card that uses it is
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)

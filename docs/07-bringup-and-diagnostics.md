@@ -28,7 +28,7 @@ Ordered by how early they fire.
 | **LED, kernel-side** | the kernel started and reached driver probe | DTB `/leds/work linux,default-trigger = heartbeat`; fires long before root is mounted |
 | **reboot loop** | the kernel panicked (rather than hung) | `panic=10` on the command line |
 | **LED, userspace** | init is alive *now* | init sets trigger `none` and drives `brightness` in a loop — stops the instant PID 1 dies |
-| **files on the card** | how far init got | init appends to `/BOOT-STAGE` on the root filesystem |
+| **files on the card** | how far init got | `rcS` appends to `/data/boot.log`, `usb-gadget-adb` to `/data/usb-gadget.log` — both persistent, both survive a power cut |
 
 Both LED signals are distinguishable by eye: the kernel's `heartbeat` is a
 double-thump; a userspace 1 s on / 1 s off loop is an even square wave.
@@ -60,6 +60,7 @@ busybox runs, ruling out the rootfs while the real bug was elsewhere.
 
 | symptom | means |
 |---|---|
+| **backlight never lights** | U-Boot never reached display init. Prime suspect: the resource image is too large (see [06](06-card-image-build.md)) |
 | vendor logo | SPL did not take the card — check the `uboot` partition exists and starts at 16384 |
 | our logo, nothing else | U-Boot read the card but `boot_android` refused the image — **check the boot image `id`** |
 | our logo, kernel LED pulsing, nothing else | kernel alive; root mount or init. `rootwait` **hangs forever** rather than panicking when the root device never appears, so a hang with no reboot loop looks the same as a dead kernel |
@@ -81,6 +82,18 @@ Each cost a hardware round-trip. All are fixed in the build scripts.
 4. **`console=tty0` renders nothing** — no framebuffer console in this kernel.
 5. **The `work` LED's default trigger is `default-on`.** A steady LED is its
    resting state, so "LED on" proves nothing; only a *change* is signal.
+6. **A near-blank logo is indistinguishable from no boot.** The vendor BMP is
+   top-down (negative height); using that height unguarded in a scale
+   calculation rendered 5x7-pixel text. Check with `--preview` before booting.
+7. **An oversized resource image hangs U-Boot before display init** — the
+   backlight never lights. See [06](06-card-image-build.md).
+8. **`adbd` needs loopback.** It binds a TCP listener at start-up and treats
+   failure as fatal, never reaching `usb_ffs_init`. No `lo`, no adb — and the
+   only symptom is that adb silently does not appear.
+9. **Boot timings are inflated when USB is attached.** U-Boot runs its charge
+   animation (`/charge-animation`, `rockchip,uboot-charge`) before booting, and
+   that time lands in the arch counter. Measure with USB unplugged; attach it
+   afterwards.
 
 ## When to stop and open the case
 
@@ -94,4 +107,4 @@ several wasted boots; see the [investigation log](05-investigation-log.md).
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)

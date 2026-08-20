@@ -1,0 +1,10 @@
+# BusyBox init for the my355 base OS.
+# The kernel runs /init (init=/init), which execs busybox init, which reads this.
+::sysinit:/etc/init.d/rcS
+::respawn:/sbin/nextui-session
+# Serial console on the debug UART. ttyS2 at 1.5 Mbaud on this SoC; the pads
+# need the case open, so this is harmless on an assembled unit.
+ttyS2::respawn:/sbin/getty -L ttyS2 1500000 vt100
+::ctrlaltdel:/sbin/reboot
+::shutdown:/etc/init.d/rcK
+::restart:/sbin/init

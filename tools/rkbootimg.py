@@ -19,10 +19,13 @@ This tool rewrites it in place and repacks, so the kernel Image and every other
 resource entry stay byte-for-byte vendor — the same doctrine the H700 port
 applies to its boot chain (docs/00).
 
-The DTB is patched without relayout: the replacement bootargs is padded with
-spaces to the original length, so the FDT structure block keeps its size and no
-offsets move. That caps how long the new cmdline can be; `info` reports the
-budget.
+The device tree is patched without relayout — the replacement bootargs is padded
+with spaces to the original length, so the FDT keeps its size and no offsets
+move. That caps how long the new command line can be; `info` reports the budget.
+
+The resource image around it is rebuilt rather than patched, which frees the
+logo from having to match the vendor's exact byte count and lets the whole
+resource stay small enough for U-Boot's loader (see RESOURCE_SAFE_BYTES).
 
 Usage:
     rkbootimg.py info    BOOTIMG
@@ -39,6 +42,9 @@ import struct
 import sys
 
 PAGE_DEFAULT = 2048
+# Largest resource image observed to boot on hardware. 943 616 bytes hangs this
+# U-Boot before display init; 465 408 boots. The exact threshold is unmeasured.
+RESOURCE_SAFE_BYTES = 465408
 RES_MAGIC = b"RSCE"
 RES_BLOCK = 512
 RES_NAME_LEN = 256
@@ -102,17 +108,21 @@ class BootImage:
     def stored_id(self) -> bytes:
         return self.blob[576:576 + 20]
 
-    def with_second(self, new: bytes) -> bytes:
-        if len(new) != self.second_size:
-            raise ValueError(
-                f"resource image changed size ({len(new)} != {self.second_size}); "
-                "in-place repack requires it to stay identical")
-        b = bytearray(self.blob)
-        b[self.second_off:self.second_off + self.second_size] = new
-        digest = self.compute_id(bytes(b))
-        b[576:576 + 20] = digest
-        b[576 + 20:576 + 32] = b"\0" * 12
-        return bytes(b)
+    def rebuild(self, second: bytes) -> bytes:
+        """Repack with a differently sized `second`, refreshing sizes and the id."""
+        page = self.page_size
+        b = bytearray(self.blob[:page])                       # header page
+        struct.pack_into("<I", b, 8 + 16, len(second))        # second_size field
+        out = bytearray(b)
+        out += self.kernel + b"\0" * (_pad(self.kernel_size, page) - self.kernel_size)
+        out += self.ramdisk + b"\0" * (_pad(self.ramdisk_size, page) - self.ramdisk_size)
+        out += second + b"\0" * (_pad(len(second), page) - len(second))
+        rebuilt = BootImage(bytes(out))
+        digest = rebuilt.compute_id()
+        out[576:576 + 20] = digest
+        out[576 + 20:576 + 32] = b"\0" * 12
+        return bytes(out)
+
 
 
 class ResourceImage:
@@ -140,15 +150,43 @@ class ResourceImage:
                 return off, size
         raise KeyError(name)
 
-    def replace(self, name: str, data: bytes) -> bytes:
-        off, size = self.get(name)
-        if len(data) != size:
-            raise ValueError(
-                f"{name} changed size ({len(data)} != {size}); in-place repack "
-                "requires it to stay identical")
-        b = bytearray(self.blob)
-        b[off:off + size] = data
-        return bytes(b)
+    @staticmethod
+    def build(entries: "list[tuple[str, bytes]]") -> bytes:
+        """Compose a fresh resource image from (name, data) pairs.
+
+        In-place replacement forces every payload to keep its exact vendor byte
+        count, which in turn forces our logo to match the vendor's geometry.
+        Building the image instead lets the logo be any size — and, critically,
+        lets the whole resource stay small. A 943 616-byte resource (the stock
+        one, with its two 480x198 logos) hangs this U-Boot before display init;
+        465 408 bytes boots. See docs/my355/06-card-image-build.md.
+        """
+        header_blocks = 1
+        entry_blocks = 1
+        table = bytearray(header_blocks * RES_BLOCK + len(entries) * entry_blocks * RES_BLOCK)
+        table[0:4] = RES_MAGIC
+        table[8] = header_blocks
+        table[9] = entry_blocks
+        struct.pack_into("<H", table, 10, 1)
+        struct.pack_into("<I", table, 12, len(entries))
+
+        body = bytearray()
+        cursor = len(table)                      # first free byte, block-aligned below
+        for i, (name, data) in enumerate(entries):
+            pad = (-cursor) % RES_BLOCK
+            body += b"\0" * pad
+            cursor += pad
+            off_blocks = cursor // RES_BLOCK
+            base = header_blocks * RES_BLOCK + i * entry_blocks * RES_BLOCK
+            table[base:base + 4] = b"ENTR"
+            encoded = name.encode()
+            table[base + 4:base + 4 + len(encoded)] = encoded
+            struct.pack_into("<II", table, base + 4 + RES_NAME_LEN, off_blocks, len(data))
+            body += data
+            cursor += len(data)
+        blob = bytes(table) + bytes(body)
+        return blob + b"\0" * ((-len(blob)) % RES_BLOCK)
+
 
 
 def fdt_find_prop(dtb: bytes, node: str, prop: str) -> tuple[int, int]:
@@ -318,14 +356,27 @@ def cmd_setargs(a) -> int:
                                       a.led_trigger)
         print(f"  led: /leds/work default-trigger -> {a.led_trigger} "
               f"(kernel-side signal, fires at gpio-leds probe)")
-    second = res.replace("rk-kernel.dtb", patched_dtb)
-    if a.logo:
-        logo = open(a.logo, "rb").read()
-        res2 = ResourceImage(second)
-        for entry in ("logo.bmp", "logo_kernel.bmp"):
-            second = ResourceImage(second).replace(entry, logo)
-        print(f"  logo: replaced logo.bmp and logo_kernel.bmp from {a.logo}")
-    out = boot.with_second(second)
+
+    # Rebuild the resource image rather than patch it in place. The logo is then
+    # free to be any size, and the whole resource can be kept small enough for
+    # U-Boot's loader (see ResourceImage.build).
+    logo = open(a.logo, "rb").read() if a.logo else None
+    entries = []
+    for name, off, size in res.entries():
+        if name == "rk-kernel.dtb":
+            entries.append((name, patched_dtb))
+        elif logo is not None and name in ("logo.bmp", "logo_kernel.bmp"):
+            entries.append((name, logo))
+        else:
+            entries.append((name, res.blob[off:off + size]))
+    second = ResourceImage.build(entries)
+    print(f"  resource: rebuilt, {boot.second_size} -> {len(second)} bytes "
+          f"({len(second) // 512} blocks)")
+    if len(second) > RESOURCE_SAFE_BYTES:
+        print(f"  WARNING: resource is {len(second)} bytes; {RESOURCE_SAFE_BYTES} is the "
+              f"largest size observed to boot. U-Boot hangs before display init above "
+              f"some threshold between that and 943616.", file=sys.stderr)
+    out = boot.rebuild(second)
     with open(a.out, "wb") as fh:
         fh.write(out)
     src = open(a.bootimg, "rb").read()
@@ -335,6 +386,8 @@ def cmd_setargs(a) -> int:
     print(f"  wrote {a.out}  ({len(out)} bytes, {changed} bytes differ)")
     verify_boot, verify_res, verify_dtb = load(a.out)
     assert verify_boot.kernel == boot.kernel, "kernel changed — refusing"
+    assert [n for n, _, _ in verify_res.entries()] == [n for n, _ in entries], \
+        "resource entry set changed — refusing"
     assert verify_boot.compute_id() == verify_boot.stored_id, \
         "boot image id is stale — U-Boot would reject this"
     voff, vlen = fdt_find_bootargs(verify_dtb)

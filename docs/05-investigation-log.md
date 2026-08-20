@@ -27,6 +27,11 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-20 | Card bring-up 3 — `rw` + `/BOOT-STAGE` markers; still nothing, cause still ambiguous |
 | 2026-08-20 | Card bring-up 4 — kernel-side LED heartbeat proves the kernel runs; superblock shows `Last mounted on: /`, so root mounts |
 | 2026-08-20 | Card bring-up 5 — `init=/init` added → **card boots to userspace. Chain complete.** |
+| 2026-08-20 | Prepared inputs derived from the NAND backup; harvest list read from `/proc/<pid>/maps` on the running stock stack; closure verified |
+| 2026-08-20 | Real rootfs built. Boot hangs with **no backlight** — pristine boot image's 943 KB resource; 465 KB boots. Isolated by swapping only the boot image |
+| 2026-08-20 | adb failed: `cannot bind 'tcp:5037'`. Root cause **no loopback interface**; `adbd` treats the bind failure as fatal and never reaches `usb_ffs_init` |
+| 2026-08-20 | **BaseOS boots with working adb.** `rcS` 50 ms, vendor binaries execute |
+| 2026-08-20 | Resource image is now *built* rather than patched in place; pristine stock inputs restored |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
@@ -398,8 +403,12 @@ each was a plausible mechanism asserted before it was tested.
 | A pulsing/steady `work` LED distinguishes success from failure | Its default trigger is `default-on`; a steady LED is the resting state. Only a *change* is signal. |
 | `console=tty0` would show kernel messages on the panel | `# CONFIG_FRAMEBUFFER_CONSOLE is not set` — it renders nothing. The H700 doc records the same for its kernel, and it had already been read. |
 | The empty-rootfs smoke test would prove the boot chain | It could not: with no console, "kernel panicked at init" and "kernel never started" look identical. Two rounds were spent on tests that could not distinguish success from failure. |
+| The `work` LED steady meant the kernel was dead | Its default trigger is `default-on`. Twice read as a failure signal when it carried no information. |
+| "No boot logo" meant U-Boot did not run | The logo had rendered near-blank — the vendor BMP is top-down and a negative height fed the scale calculation. The instrument was broken, so the reading was void, not negative. |
+| Pre-kernel time had regressed to 7–8 s | USB was attached, so U-Boot ran its charge animation first and that landed in the arch counter. Measure with USB unplugged. |
+| The rootfs "is not working perfectly well" | It was working: `rcS` ran to completion and wrote persistent state. Only the USB gadget had failed. |
 | The ROCKNIX stall was *not* the storage-partition collision | It was. The theory was abandoned when removing the blocking partition didn't help — but ROCKNIX's resize runs **once**, so the damage persisted. Correct diagnosis, wrong inference from the retest. |
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)

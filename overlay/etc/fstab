@@ -1,0 +1,5 @@
+# Informational only — rcS performs all mounts explicitly (fast path).
+# /            ext4  rw,noatime  (mmcblk1p3, the active A/B rootfs slot)
+# /data        ext4  rw,noatime  (mmcblk1p4, persistent state, survives a slot flip)
+# /mnt/SDCARD  vfat  rw          (mmcblk2p1 — the left-slot frontend card —
+#                                 else this card's own mmcblk1p5 "BASEOS")
