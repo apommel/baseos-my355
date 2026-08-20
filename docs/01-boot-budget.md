@@ -23,7 +23,7 @@ where U-Boot prints `Total: 3295.512/3340.136 ms` immediately before
 
 `launch.sh` (NextUI's entry point) starts at uptime 11.51 s = **15.80 s from power-on**.
 That is the direct analogue of BaseOS's `boot-frontend-exec`, which is **2.96 s** on
-RG40XXV ([05](../05-runtime-power-network.md)).
+RG40XXV ([05](../h700/05-runtime-power-network.md)).
 
 ## Where the 9.9 s of userland goes
 
@@ -49,7 +49,7 @@ owning U-Boot, which costs another ~2 s.
 - `/usr/miyoo/bin/miyoo_inputd`
 
 No `systemctl`, no `dmenu.bin` model detection, no vendor Bluetooth scripts. The whole
-shim layer of H700 [01](../01-rootfs-and-init.md) [backup & recovery](03-nand-backup-and-recovery.md) largely evaporates. The stock
+shim layer of H700 [01](../h700/01-rootfs-and-init.md) [backup & recovery](03-nand-backup-and-recovery.md) largely evaporates. The stock
 `runmiyoo.sh` is already a NextUI shim baked into the squashfs, chaining to
 `/mnt/SDCARD/.tmp_update/updater`.
 
@@ -57,4 +57,4 @@ shim layer of H700 [01](../01-rootfs-and-init.md) [backup & recovery](03-nand-ba
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)

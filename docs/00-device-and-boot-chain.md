@@ -27,7 +27,7 @@ Miyoo Flip (`MIYOO RK3566 355 V10 Board`), NextUI platform id **`my355`**.
 
 ## How the Flip differs structurally from H700
 
-The H700 port ([00](../00-boot-chain-and-partitions.md)) rests on one property: the
+The H700 port ([00](../h700/00-boot-chain-and-partitions.md)) rests on one property: the
 bootloader, kernel and rootfs all live on the same SD card, U-Boot resolves partitions
 **by name**, and `root=` names a partition *number*. That makes BaseOS a drop-in card.
 
@@ -116,4 +116,4 @@ mechanism a "card present → boot from card, otherwise stock" design would rely
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)

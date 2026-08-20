@@ -1,0 +1,131 @@
+# my355 · Building a BaseOS card
+
+How `build-image-my355.sh` composes a bootable card, and why each piece is
+shaped the way it is. **This chain is verified end to end on hardware** — the
+device boots from the card to userspace.
+
+> **Provenance.** Measured on hardware over adb, 2026-08-19 to 2026-08-20, on a unit
+> running stock firmware with NextUI installed. Claims are *verified* (observed on
+> hardware) or *inferred* (from binaries); retracted ones are kept in the
+> [investigation log](05-investigation-log.md).
+
+## Prerequisite
+
+The device must be running **GammaLoader's preloader** in `mtd5`
+([SD boot](02-sd-boot.md)). Without it the stock SPL cannot read an SD card at
+all, and no card layout changes that.
+
+## What the card must contain
+
+The NAND boot chain reaches for exactly two things by **name**, then the kernel
+reaches for a third by **number**:
+
+| | why it is load-bearing |
+|---|---|
+| GPT partition `uboot`, **starting at sector 16384** | GammaLoader's SPL calls `part_get_info_by_name(dev, "uboot")` and reads the U-Boot FIT from the partition's *first sector*. That SPL has **no raw-sector fallback** — without this entry it returns `-ENOSYS` and falls through to NAND. |
+| GPT partition `boot` | Stock U-Boot runs `boot_android mmc 1`, which resolves the Android boot image by this name. |
+| rootfs as GPT **entry 3** | `root=/dev/mmcblk1p3` is baked into the DTB at build time. The name does not matter; the entry number does. |
+
+The right slot enumerates as `mmcblk1` (left is `mmcblk2`) — fixed by DT aliases
+`mmc0=sdhci`, `mmc1=fe2b0000`, `mmc2=fe2c0000`, so it does not vary.
+
+## Layout
+
+`tools/mkgpt_my355.py` is the single source of truth; the build script reads it
+via `--shell` rather than duplicating constants.
+
+```
+entry 1  uboot     16384 ..   32767     8 MiB   stock U-Boot FIT, verbatim
+entry 2  boot      32768 ..  114687    40 MiB   Android boot image
+entry 3  rootfs   114688 .. 1163263   512 MiB   slot A   <- root=/dev/mmcblk1p3
+  —      (gap)   1163264 .. 2211839   512 MiB   slot B — update target, unallocated
+entry 4  data    2211840 .. 2473983   128 MiB   ext4, persistent state
+entry 5  primary 2473984 .. 2605055    64 MiB   FAT32, the only visible volume
+```
+
+Slot B is unallocated on purpose, mirroring the H700 A/B scheme
+([docs/07](../h700/07-partition-layout-and-updates.md)): it costs no visible
+partition and no desktop offers to format it. Every entry but `primary` carries
+GPT attribute bits 62 and 63, so a desktop assigns one drive letter.
+
+**Reserving slot B now is free; adding it later is not** — it must sit between
+`rootfs` and `data`, so retrofitting shifts every later partition and destroys
+whatever is on the card.
+
+## Boot image surgery
+
+`tools/rkbootimg.py` rewrites the vendor Android boot image *in place*. The
+kernel stays byte-for-byte vendor (`sha256 113c2d26…`); only these change:
+
+| what | why |
+|---|---|
+| `/chosen/bootargs` in `rk-kernel.dtb` | repoint `root=` at the card |
+| `logo.bmp`, `logo_kernel.bmp` | tell, on a console-less device, whether U-Boot came from the card or NAND |
+| `linux,default-trigger` on `/leds/work` | diagnostics only (`MY355_DIAG=1`) |
+| the header's SHA1 `id` | **mandatory** — see below |
+
+The tool refuses to write if the DTB, the resource image or the boot image
+changes size, which is what keeps the kernel provably untouched.
+
+### The boot image `id` is verified
+
+The `ANDROID!` header carries a SHA1 over `kernel|size · ramdisk|size ·
+second|size`. U-Boot checks it (`ANDROID: Hash OK`) and **refuses the image if
+it is stale**. Any edit to the resource image must refresh it.
+
+This produces a deeply misleading failure: U-Boot reads the resource image
+*early and unverified* to fetch the DTB and draw the logo, so a replaced logo
+appears normally — and then nothing boots. `rkbootimg.py` now recomputes the id
+on every repack and asserts it before writing; `info` reports `valid`/`STALE`.
+
+### The command line budget is exactly zero
+
+The vendor line uses **100 of 100** available bytes, and in-place FDT patching
+cannot grow it. Dropping `earlycon=` (dead weight with no UART attached) buys
+the room for what is actually needed:
+
+```
+console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait rw init=/init
+```
+
+**`init=/init` is required.** For a *disk* root the kernel only tries
+`/sbin/init`, `/etc/init`, `/bin/init`, `/bin/sh` — `/init` is the initramfs
+convention. Without it the kernel execs `/bin/sh`, which then waits forever on a
+console that does not exist: LED alive, root mounted, nothing happening, no
+panic. The H700 port sets `init=/init` too ([docs/01](../h700/01-rootfs-and-init.md) §3).
+
+`rkbootimg.py info` reports the budget, so this cannot be discovered the hard way.
+
+## ext4 features
+
+`^orphan_file` only. This kernel is **5.10.160**: `orphan_file` needs 5.15+, but
+`metadata_csum`, `metadata_csum_seed` and `64bit` are all fine — unlike the H700
+port, which must disable them for its 4.9 kernel
+([docs/00](../h700/00-boot-chain-and-partitions.md) §3). Verified: the vendor kernel
+mounts these filesystems.
+
+## Build and flash
+
+```sh
+./build-rootfs-my355.sh --smoke          # or the real rootfs, once it exists
+./build-image-my355.sh [NAND_BACKUP_DIR] # default: ~/Development/miyoo-flip-nand-backup
+```
+
+`MY355_DIAG=1` adds bring-up aids — see
+[bring-up and diagnostics](07-bringup-and-diagnostics.md).
+
+The build verifies as it goes: `sgdisk -v` clean, `e2fsck -fn` on both ext4
+filesystems, the boot image id valid, and the kernel hash unchanged.
+
+Flashing (macOS; **check the disk number every time**, it moves):
+
+```sh
+diskutil list external
+diskutil unmountDisk /dev/diskN && sudo dd if=work/my355/baseos-my355.img of=/dev/rdiskN bs=4m
+```
+
+Then the card goes in the **right slot** — the only slot in the SPL's boot order.
+
+---
+
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)

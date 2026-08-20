@@ -2,6 +2,10 @@
 
 What to build next and which decisions are still open.
 
+**Boot chain: done.** A card built by [06](06-card-image-build.md) boots this
+device from SD to userspace, with stock fallback intact. Option **A** below is
+therefore in progress; option **B** is unblocked but not chosen.
+
 > **Provenance.** Measured on hardware over adb, 2026-08-19 to 2026-08-20, on a unit
 > running stock firmware with NextUI installed. Claims are *verified* (observed on
 > hardware) or *inferred* (from binaries); retracted ones are kept in the
@@ -38,22 +42,33 @@ before drawing any conclusion about mainline on this device.
 
 ## Open questions
 
-- **Which port — stock kernel (A) or mainline (B)?** See [port plan](04-port-plan.md). Both are now unblocked:
-  Experiment 6 boots either from SD, and ROCKNIX (mainline 7.0+ with
-  `rk3566-miyoo-flip.dtb`) reaches its UI on this hardware.
-- **Boot budget for a real BaseOS card.** Unmeasured. The interesting figure is
-  pre-kernel time when the card *is* bootable — GammaLoader's SPL plus a lean mainline
-  U-Boot should beat stock's ~2.95 s U-Boot substantially, but nobody has measured it.
-- **Cost of an inserted non-bootable card.** One sample showed pre-kernel 7.18 s with a
-  NextUI card inserted, against 4.31 s with none — i.e. ~2.9 s of SD probing that
-  finds no `uboot` partition. Single measurement, unconfirmed, and irrelevant to a
-  BaseOS card (which is bootable), but it would affect users who keep a plain data card
-  in the right slot.
-- **Should BaseOS ship its own preloader instead of GammaLoader's?** See [port plan](04-port-plan.md).
-- Why the *stock* SPL cannot boot from SD, when GammaLoader's older one can with the
-  same card, remains undetermined ([investigation log](05-investigation-log.md)). Now academic.
-- Kernel cost breakdown: `rtl8733bu` probes for ~0.7 s of the 1.61 s kernel phase.
-  Making it a module would break "vendor kernel untouched"; quantify before deciding.
+Ordered by what currently blocks progress.
+
+- **The rootfs harvest.** `mtd3` is **squashfs**, so the H700 `debugfs` extraction
+  in `prepare-stock.sh` does not apply — it needs `unsquashfs`. The harvest is far
+  smaller than H700's: glibc 2.36, the three `/usr/miyoo/lib` libraries
+  (`libgamename`, `libshmvar`, `libtmenu`), `/usr/miyoo/bin/miyoo_inputd`, and the
+  transitive closure of those.
+- **Reproducing `runmiyoo.sh` — the compatibility crux.** Stock bind-mounts
+  `/userdata` onto `/mnt/SDCARD/.userdata/my355/userdata`, synthesises a first-run
+  `system.json` (vol, brightness, keymap…), and binds `/run/bluetooth_fix` over
+  `/userdata/bluetooth`. `wpa_supplicant.conf`, `system.json` and BT pairings all
+  live there. Get this wrong and NextUI comes up with different settings — the one
+  divergence the port is explicitly trying to avoid.
+- **Which card holds the frontend.** BaseOS takes the right slot (the only
+  boot-capable one), so a NextUI card moves to the left and BaseOS mounts it at
+  `/mnt/SDCARD` — or falls back to its own `primary` partition, as H700 does
+  ([docs/01](../h700/01-rootfs-and-init.md) §5 step 8a). NextUI itself is slot-agnostic:
+  nothing in `my355.sh` or `MinUI.pak/launch.sh` names a block device.
+- **Which vendor daemons NextUI actually needs** for brightness, battery and
+  Bluetooth. H700 needed three shims (`systemctl`, `timedatectl`,
+  `setBluetooth.sh`); the my355 surface looks smaller but is unmeasured.
+- **Boot budget for a real card.** Unmeasured. The interesting figure is pre-kernel
+  time with a bootable card, against stock's ~2.95 s U-Boot.
+- **Root read-only.** The card currently mounts root `rw`. H700 targets a
+  read-only root with writable state on `/data` ([docs/06](../h700/06-status-and-lessons.md)).
+- **A/B updates.** Slot B is reserved but `baseos-update`, `mkupdate.py` and
+  `gptslot` are not ported.
 
 ## Should BaseOS build its own preloader?
 
@@ -84,4 +99,4 @@ preloader write.
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)

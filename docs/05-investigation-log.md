@@ -22,6 +22,11 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-20 | GammaLoader disassembled — no raw-sector fallback; explains its ROCKNIX incompatibility ([SD boot](02-sd-boot.md)) |
 | 2026-08-20 | Exp. 6 — **GammaLoader preloader only → all three cases correct; DDR scaling intact** ([SD boot](02-sd-boot.md)) |
 | 2026-08-20 | ROCKNIX card re-flashed, `uboot` partition re-added → **ROCKNIX boots to UI** |
+| 2026-08-20 | Card bring-up 1 — empty rootfs, `console=tty0` → unobservable; kernel has no framebuffer console |
+| 2026-08-20 | Card bring-up 2 — stale boot image `id` found and fixed; U-Boot had been refusing the image after drawing our logo |
+| 2026-08-20 | Card bring-up 3 — `rw` + `/BOOT-STAGE` markers; still nothing, cause still ambiguous |
+| 2026-08-20 | Card bring-up 4 — kernel-side LED heartbeat proves the kernel runs; superblock shows `Last mounted on: /`, so root mounts |
+| 2026-08-20 | Card bring-up 5 — `init=/init` added → **card boots to userspace. Chain complete.** |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
@@ -390,8 +395,11 @@ each was a plausible mechanism asserted before it was tested.
 | The v1 `bootcmd` patch was "fail-safe by construction" | `mmc_boot` clobbers `devtype`; a card with no bootable content hung the device. |
 | v2 added a ~20 s pre-kernel regression | Kernel timestamps are unreliable across warm reboots; stopwatch showed no change. |
 | GammaLoader's preloader costs ~2.9 s of boot time | That sample had a non-bootable card inserted. With no card it is 4.31 s — within noise of stock. |
+| A pulsing/steady `work` LED distinguishes success from failure | Its default trigger is `default-on`; a steady LED is the resting state. Only a *change* is signal. |
+| `console=tty0` would show kernel messages on the panel | `# CONFIG_FRAMEBUFFER_CONSOLE is not set` — it renders nothing. The H700 doc records the same for its kernel, and it had already been read. |
+| The empty-rootfs smoke test would prove the boot chain | It could not: with no console, "kernel panicked at init" and "kernel never started" look identical. Two rounds were spent on tests that could not distinguish success from failure. |
 | The ROCKNIX stall was *not* the storage-partition collision | It was. The theory was abandoned when removing the blocking partition didn't help — but ROCKNIX's resize runs **once**, so the damage persisted. Correct diagnosis, wrong inference from the retest. |
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md)
