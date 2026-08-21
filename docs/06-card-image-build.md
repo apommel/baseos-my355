@@ -129,6 +129,20 @@ a boot failure on this device, and did once: the vendor BMP is **top-down**
 (`height = -198`), and using the raw negative height in the scale calculation
 silently produced 5x7-pixel text.
 
+### The kernel is stored compressed
+
+The vendor kernel is a raw 34.9 MiB arm64 `Image`; U-Boot reads all of it off the
+card each boot. Storing it gzipped (12.99 MiB, 35%) takes pre-kernel time from
+**4.96 s to 3.14 s** — see [01](01-boot-budget.md).
+
+`MY355_COMPRESS_KERNEL` selects `none | gzip | lz4`. Both compressed formats
+boot; gzip is the default because it is smaller and measured faster (3.14 s vs
+3.31 s). LZ4 must be frame-framed with independent blocks, which `rkbootimg.py`
+enforces — the 2026-08-20 "LZ4 does not boot" card was legacy-framed.
+
+The build asserts `decompress(stored) == vendor kernel` before writing, so the
+"vendor kernel byte-for-byte" property is preserved — only its storage changes.
+
 ## ext4 features
 
 `^orphan_file` only. This kernel is **5.10.160**: `orphan_file` needs 5.15+, but

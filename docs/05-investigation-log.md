@@ -32,6 +32,14 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-20 | adb failed: `cannot bind 'tcp:5037'`. Root cause **no loopback interface**; `adbd` treats the bind failure as fatal and never reaches `usb_ffs_init` |
 | 2026-08-20 | **BaseOS boots with working adb.** `rcS` 50 ms, vendor binaries execute |
 | 2026-08-20 | Resource image is now *built* rather than patched in place; pristine stock inputs restored |
+| 2026-08-20 | fbsplash ported from `src/fbsplash.c`; `INSERT SD CARD` / `ADD FRONTEND TO SD CARD` restored |
+| 2026-08-20 | Boot logo switched to the project artwork, backdrop subtracted to true black |
+| 2026-08-20 | adb hot-plug confirmed working — no cable needed before power-on, unlike H700 |
+| 2026-08-20 | Clean boot measured with USB unplugged: pre-kernel **4.96 s**, `rcS` 60 ms |
+| 2026-08-20 | **Kernel stored gzipped: pre-kernel 4.96 s → 3.14 s.** Hand-off ≈4.8 s vs stock 15.8 s |
+| 2026-08-20 | LZ4-legacy kernel tried → **does not boot**; reverted to gzip |
+| 2026-08-21 | U-Boot disassembled: it **does** sniff for LZ4, but only frame framing with independent blocks. **LZ4 boots — and is 0.17 s slower than gzip.** gzip stays; no zstd in this U-Boot |
+| 2026-08-20 | **NextUI launched from BaseOS** |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
@@ -407,6 +415,9 @@ each was a plausible mechanism asserted before it was tested.
 | "No boot logo" meant U-Boot did not run | The logo had rendered near-blank — the vendor BMP is top-down and a negative height fed the scale calculation. The instrument was broken, so the reading was void, not negative. |
 | Pre-kernel time had regressed to 7–8 s | USB was attached, so U-Boot ran its charge animation first and that landed in the arch counter. Measure with USB unplugged. |
 | The rootfs "is not working perfectly well" | It was working: `rcS` ran to completion and wrote persistent state. Only the USB gadget had failed. |
+| This U-Boot does not sniff for LZ4 on the Android path | It does — `lz4_valid_frame` is called straight out of `android_image_get_comp`. The evidence was a byte-grep for the magic as a literal, but arm64 splits a 32-bit constant across `movz`/`movk` bitfields, so the grep could not have found the check either way. The failing card was **legacy**-framed, the one format the sniffer ignores. |
+| LZ4 would beat gzip because it inflates faster | Measured: 3.31 s against gzip's 3.14 s. It is 2.53 MiB larger, and the extra card read outweighs the faster inflate. |
+| The measured gzip saving implied a ~13 MB/s read with free decompression | That was the degenerate root of `23.6/R − D = 1.82`. At a realistic 8–10 MB/s the inflate costs 0.5–1.1 s — which is what made LZ4 worth measuring in the first place. |
 | The ROCKNIX stall was *not* the storage-partition collision | It was. The theory was abandoned when removing the blocking partition didn't help — but ROCKNIX's resize runs **once**, so the damage persisted. Correct diagnosis, wrong inference from the retest. |
 
 ---

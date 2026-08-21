@@ -24,9 +24,10 @@ way, so the mainline path is open too.
 (`wpa_supplicant v2.9`, `dbus-daemon 1.12.20`), and `/proc/cmdline` reports
 `storagemedia=sd`.
 
-What remains is launching NextUI from it — the card's `primary` partition is
-still empty, so `nextui-session` correctly idles. See the
-[port plan](04-port-plan.md).
+NextUI has been launched from it successfully. With the kernel stored gzipped,
+BaseOS reaches frontend hand-off in **≈4.8 s** against stock's **15.8 s** — and
+boots from SD faster than stock does from internal NAND. See the
+[boot budget](01-boot-budget.md) and the [port plan](04-port-plan.md).
 
 **As of 2026-08-20 this unit runs:**
 

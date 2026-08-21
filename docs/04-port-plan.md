@@ -44,17 +44,16 @@ before drawing any conclusion about mainline on this device.
 
 Ordered by what currently blocks progress.
 
-- **Launch NextUI from BaseOS.** Everything else is in place; the card's
-  `primary` partition is empty so `nextui-session` idles. This is the real test of
-  the compatibility work in [08](08-rootfs.md), and it is now debuggable over adb.
-- **Measure the boot budget cold**, with USB unplugged — U-Boot's charge
-  animation inflates the arch counter when a cable is attached, which invalidated
-  two earlier readings.
+- **The issues seen after the first NextUI hand-off.** It launches; behaviour
+  differences are the next thing to characterise against the compatibility table
+  in [08](08-rootfs.md).
+- **Ship our own U-Boot.** The largest remaining boot-time lever now that kernel
+  compression is done — see [01](01-boot-budget.md).
 - **Find the real resource-size threshold.** 465 408 bytes boots, 943 616 hangs
   U-Boot before display init. The build stays under the proven figure, but the
   actual limit is unknown and worth pinning down.
-- **Is a cable required before power-on?** H700 needs it, for sunxi OTG reasons
-  that do not apply to RK3566's dwc3. Expected to work; untested.
+- **Root read-only.** The card mounts root `rw`; H700 targets read-only with
+  writable state on `/data`.
 - **Which card holds the frontend.** BaseOS takes the right slot (the only
   boot-capable one), so a NextUI card moves to the left and BaseOS mounts it at
   `/mnt/SDCARD` — or falls back to its own `primary` partition, as H700 does

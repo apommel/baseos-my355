@@ -54,6 +54,12 @@ eval "$(python3 "$HERE/tools/mkgpt_my355.py" --shell)"
 #                convention. Without this the kernel execs /bin/sh, which waits
 #                forever on a console that does not exist. H700 sets it too.
 #   rw           init writes runtime state to the root filesystem.
+# The vendor kernel is a raw 34.9 MiB arm64 Image and U-Boot reads every byte off
+# the card each boot, so storing it compressed is the big pre-kernel lever:
+# 4.96 s raw -> 3.14 s gzip -> 3.31 s lz4. gzip wins on size; both boot.
+# MY355_COMPRESS_KERNEL = none | gzip | lz4 (docs/my355/01-boot-budget.md).
+COMPRESS="${MY355_COMPRESS_KERNEL:-gzip}"     # none | gzip | lz4
+
 DROP="earlycon="
 APPEND="rw init=$MY355_INIT"
 LED_TRIGGER=""
@@ -78,7 +84,8 @@ echo "== repointing the vendor boot image at the card =="
 python3 "$HERE/tools/rkbootimg.py" setargs "$BOOT_SRC" "$WORK/boot-sd.img" \
   --root "$MY355_ROOT_DEV" --rootfstype ext4 --logo "$WORK/baseos-logo.bmp" \
   --drop "$DROP" --append "$APPEND" \
-  ${LED_TRIGGER:+--led-trigger "$LED_TRIGGER"}
+  ${LED_TRIGGER:+--led-trigger "$LED_TRIGGER"} \
+  --compress-kernel "$COMPRESS"
 
 echo "== composing $OUT =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \

@@ -36,7 +36,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
+import shutil
+import subprocess
+import tempfile
 import os
 import struct
 import sys
@@ -45,6 +49,75 @@ PAGE_DEFAULT = 2048
 # Largest resource image observed to boot on hardware. 943 616 bytes hangs this
 # U-Boot before display init; 465 408 boots. The exact threshold is unmeasured.
 RESOURCE_SAFE_BYTES = 465408
+# This U-Boot sniffs the Android boot image's kernel payload for its compression:
+# android_image_get_comp() tries zImage, then LZ4, then gzip, then LZMA, else
+# IH_COMP_NONE. Read out of the vendor binary (FIT /images/uboot, load 0xa00000),
+# not assumed — see docs/my355/01-boot-budget.md.
+LZ4_FRAME_MAGIC = b"\x04\x22\x4d\x18"
+LZ4_LEGACY_MAGIC = b"\x02\x21\x4c\x18"
+
+
+def uboot_accepts_lz4(blob: bytes) -> list[str]:
+    """Reasons this U-Boot would refuse `blob`; empty means it boots.
+
+    Transcribed from lz4_valid_frame() and ulz4fn() in the vendor U-Boot. A
+    legacy-framed kernel sniffs as IH_COMP_NONE and hangs silently, which is
+    what the 2026-08-20 card did, so the build refuses to write one.
+    """
+    why = []
+    if blob[:4] != LZ4_FRAME_MAGIC:
+        which = "legacy" if blob[:4] == LZ4_LEGACY_MAGIC else blob[:4].hex(" ")
+        return [f"magic is {which}, not the frame magic — sniffs as IH_COMP_NONE"]
+    if len(blob) <= 14:
+        why.append("frame is <= 14 bytes — ulz4fn returns -EINVAL")
+    flg, bd = blob[4], blob[5]
+    if flg & 0xC0 != 0x40:
+        why.append(f"frame version is {flg >> 6}, not 1")
+    if flg & 0x03:
+        why.append(f"FLG reserved/dictID bits set (0x{flg & 3:02x})")
+    if not flg >> 5 & 1:
+        why.append("linked blocks — ulz4fn returns -EPROTONOSUPPORT; compress with -BI")
+    if bd & 0x8F:
+        why.append(f"BD reserved bits set (0x{bd & 0x8f:02x})")
+    return why
+
+
+def compress_kernel(raw: bytes, how: str) -> bytes:
+    """Compress a kernel payload for U-Boot's Android boot image path.
+
+    The SD read dominates the pre-kernel budget, so this is the big lever:
+    4.96 s raw -> 3.14 s gzip -> 3.31 s lz4. gzip wins because it is smaller.
+    """
+    if how == "gzip":
+        return gzip.compress(raw, 9, mtime=0)
+    if shutil.which("lz4") is None:
+        sys.exit("rkbootimg: --compress-kernel lz4 needs the `lz4` CLI (brew install lz4)")
+    with tempfile.TemporaryDirectory() as td:
+        src, dst = f"{td}/k", f"{td}/k.lz4"
+        with open(src, "wb") as fh:
+            fh.write(raw)
+        # Frame format, and -BI because `ulz4fn` refuses linked blocks.
+        subprocess.run(["lz4", "-12", "-f", "-q", "-BI", "--no-frame-crc", src, dst],
+                       check=True)
+        blob = open(dst, "rb").read()
+    why = uboot_accepts_lz4(blob)
+    if why:
+        sys.exit("rkbootimg: this lz4 frame would not boot — " + "; ".join(why))
+    return blob
+
+
+def decompress_kernel(blob: bytes) -> bytes:
+    """Inverse of compress_kernel, used to prove the round-trip before writing."""
+    if blob[:2] == b"\x1f\x8b":
+        return gzip.decompress(blob)
+    if blob[:4] not in (LZ4_FRAME_MAGIC, LZ4_LEGACY_MAGIC):
+        raise ValueError("unrecognised compressed kernel")
+    with tempfile.TemporaryDirectory() as td:
+        src, dst = f"{td}/k.lz4", f"{td}/k"
+        with open(src, "wb") as fh:
+            fh.write(blob)
+        subprocess.run(["lz4", "-d", "-f", "-q", src, dst], check=True)
+        return open(dst, "rb").read()
 RES_MAGIC = b"RSCE"
 RES_BLOCK = 512
 RES_NAME_LEN = 256
@@ -108,13 +181,15 @@ class BootImage:
     def stored_id(self) -> bytes:
         return self.blob[576:576 + 20]
 
-    def rebuild(self, second: bytes) -> bytes:
-        """Repack with a differently sized `second`, refreshing sizes and the id."""
+    def rebuild(self, second: bytes, kernel: bytes | None = None) -> bytes:
+        """Repack with a new `second` and/or kernel, refreshing sizes and the id."""
         page = self.page_size
+        kernel = self.kernel if kernel is None else kernel
         b = bytearray(self.blob[:page])                       # header page
+        struct.pack_into("<I", b, 8, len(kernel))             # kernel_size field
         struct.pack_into("<I", b, 8 + 16, len(second))        # second_size field
         out = bytearray(b)
-        out += self.kernel + b"\0" * (_pad(self.kernel_size, page) - self.kernel_size)
+        out += kernel + b"\0" * (_pad(len(kernel), page) - len(kernel))
         out += self.ramdisk + b"\0" * (_pad(self.ramdisk_size, page) - self.ramdisk_size)
         out += second + b"\0" * (_pad(len(second), page) - len(second))
         rebuilt = BootImage(bytes(out))
@@ -376,7 +451,16 @@ def cmd_setargs(a) -> int:
         print(f"  WARNING: resource is {len(second)} bytes; {RESOURCE_SAFE_BYTES} is the "
               f"largest size observed to boot. U-Boot hangs before display init above "
               f"some threshold between that and 943616.", file=sys.stderr)
-    out = boot.rebuild(second)
+    kernel = None
+    if a.compress_kernel != "none":
+        raw = boot.kernel
+        if raw[:2] == b"\x1f\x8b" or raw[:4] in (LZ4_FRAME_MAGIC, LZ4_LEGACY_MAGIC):
+            print("  kernel: already compressed, left alone")
+        else:
+            kernel = compress_kernel(raw, a.compress_kernel)
+            print(f"  kernel: {a.compress_kernel} {len(raw)} -> {len(kernel)} bytes "
+                  f"({100 * len(kernel) / len(raw):.0f}%)")
+    out = boot.rebuild(second, kernel)
     with open(a.out, "wb") as fh:
         fh.write(out)
     src = open(a.bootimg, "rb").read()
@@ -385,7 +469,11 @@ def cmd_setargs(a) -> int:
     print(f"  new: {new}")
     print(f"  wrote {a.out}  ({len(out)} bytes, {changed} bytes differ)")
     verify_boot, verify_res, verify_dtb = load(a.out)
-    assert verify_boot.kernel == boot.kernel, "kernel changed — refusing"
+    expected_kernel = kernel if kernel is not None else boot.kernel
+    assert verify_boot.kernel == expected_kernel, "kernel payload changed — refusing"
+    if kernel is not None:
+        assert decompress_kernel(verify_boot.kernel) == boot.kernel, \
+            "compressed kernel does not round-trip to the vendor image — refusing"
     assert [n for n, _, _ in verify_res.entries()] == [n for n, _ in entries], \
         "resource entry set changed — refusing"
     assert verify_boot.compute_id() == verify_boot.stored_id, \
@@ -393,7 +481,9 @@ def cmd_setargs(a) -> int:
     voff, vlen = fdt_find_bootargs(verify_dtb)
     assert verify_dtb[voff:voff + vlen].split(b"\0")[0].decode().strip() == new.strip()
     print(f"  image id refreshed: {verify_boot.stored_id.hex()}")
-    print("  verified: kernel byte-identical, id valid, bootargs read back correctly")
+    kind = "kernel round-trips to the vendor image" if kernel is not None \
+           else "kernel byte-identical"
+    print(f"  verified: {kind}, id valid, bootargs read back correctly")
     return 0
 
 
@@ -419,6 +509,10 @@ def main() -> int:
                    metavar="PREFIX", help="remove tokens starting with PREFIX (repeatable)")
     p.add_argument("--append", default=None,
                    metavar="TOKENS", help='extra tokens, e.g. "console=tty0"')
+    p.add_argument("--compress-kernel", choices=("none", "gzip", "lz4"), default="none",
+                   help="store the kernel compressed so U-Boot reads far less off "
+                        "the card. Both are sniffed by this U-Boot; gzip is smaller, "
+                        "lz4 inflates faster")
     p.add_argument("--led-trigger", default=None, metavar="NAME",
                    help="set /leds/work linux,default-trigger (e.g. heartbeat)")
     p.add_argument("--logo", default=None, metavar="BMP",
