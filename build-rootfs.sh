@@ -65,12 +65,16 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
 
   # 3. The overlay wins over everything.
   cp -a /overlay/. "$R"/
-  chmod +x "$R"/init "$R"/etc/init.d/rcS "$R"/etc/init.d/rcK \
+  chmod +x "$R"/init "$R"/etc/init.d/* \
            "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb \
-           "$R"/usr/bin/baseos-splash
+           "$R"/usr/bin/baseos-splash "$R"/usr/share/udhcpc/default.script
 
-  # /etc/localtime is a symlink into tmpfs because the root may be read-only.
-  ln -sf /run/localtime "$R"/etc/localtime
+  # Same target as stock: NextUI copies the chosen zone into /userdata/localtime,
+  # which nextui-session bind-mounts onto the frontend card.
+  ln -sf /userdata/localtime "$R"/etc/localtime
+
+  # resolv.conf is written by the udhcpc event script into /run.
+  ln -sf /run/resolv.conf "$R"/etc/resolv.conf
 
   tar -cf /work/rootfs.tar -C "$R" .
   echo "  rootfs: $(tar -tf /work/rootfs.tar | wc -l) entries, $(stat -c %s /work/rootfs.tar) bytes"

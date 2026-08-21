@@ -59,13 +59,16 @@ def sha256_of(path: str) -> str:
     return h.hexdigest()
 
 
-def read_list(path: str) -> list[str]:
-    out = []
+def read_list(path: str) -> tuple[list[str], list[str]]:
+    """Returns (include, exclude). A leading "!" excludes a path from a
+    directory listed above it — tzdata's posix/ and right/ trees, for example."""
+    include, exclude = [], []
     for line in open(path):
         line = line.split("#", 1)[0].strip()
-        if line:
-            out.append(line)
-    return out
+        if not line:
+            continue
+        (exclude if line.startswith("!") else include).append(line.lstrip("!").strip())
+    return include, exclude
 
 
 def elf_needed(path: str) -> tuple[list[str], str | None]:
@@ -115,8 +118,17 @@ def unpack_rootfs(image: str, dest: str) -> None:
                    check=True, stdout=subprocess.DEVNULL)
 
 
-def harvest(root: str, paths: list[str], out_tar: str) -> tuple[list[str], list[str]]:
+def harvest(root: str, paths: list[str], out_tar: str,
+            excludes: list[str] | None = None) -> tuple[list[str], list[str]]:
     """Tar the allowlisted paths, dereferencing symlinks. Returns (taken, missing)."""
+    drop = [e.strip("/") for e in (excludes or [])]
+
+    def keep(ti: tarfile.TarInfo):
+        name = ti.name.strip("/")
+        if any(name == d or name.startswith(d + "/") for d in drop):
+            return None
+        return ti
+
     taken, missing = [], []
     with tarfile.open(out_tar, "w") as tar:
         for p in paths:
@@ -125,7 +137,7 @@ def harvest(root: str, paths: list[str], out_tar: str) -> tuple[list[str], list[
                 missing.append(p)
                 continue
             real = os.path.realpath(src)
-            tar.add(real, arcname=p.lstrip("/"), recursive=True)
+            tar.add(real, arcname=p.lstrip("/"), recursive=True, filter=keep)
             taken.append(p)
     return taken, missing
 
@@ -190,8 +202,8 @@ def main() -> int:
     print(f"  unpacking {MTD3} (squashfs) …")
     unpack_rootfs(rootfs_src, stock_root)
 
-    paths = read_list(harvest_list)
-    taken, missing = harvest(stock_root, paths, tar_out)
+    paths, excludes = read_list(harvest_list)
+    taken, missing = harvest(stock_root, paths, tar_out, excludes)
     if missing:
         print("  MISSING from the stock rootfs:", file=sys.stderr)
         for m in missing:

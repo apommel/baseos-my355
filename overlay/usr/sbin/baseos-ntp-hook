@@ -1,0 +1,4 @@
+#!/bin/sh
+# BusyBox ntpd -S hook: persist a corrected clock to the RTC.
+[ "$1" = "step" ] && /sbin/hwclock -u -w 2>/dev/null
+exit 0

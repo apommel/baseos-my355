@@ -1,0 +1,25 @@
+#!/bin/sh
+# Time sync. Called by NextUI's PLAT_setNetworkTimeSync, and by rcS at boot as
+# stock's init does. Stock ships a 757 KB ntpd; this uses the BusyBox applet.
+
+DAEMON=/usr/sbin/ntpd
+SERVERS="0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org"
+
+case "$1" in
+  start)
+	pidof ntpd >/dev/null 2>&1 && exit 0
+	set -- ; for s in $SERVERS; do set -- "$@" -p "$s"; done
+	# No -n: ntpd forks into its own session, so it outlives this shell.
+	"$DAEMON" -S /usr/sbin/baseos-ntp-hook "$@" >/dev/null 2>&1
+	;;
+  stop)
+	kill "$(pidof ntpd)" 2>/dev/null
+	;;
+  restart|reload)
+	"$0" stop
+	"$0" start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart|reload}"
+	exit 1
+esac

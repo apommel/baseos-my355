@@ -1,0 +1,4 @@
+#!/bin/sh
+# Called by NextUI's etc/wifi/wifi_init.sh. The RTL8189FU driver is built into
+# this kernel, so there is nothing to load or unload.
+exit 0

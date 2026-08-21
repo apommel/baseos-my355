@@ -1,0 +1,26 @@
+#!/bin/sh
+# DHCP on wlan0. Called by NextUI's etc/wifi/wifi_init.sh, which is where the
+# dhcpcd name comes from; BaseOS uses BusyBox udhcpc.
+
+IFACE=wlan0
+PIDFILE=/run/udhcpc.$IFACE.pid
+
+case "$1" in
+  start)
+	[ -s "$PIDFILE" ] && [ -d "/proc/$(cat "$PIDFILE")" ] && exit 0
+	# -b: background rather than block until the first lease; wifi_init.sh
+	# starts us before wpa_supplicant, so wlan0 has no carrier yet.
+	/sbin/udhcpc -i "$IFACE" -b -p "$PIDFILE" >/dev/null 2>&1
+	;;
+  stop)
+	[ -s "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
+	rm -f "$PIDFILE"
+	;;
+  restart)
+	"$0" stop
+	"$0" start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac

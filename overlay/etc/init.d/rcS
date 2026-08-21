@@ -50,6 +50,11 @@ else
 fi
 /bin/ln -sf /run/machine-id /etc/machine-id 2>/dev/null
 
+# Clock, from the RTC (-u: it holds UTC) then NTP. Backgrounded; TLS validates
+# certificates against it, so every HTTPS request depends on this.
+/sbin/hwclock -u -s 2>/dev/null &
+[ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp start &
+
 # Restore last boot's entropy seed before anything wants randomness.
 [ -f /data/random-seed ] && /bin/cat /data/random-seed > /dev/urandom 2>/dev/null
 /bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null &

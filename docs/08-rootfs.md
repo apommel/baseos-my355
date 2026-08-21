@@ -46,17 +46,56 @@ needed by something that was.
 
 Two findings make it much smaller than the H700 equivalent:
 
-- NextUI ships its own SDL, tinyalsa and sqlite in `.system/my355/lib`, so **the
-  vendor ALSA stack is not needed at all**.
+- NextUI ships its own SDL, tinyalsa and sqlite in `.system/my355/lib`.
 - `miyoo_inputd` does not link `/usr/miyoo/lib`; those three vendor libraries
   (`libgamename`, `libshmvar`, `libtmenu`) are referenced by `LD_LIBRARY_PATH`
   but never loaded.
 
 **Preparation verifies the closure.** Every `DT_NEEDED` of every harvested ELF
 must resolve inside the harvest or the build fails — which is what turns an
-allowlist into a proven closed set. The assembled rootfs is checked the same way:
-41 dynamic ELF objects, 0 unresolved. Runtime-confirmed on hardware:
-`wpa_supplicant v2.9` and `dbus-daemon 1.12.20` both execute.
+allowlist into a proven closed set. Runtime-confirmed on hardware:
+`wpa_supplicant v2.9` and `dbus-daemon 1.12.20` both execute. What it cannot
+verify is below.
+
+### What a maps reading cannot see
+
+`/proc/<pid>/maps` shows what was mapped at that moment, and the closure check
+walks `DT_NEEDED`. Neither sees a `dlopen`, or a `system()`/`popen()` call, so
+the list grows as more of the stack is exercised:
+
+| entry | reached by | why it is needed |
+|---|---|---|
+| `libasound.so.2` | SDL2 `dlopen` | SDL2 has three audio drivers compiled in — `alsa`, `disk`, `dummy`. Without it every emulator falls back to `dummy` and runs silent. NextUI's bundled `libtinyalsa` drives the mixer only, never playback. The frontend menu opens no PCM device, so it never appears in `nextui.elf`'s maps; `minarch` opens one per game |
+| `/usr/share/alsa` | alsa-lib | required to resolve a PCM name |
+| `amixer` | `libmsettings` | the Bluetooth A2DP path |
+| `curl`, `libcurl.so.4` | `common/http.c` `popen` | every HTTP request the frontend makes |
+| `/etc/ssl/certs`, `/usr/share/ca-certificates` | curl | see TLS below |
+| `/usr/share/zoneinfo` | `PLAT_initTimezones` | parses `zone.tab` to build the Settings list; absent, `PLAT_getCurrentTimezone()` returns `NULL` for any stored index |
+
+Two layout notes. Zone files live in `posix/` and the top-level names symlink
+into it, so only `right/` can be dropped. `/etc/localtime` is a symlink to
+`/userdata/localtime` — stock's target, which `PLAT_setCurrentTimezone()` copies
+into and `nextui-session` bind-mounts onto the frontend card.
+
+### TLS needs two things
+
+Both failures look identical from the UI — link up, ping and DNS fine, every
+request fails — and each survives fixing the other.
+
+**The certificate store.** `/etc/ssl/certs` is two layers of symlinks:
+`002c0b4f.0` → `GlobalSign_Root_R46.pem` →
+`../../../usr/share/ca-certificates/mozilla/GlobalSign_Root_R46.crt`. Harvesting
+`/etc/ssl/certs` alone leaves 254 dangling links and
+`unable to get local issuer certificate`. A pak bundling its own libcurl does not
+escape this.
+
+**The clock.** Certificates are validated against system time, so a stale clock
+fails every HTTPS request with `certificate is not yet valid` — including for a
+pak shipping its own CA bundle. An unset Flip RTC reads **2017-08-04**. `rcS` now
+restores the clock from the RTC and starts `S49ntp`, both backgrounded. Starting
+`ntpd` before the network exists is safe: BusyBox `ntpd` retries an unresolvable
+peer instead of exiting, steps the full nine-year offset in one go, and its `-S`
+hook writes the result back to the RTC so the next boot starts sane.
 
 ## Boot path
 
@@ -146,6 +185,62 @@ slot because it is the only slot the SPL can boot from.
 Verified on hardware: both bind mounts appear in `/proc/mounts` on a booted
 BaseOS system, and the session idles correctly when no frontend is present.
 
+### Init-script contracts
+
+NextUI's my355 build names four init scripts — from `etc/wifi/wifi_init.sh`,
+`etc/bluetooth/bt_init.sh` and `platform.c`. They live on the frontend card, so
+BaseOS has to answer to the names; the contents are ours. Stock's `rcS` runs
+`for i in /etc/init.d/S??*`, so on stock all four also start at boot.
+
+| script | BaseOS | at boot? |
+|---|---|---|
+| `S36load_wifi_modules` | nothing — the RTL8189FU driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs) | no |
+| `S41dhcpcd` | BusyBox `udhcpc`, not the vendor `dhcpcd` | no — the frontend calls it when WiFi goes on |
+| `S49ntp` | BusyBox `ntpd`, not stock's 757 KB one | yes — TLS depends on the clock |
+| `S40bluetooth` | **not provided** — needs BlueZ | — |
+
+Only `S49ntp` runs at boot, and backgrounded. The WiFi pair stays frontend-driven
+because `wifi_init.sh` calls it anyway and boot must not grow.
+
+**DHCP.** Stock's `dhcpcd` 9.4.1 would mean a 368 KB binary, its hook and share
+directories and a privsep user. BusyBox `udhcpc` is already in the image and needs
+only an event script, so my355 follows H700
+([h700/05](../h700/05-runtime-power-network.md)):
+`usr/share/udhcpc/default.script` sets the address, default route and
+`/run/resolv.conf`, with `/etc/resolv.conf` a baked symlink to it.
+
+Two details. `wifi_init.sh` starts DHCP *before* `wpa_supplicant`, so `udhcpc`
+runs with `-b` rather than blocking the WiFi toggle while `wlan0` has no carrier.
+And stock's `S41dhcpcd` wraps the daemon in `start-stop-daemon`, which Alpine's
+`busybox-static` does not build — absent from the 305 applets here, so the script
+invokes `udhcpc` directly.
+
+Without any of this `wpa_supplicant` still associates and the frontend still
+reports "connected" — it reads carrier, not a lease — while `wlan0` holds only a
+link-local IPv6 address, with no IPv4 route and no resolver.
+
+### Where my355 diverges from H700
+
+Same principles, different vendor tree; the entry points NextUI uses differ per
+platform.
+
+| | H700 | my355 |
+|---|---|---|
+| curl | static, built in a container | harvested — OpenSSL 1.1 and zlib are already carried for `wpa_supplicant`, so it costs 640 KB |
+| DHCP | BusyBox `udhcpc` + event script | same, behind the `S41dhcpcd` name |
+| NTP entry point | NextUI calls `timedatectl set-ntp`, so BaseOS ships a `timedatectl` shim over a `baseos-ntp` supervisor, with the preference on `/data` | NextUI calls `/etc/init.d/S49ntp` directly, so the init script *is* the shim |
+| clock at boot | `hwclock -u -s` in `rcS` | same, plus `S49ntp` |
+| `/etc/localtime` | → `/run/localtime`, restored by `timedatectl apply` | → `/userdata/localtime`, stock's target |
+| zoneinfo | whole tree | whole tree minus `right/` |
+| service shims | `systemctl`, `timedatectl` | `/etc/init.d/S*` |
+
+NextUI's NTP preference is not a second mechanism competing with ours: it is
+stored in NextUI's config, which the OS cannot read, and acted on only when the
+user toggles it (`config.h:425` — the value "will only apply after reboot, unless
+you set it through `PLAT_setNetworkTimeSync`"). Both paths drive the same
+`S49ntp` and the same `pidof ntpd`. As on stock, a boot always starts `ntpd`
+regardless of the stored toggle.
+
 ## Status messages
 
 This device has no console, so `fbsplash` — built from the shared
@@ -160,8 +255,8 @@ to `/tmp/nextui-session.log`, mirrored to `baseos-session.log` on the card.
 
 ## Not yet done
 
-- NextUI has not actually been launched from BaseOS — the card's `primary`
-  partition is empty. That is the real test of the table above.
+- Bluetooth: BlueZ, `/etc/init.d/S40bluetooth` and the `alsa-lib` plugin
+  directory are all absent, so pairing and the A2DP sink cannot work yet.
 - Which vendor daemons the frontend needs for brightness, battery and Bluetooth
   is unmeasured. H700 needed three shims; the my355 surface looks smaller.
 - Root is mounted `rw`. H700 targets a read-only root with writable state on
