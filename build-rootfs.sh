@@ -20,6 +20,10 @@ WORK="$HERE/work/my355"
 PREPARED="$WORK/prepared"
 mkdir -p "$WORK"
 
+BASEOS_VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
+[ -n "$BASEOS_VERSION" ] || { echo "VERSION is empty" >&2; exit 1; }
+BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
+
 
 [ -f "$PREPARED/stock-harvest.tar" ] || {
   echo "missing $PREPARED/stock-harvest.tar (run ./prepare-stock-my355.sh)" >&2
@@ -28,7 +32,9 @@ mkdir -p "$WORK"
 
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay-my355":/overlay:ro \
-  -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro alpine:3.20 sh -euc '
+  -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
+  -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
+  alpine:3.20 sh -euc '
   apk add -q busybox-static
   R=/tmp/rootfs; rm -rf "$R"; mkdir -p "$R"
 
@@ -68,6 +74,15 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   chmod +x "$R"/init "$R"/etc/init.d/* \
            "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb \
            "$R"/usr/bin/baseos-splash "$R"/usr/share/udhcpc/default.script
+
+  # Version identity, from VERSION so it cannot drift. NextUI reads
+  # /usr/miyoo/version for the About screen; on stock it is a build timestamp.
+  {
+    printf "BASEOS_VERSION=%s\n" "$BASEOS_VERSION"
+    printf "BASEOS_BUILD=%s\n" "$BASEOS_BUILD"
+  } >> "$R"/etc/baseos-release
+  mkdir -p "$R"/usr/miyoo
+  printf "BaseOS %s\n" "$BASEOS_VERSION" > "$R"/usr/miyoo/version
 
   # Same target as stock: NextUI copies the chosen zone into /userdata/localtime,
   # which nextui-session bind-mounts onto the frontend card.

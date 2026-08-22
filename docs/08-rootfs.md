@@ -71,6 +71,7 @@ the list grows as more of the stack is exercised:
 | `curl`, `libcurl.so.4` | `common/http.c` `popen` | every HTTP request the frontend makes |
 | `/etc/ssl/certs`, `/usr/share/ca-certificates` | curl | see TLS below |
 | `/usr/share/zoneinfo` | `PLAT_initTimezones` | parses `zone.tab` to build the Settings list; absent, `PLAT_getCurrentTimezone()` returns `NULL` for any stored index |
+| `modetest` | `libmsettings` `system()` | the panel's DRM `contrast` and `saturation` properties are set with `modetest -M rockchip -w 179:<prop>:<0-100>`; brightness is sysfs PWM and worked without it |
 
 Two layout notes. Zone files live in `posix/` and the top-level names symlink
 into it, so only `right/` can be dropped. `/etc/localtime` is a symlink to
@@ -96,6 +97,18 @@ restores the clock from the RTC and starts `S49ntp`, both backgrounded. Starting
 `ntpd` before the network exists is safe: BusyBox `ntpd` retries an unresolvable
 peer instead of exiting, steps the full nine-year offset in one go, and its `-S`
 hook writes the result back to the RTC so the next boot starts sane.
+
+### Version identity
+
+`/etc/baseos-release` is generated at build time from `VERSION`, as on H700, and
+carries `BASEOS_VERSION` plus a `git describe` `BASEOS_BUILD`.
+
+`/usr/miyoo/version` is written from the same variable and reads `BaseOS 1.1.0`.
+It exists because `PLAT_getOsVersionInfo()` reads that path for the About screen
+and passes the buffer to `getFile()`, which leaves it untouched when the file is
+missing — so the caller's uninitialised 128-byte stack buffer is what Settings
+renders, and what `settings.cpp` logs at start-up. That is the garbage in the
+"Stock OS version" row, and the crash when the bytes contain no terminator.
 
 ## Boot path
 
@@ -232,6 +245,7 @@ platform.
 | clock at boot | `hwclock -u -s` in `rcS` | same, plus `S49ntp` |
 | `/etc/localtime` | → `/run/localtime`, restored by `timedatectl apply` | → `/userdata/localtime`, stock's target |
 | zoneinfo | whole tree | whole tree minus `right/` |
+| OS version string | not implemented for this platform in NextUI | `/usr/miyoo/version`, generated from `VERSION` |
 | service shims | `systemctl`, `timedatectl` | `/etc/init.d/S*` |
 
 NextUI's NTP preference is not a second mechanism competing with ours: it is

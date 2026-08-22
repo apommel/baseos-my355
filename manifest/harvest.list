@@ -80,6 +80,10 @@
 /usr/share/alsa
 /usr/bin/amixer
 
+## display (system): libmsettings drives the panel's DRM contrast/saturation
+## properties with `modetest -M rockchip -w 179:contrast:N`. Statically linked.
+/usr/bin/modetest
+
 ## HTTP (popen): NextUI's common/http.c shells out to curl. OpenSSL and zlib
 ## are already here for wpa_supplicant. /etc/ssl/certs is curl's CA path and is
 ## two layers of symlinks into /usr/share/ca-certificates, which must come too.
