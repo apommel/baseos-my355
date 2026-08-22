@@ -71,6 +71,8 @@ the list grows as more of the stack is exercised:
 | `curl`, `libcurl.so.4` | `common/http.c` `popen` | every HTTP request the frontend makes |
 | `/etc/ssl/certs`, `/usr/share/ca-certificates` | curl | see TLS below |
 | `/usr/share/zoneinfo` | `PLAT_initTimezones` | parses `zone.tab` to build the Settings list; absent, `PLAT_getCurrentTimezone()` returns `NULL` for any stored index |
+| BlueZ + bluealsa | `bt_init.sh` `system()` | see Bluetooth below |
+| `alsa-lib/*_bluealsa.so` | alsa-lib `dlopen` | `audiomon` writes an `.asoundrc` naming `type bluealsa` for both pcm and ctl |
 | `modetest` | `libmsettings` `system()` | the panel's DRM `contrast` and `saturation` properties are set with `modetest -M rockchip -w 179:<prop>:<0-100>`; brightness is sysfs PWM and worked without it |
 
 Two layout notes. Zone files live in `posix/` and the top-level names symlink
@@ -210,10 +212,10 @@ BaseOS has to answer to the names; the contents are ours. Stock's `rcS` runs
 | `S36load_wifi_modules` | nothing — the RTL8189FU driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs) | no |
 | `S41dhcpcd` | BusyBox `udhcpc`, not the vendor `dhcpcd` | no — the frontend calls it when WiFi goes on |
 | `S49ntp` | BusyBox `ntpd`, not stock's 757 KB one | yes — TLS depends on the clock |
-| `S40bluetooth` | **not provided** — needs BlueZ | — |
+| `S40bluetooth` | `bluetoothd`, after bringing the system bus up | no — the frontend calls it when Bluetooth goes on |
 
-Only `S49ntp` runs at boot, and backgrounded. The WiFi pair stays frontend-driven
-because `wifi_init.sh` calls it anyway and boot must not grow.
+Only `S49ntp` runs at boot, and backgrounded. The others stay frontend-driven
+because `wifi_init.sh` and `bt_init.sh` call them anyway and boot must not grow.
 
 **DHCP.** Stock's `dhcpcd` 9.4.1 would mean a 368 KB binary, its hook and share
 directories and a privsep user. BusyBox `udhcpc` is already in the image and needs
@@ -231,6 +233,77 @@ invokes `udhcpc` directly.
 Without any of this `wpa_supplicant` still associates and the frontend still
 reports "connected" — it reads carrier, not a lease — while `wlan0` holds only a
 link-local IPv6 address, with no IPv4 route and no resolver.
+
+### Bluetooth
+
+NextUI drives the whole sequence from its own `etc/bluetooth/bt_init.sh` on the
+card: `insmod /lib/modules/rtk_btusb.ko`, `rfkill.elf unblock`, wait for
+`/sys/class/bluetooth/hci0`, `/etc/init.d/S40bluetooth start`, then
+`bluealsa -p a2dp-source` and a run of `bluetoothctl` calls. BaseOS supplies the
+parts that script expects to find in the OS:
+
+| | |
+|---|---|
+| `rtk_btusb.ko` | the transport. 2.3 MB, and it requests `rtl8733bu_fw` / `rtl8733bu_config` by name — both at `/lib/firmware`, both harvested. The empty `rtlbt/` directory beside them is unused |
+| `bluetoothd`, `bluetoothctl`, `bluealsa`, `hciconfig`, `hcitool` | plus `libbluetooth`, `libsbc`, `libmpg123` and the glib stack. `hcitool` is not optional: `PLAT_bluetoothConnected()` greps `hcitool con` for an `ACL` line, and its `popen` fallback only fires when `popen` itself fails — a missing binary just reads as "not connected", so the status-bar icon never appears |
+| `S40bluetooth` | ours. Stock's wraps `bluetoothd` in `start-stop-daemon`, absent from Alpine's `busybox-static`. It keeps a `pidof dbus-daemon` guard so it still works if the bus is somehow down, though `rcS` starts it. **BlueZ 5 never forks**: run it in the foreground and the script blocks, `bt_init.sh` blocks behind it and Settings hangs on "Enabling Bluetooth…" — so `setsid … -n &`, which is what `start-stop-daemon -b` was doing |
+| `/etc/bluetooth`, `/etc/dbus-1/system.d/blue*.conf` | already covered by the harvested `/etc/dbus-1` |
+| the `dbus` user | the harvested `system.conf` drops privileges to it. The overlay carried H700's Ubuntu name, `messagebus`, which would have made `dbus-daemon --system` refuse to start |
+| `libasound_module_{pcm,ctl}_bluealsa.so` | the rest of `alsa-lib/` is unreferenced — nothing sets `defaults.pcm.rate_converter`, so `type plug` uses the built-in linear one |
+
+`rcS` starts the system bus, as stock's `S30dbus` does. This is not for BlueZ's
+benefit — NextUI's `audiomon.elf` connects to it at frontend start whether or not
+Bluetooth is ever used, and **exits** if it cannot, which leaves nothing to write
+`.asoundrc` and so no route to bluealsa. `system.conf` has `<fork/>`, so the call
+returns once the socket is listening and there is no race with the frontend.
+H700 starts dbus lazily instead, which is fine there: its NextUI build does not
+ship `audiomon` at all.
+
+`rcS` also adds two links: `/var/lib/dbus/machine-id` → `/run`, and
+`/var/lib/bluetooth` → `/userdata/bluetooth`, which is stock's arrangement.
+`nextui-session` already shadows that directory with a tmpfs because FAT32
+rejects BlueZ's MAC-named files — so as on stock, pairings do not survive a
+reboot.
+
+Exercised on BaseOS: `bt_init.sh` loads `rtk_btusb` from the harvested
+`/lib/modules`, `hci0` comes up with the same BD address as stock (so the
+firmware harvest is right), `S40bluetooth start` returns in 0.05 s,
+`bluetoothctl show` reports a powered BlueZ 5.62 adapter, `bluealsa` stays up,
+and the ctl plugin attaches. With AirPods Pro paired and connected, `bluealsa` registers the A2DP PCM and `amixer scontents` through the default ctl enumerates the device's playback switch and volume — which is the control `libmsettings`' `get_a2dp_simple_control_name()` looks for. A2DP audio has not been listened to.
+
+Confirmed earlier on a stock device with Bluetooth switched on: `rtk_btusb` loaded,
+`hci0` present with an `rfkill` entry, and `dbus-daemon --system`,
+`bluetoothd -n` and `bluealsa -p a2dp-source` all running. Every library added
+for Bluetooth appears in one of their `/proc/<pid>/maps` — `bluealsa` pulls the
+widest set (gio, gobject, gmodule, mount, blkid, ffi, mpg123, sbc, bluetooth),
+`bluetoothd` maps only dbus, glib, pcre and iconv. Unlike H700 no
+`/var/lib/bluealsa` is needed; BlueZ creates its adapter directory under the
+`/var/lib/bluetooth` link on first power-on.
+
+`rtk_btusb.ko` is 2.3 MB on disk but 72 KB once loaded: it ships `with
+debug_info`, and `strip --strip-debug` takes it to 131 KB. Not done — the
+harvest is verbatim, and the saving is not worth confusing the first hardware
+test of the rest of this.
+
+`hciattach` is not harvested. `bt_init.sh` only reaches it if `hci0` never
+appears, and the call it makes there (`hciattach -n ttyS1 xradio`) is for a
+different Miyoo platform, so it cannot succeed on this hardware either way.
+
+### Bluetooth audio quality is a radio problem, not a rootfs one
+
+A2DP dropouts under emulation are **not** a missing BaseOS piece. `dmesg` shows
+`rtk_btcoex: count_a2dp_packet_timeout` once a second with the count falling from
+143 to ~102, each dip alongside an `RTW: Turbo EDCA` change: WiFi and Bluetooth
+share one 2.4 GHz front-end and the driver time-slices it. minarch logs
+`snd_pcm_recover` underruns to match. Merely being *associated* is enough —
+measured 1.5 KB of wlan0 traffic over 10 s while the dips continued.
+
+Stock cannot be doing anything smarter, and its boot was checked for it: no
+`/etc/sysctl.conf`, no `/etc/modprobe.d`, empty `/etc/pm/{config,power,sleep}.d`,
+and one udev rule for PulseAudio, which NextUI does not use. Same kernel, same
+driver, same coexistence. The levers that do exist are NextUI's, and work on both:
+turn WiFi off, or set CPU speed to `performance` — `governor.sh auto` leaves
+`schedutil` free to fall to 600 MHz mid-frame while SBC encoding.
 
 ### Where my355 diverges from H700
 
@@ -269,10 +342,8 @@ to `/tmp/nextui-session.log`, mirrored to `baseos-session.log` on the card.
 
 ## Not yet done
 
-- Bluetooth: BlueZ, `/etc/init.d/S40bluetooth` and the `alsa-lib` plugin
-  directory are all absent, so pairing and the A2DP sink cannot work yet.
-- Which vendor daemons the frontend needs for brightness, battery and Bluetooth
-  is unmeasured. H700 needed three shims; the my355 surface looks smaller.
+- A2DP audio has not been heard from BaseOS. Pairing, connection and the mixer
+  controls check out; nobody has played a sound through them.
 - Root is mounted `rw`. H700 targets a read-only root with writable state on
   `/data` ([h700/06](../h700/06-status-and-lessons.md)).
 

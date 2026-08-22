@@ -1,0 +1,43 @@
+#!/bin/sh
+# BlueZ. Called by NextUI's etc/bluetooth/bt_init.sh, which loads rtk_btusb.ko
+# and starts bluealsa itself. Stock wraps bluetoothd in start-stop-daemon, which
+# Alpine's busybox-static does not build.
+
+DAEMON=/usr/libexec/bluetooth/bluetoothd
+
+start_dbus() {
+	pidof dbus-daemon >/dev/null 2>&1 && return 0
+	/bin/mkdir -p /run/dbus
+	/usr/bin/dbus-daemon --system 2>/dev/null
+	n=0
+	while [ ! -S /run/dbus/system_bus_socket ] && [ "$n" -lt 20 ]; do
+		/bin/usleep 100000
+		n=$((n + 1))
+	done
+}
+
+case "$1" in
+  start)
+	pidof bluetoothd >/dev/null 2>&1 && exit 0
+	start_dbus
+	# BlueZ 5 never forks, so background it as stock's start-stop-daemon -b does.
+	# setsid, or it takes the SIGHUP when the calling script's session goes away.
+	/usr/bin/setsid "$DAEMON" -n >/dev/null 2>&1 &
+	n=0
+	while ! pidof bluetoothd >/dev/null 2>&1 && [ "$n" -lt 10 ]; do
+		/bin/usleep 200000
+		n=$((n + 1))
+	done
+	pidof bluetoothd >/dev/null 2>&1
+	;;
+  stop)
+	kill "$(pidof bluetoothd)" 2>/dev/null
+	;;
+  restart|reload)
+	"$0" stop
+	"$0" start
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart|reload}"
+	exit 1
+esac

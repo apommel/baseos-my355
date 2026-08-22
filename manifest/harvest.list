@@ -92,6 +92,34 @@
 /etc/ssl/certs
 /usr/share/ca-certificates
 
+## Bluetooth: BlueZ + bluealsa, driven by NextUI's etc/bluetooth/bt_init.sh.
+## rtk_btusb.ko is the BT transport and requests rtl8733bu_fw/_config by name.
+## The two alsa-lib plugins back the `type bluealsa` pcm and ctl that audiomon
+## writes into .asoundrc; the rest of that directory is unreferenced.
+## hcitool is how PLAT_bluetoothConnected() reads ACL links for the status icon.
+/usr/libexec/bluetooth/bluetoothd
+/usr/bin/bluetoothctl
+/usr/bin/bluealsa
+/usr/bin/hciconfig
+/usr/bin/hcitool
+/etc/bluetooth
+/usr/lib/alsa-lib/libasound_module_pcm_bluealsa.so
+/usr/lib/alsa-lib/libasound_module_ctl_bluealsa.so
+/usr/lib/modules/rtk_btusb.ko
+/usr/lib/firmware/rtl8733bu_fw
+/usr/lib/firmware/rtl8733bu_config
+/usr/lib/libbluetooth.so.3
+/usr/lib/libsbc.so.1
+/usr/lib/libmpg123.so.0
+/usr/lib/libglib-2.0.so.0
+/usr/lib/libgio-2.0.so.0
+/usr/lib/libgobject-2.0.so.0
+/usr/lib/libgmodule-2.0.so.0
+/usr/lib/libmount.so.1
+/usr/lib/libblkid.so.1
+/usr/lib/libffi.so.8
+/usr/lib/libpcre.so.1
+
 ## timezones: PLAT_initTimezones() builds the Settings list from zone.tab.
 ## The zone files live in posix/ and the top-level names symlink into it, so
 ## only right/ (leap-second variants) can be dropped.

@@ -50,6 +50,17 @@ else
 fi
 /bin/ln -sf /run/machine-id /etc/machine-id 2>/dev/null
 
+# dbus and BlueZ state. /var is tmpfs, so both are links: stock keeps the
+# pairing store on /userdata, which nextui-session shadows with a tmpfs because
+# FAT32 rejects BlueZ's MAC-named directories.
+/bin/mkdir -p /run/dbus /var/lib/dbus
+/bin/ln -sf /run/machine-id /var/lib/dbus/machine-id
+/bin/ln -sf /userdata/bluetooth /var/lib/bluetooth
+# The system bus, as stock's S30dbus does: NextUI's audiomon.elf connects to it
+# at frontend start whether or not Bluetooth is ever used, and exits if it
+# cannot. It has <fork/>, so this returns once the socket is listening.
+/usr/bin/dbus-daemon --system 2>/dev/null
+
 # Clock, from the RTC (-u: it holds UTC) then NTP. Backgrounded; TLS validates
 # certificates against it, so every HTTPS request depends on this.
 /sbin/hwclock -u -s 2>/dev/null &
