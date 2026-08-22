@@ -387,7 +387,7 @@ def load(path: str) -> tuple[BootImage, ResourceImage, bytes]:
 
 
 def cmd_info(a) -> int:
-    boot, res, dtb = load(a.bootimg)
+    boot, res, _ = load(a.bootimg)
     print(f"boot image     {a.bootimg}")
     print(f"  page size    {boot.page_size}")
     print(f"  kernel       {boot.kernel_size} bytes @ {boot.kernel_off} "
@@ -398,10 +398,14 @@ def cmd_info(a) -> int:
         print(f"      {name:22s} {size:>8} bytes")
     ok = boot.compute_id() == boot.stored_id
     print(f"  image id     {boot.stored_id.hex()}  ({'valid' if ok else 'STALE'})")
-    off, length = fdt_find_bootargs(dtb)
-    cur = dtb[off:off + length].split(b"\0")[0].decode()
-    print(f"  bootargs     ({len(cur)} chars used of {length - 1} available)")
-    print(f"      {cur}")
+    for name, off, size in res.entries():
+        if not name.startswith("rk-kernel.dtb"):
+            continue
+        blob = res.blob[off:off + size]
+        boff, blen = fdt_find_bootargs(blob)
+        cur = blob[boff:boff + blen].split(b"\0")[0].decode()
+        print(f"  bootargs     {name}: {len(cur)} chars used of {blen - 1} available")
+        print(f"      {cur}")
     return 0
 
 
@@ -421,16 +425,26 @@ def cmd_extract(a) -> int:
 
 
 def cmd_setargs(a) -> int:
-    boot, res, dtb = load(a.bootimg)
-    off, length = fdt_find_bootargs(dtb)
-    old = dtb[off:off + length].split(b"\0")[0].decode()
-    new = rewrite_root(old, a.root, a.rootfstype, a.drop, a.append)
-    patched_dtb = set_bootargs(dtb, new)
-    if a.led_trigger:
-        patched_dtb = set_prop_string(patched_dtb, "work", "linux,default-trigger",
-                                      a.led_trigger)
-        print(f"  led: /leds/work default-trigger -> {a.led_trigger} "
-              f"(kernel-side signal, fires at gpio-leds probe)")
+    boot, res, _ = load(a.bootimg)
+
+    # Every rk-kernel.dtb* variant gets the same treatment. U-Boot selects the
+    # `.hdmi` one when Miyoo's g_miyoo_use_hdmi is set, and a variant left
+    # carrying the stock root=/dev/mtdblock3 would not boot BaseOS at all.
+    expected: "dict[str, str]" = {}
+
+    def patch(name: str, blob: bytes) -> bytes:
+        off, length = fdt_find_bootargs(blob)
+        old = blob[off:off + length].split(b"\0")[0].decode()
+        new = rewrite_root(old, a.root, a.rootfstype, a.drop, a.append)
+        expected[name] = new
+        out = set_bootargs(blob, new)
+        if a.led_trigger:
+            out = set_prop_string(out, "work", "linux,default-trigger",
+                                  a.led_trigger)
+        print(f"  {name}")
+        print(f"      old: {old}")
+        print(f"      new: {new}")
+        return out
 
     # Rebuild the resource image rather than patch it in place. The logo is then
     # free to be any size, and the whole resource can be kept small enough for
@@ -438,12 +452,17 @@ def cmd_setargs(a) -> int:
     logo = open(a.logo, "rb").read() if a.logo else None
     entries = []
     for name, off, size in res.entries():
-        if name == "rk-kernel.dtb":
-            entries.append((name, patched_dtb))
+        data = res.blob[off:off + size]
+        if name.startswith("rk-kernel.dtb"):
+            entries.append((name, patch(name, data)))
         elif logo is not None and name in ("logo.bmp", "logo_kernel.bmp"):
             entries.append((name, logo))
         else:
-            entries.append((name, res.blob[off:off + size]))
+            entries.append((name, data))
+    if a.led_trigger:
+        print(f"  led: /leds/work default-trigger -> {a.led_trigger} "
+              f"(kernel-side signal, fires at gpio-leds probe)")
+
     second = ResourceImage.build(entries)
     print(f"  resource: rebuilt, {boot.second_size} -> {len(second)} bytes "
           f"({len(second) // 512} blocks)")
@@ -463,12 +482,9 @@ def cmd_setargs(a) -> int:
     out = boot.rebuild(second, kernel)
     with open(a.out, "wb") as fh:
         fh.write(out)
-    src = open(a.bootimg, "rb").read()
-    changed = sum(1 for x, y in zip(src, out) if x != y)
-    print(f"  old: {old}")
-    print(f"  new: {new}")
-    print(f"  wrote {a.out}  ({len(out)} bytes, {changed} bytes differ)")
-    verify_boot, verify_res, verify_dtb = load(a.out)
+    print(f"  wrote {a.out}  ({len(out)} bytes)")
+
+    verify_boot, verify_res, _ = load(a.out)
     expected_kernel = kernel if kernel is not None else boot.kernel
     assert verify_boot.kernel == expected_kernel, "kernel payload changed — refusing"
     if kernel is not None:
@@ -478,12 +494,21 @@ def cmd_setargs(a) -> int:
         "resource entry set changed — refusing"
     assert verify_boot.compute_id() == verify_boot.stored_id, \
         "boot image id is stale — U-Boot would reject this"
-    voff, vlen = fdt_find_bootargs(verify_dtb)
-    assert verify_dtb[voff:voff + vlen].split(b"\0")[0].decode().strip() == new.strip()
+    seen = 0
+    for name, off, size in verify_res.entries():
+        if not name.startswith("rk-kernel.dtb"):
+            continue
+        blob = verify_res.blob[off:off + size]
+        voff, vlen = fdt_find_bootargs(blob)
+        got = blob[voff:voff + vlen].split(b"\0")[0].decode().strip()
+        assert got == expected[name].strip(), f"{name}: bootargs read back wrong"
+        assert f"root={a.root}" in got, f"{name}: root= was not repointed"
+        seen += 1
+    assert seen, "no rk-kernel.dtb* found in the resource — refusing"
     print(f"  image id refreshed: {verify_boot.stored_id.hex()}")
     kind = "kernel round-trips to the vendor image" if kernel is not None \
            else "kernel byte-identical"
-    print(f"  verified: {kind}, id valid, bootargs read back correctly")
+    print(f"  verified: {kind}, id valid, {seen} device tree(s) read back correctly")
     return 0
 
 
