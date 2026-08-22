@@ -38,7 +38,7 @@ Enable the first three with `MY355_DIAG=1 ./build-image-my355.sh`.
 ## Reading the card afterwards
 
 The decisive trick. Put the BaseOS card in the **left slot**: it is not in
-GammaLoader's SPL boot order, so the device boots **stock** from NAND instead,
+the SPL boot order, so the device boots **stock** from NAND instead,
 and stock's kernel auto-mounts the card's ext4 partitions under `/media/`.
 Everything the failed boot wrote is then readable over adb.
 

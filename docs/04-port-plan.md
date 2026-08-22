@@ -48,8 +48,9 @@ Ordered by what currently blocks progress.
   differences are the next thing to characterise against the compatibility table
   in [08](08-rootfs.md).
 - **Intermittent hang on the boot logo, with the logo turning pixelated.** Random,
-  on both the SD and the NAND path. Prime suspect is GammaLoader's 2021 DDR blob
-  against this unit's own 2023 one — see the [investigation log](05-investigation-log.md).
+  on both the SD and the NAND path. Prime suspect was GammaLoader's 2021 DDR blob;
+  the unit was returned to its own V1.18 on 2026-08-22, so this now needs sustained
+  observation to confirm — see the [investigation log](05-investigation-log.md).
 - **Ship our own U-Boot.** The largest remaining boot-time lever, worth 1.2–1.7 s.
   Evaluated 2026-08-22 and **shelved**: feasible without reverse engineering, but
   only at the cost of a dark panel until the kernel comes up, because mainline
@@ -76,20 +77,18 @@ Ordered by what currently blocks progress.
 
 ## Should BaseOS build its own preloader?
 
-Not yet. GammaLoader's works, is verified on this unit, costs nothing measurable when no
-card is present, and leaves DDR scaling intact. Replacing it means writing first-stage
-code — the one region where a mistake costs a MASKROM recovery — for benefits that are
-currently hypothetical.
+No. The patched stock preloader works, is verified on this unit, costs nothing
+measurable when no card is present, and leaves DDR scaling intact. Replacing it means
+writing first-stage code — the one region where a mistake costs a MASKROM recovery —
+for benefits that are now largely gone:
 
-Reasons it may become worth doing later, roughly in order of strength:
-
-1. **Distribution.** BaseOS is a public project. Shipping a third party's prebuilt
-   preloader raises provenance and GPL source-availability questions that building from
-   Rockchip's public U-Boot would avoid. This is the strongest argument and it is about
-   licensing, not engineering.
-2. **A measured boot-time gain.** Only after [port plan](04-port-plan.md)'s budget measurement. GammaLoader's
-   SPL is a 2021 build with DDR `V1.10`; a newer DDR blob might train faster. Currently
-   there is no evidence of a penalty — the no-card figure is within noise of stock.
+1. **Distribution and provenance — largely resolved.** This was the strongest argument
+   while the plan was to ship GammaLoader's prebuilt binary. It no longer applies the
+   same way: `tools/mkpreloader_my355.py` redistributes nothing, it patches nine device
+   tree properties into **the user's own dump**. What remains is a delivery problem
+   rather than a licensing one — see below.
+2. **A measured boot-time gain — no.** Measured at 3.114 s pre-kernel against 3.118 s
+   under GammaLoader. There is no penalty to recover.
 3. **Owning the boot order.** A custom SPL could list additional devices. Note the left
    slot is probably unreachable regardless: `spl_mmc_find_device` maps both
    `BOOT_DEVICE_MMC2` and `BOOT_DEVICE_MMC2_2` to **mmc index 1**, so both `dwmmc`

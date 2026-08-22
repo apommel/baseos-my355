@@ -33,7 +33,7 @@ boots from SD faster than stock does from internal NAND. See the
 
 | | |
 |---|---|
-| `mtd5` preloader | **GammaLoader's** (`2252285dfd55072212568d640712fb77`) |
+| `mtd5` preloader | **this unit's own, `/pinctrl` patched** (`ccc279738fa0123e914e15caca36412c`) |
 | everything else in NAND | stock, byte-identical to the 2026-08-19 backup ([backup & recovery](03-nand-backup-and-recovery.md)) |
 | behaviour | SD card with a `uboot` partition → boots from SD; otherwise → stock OS |
 | cost when no card present | none measurable (4.31 s vs 4.26–4.29 s baseline) |
@@ -62,7 +62,7 @@ from either the stock system or ROCKNIX.
 
 The stock preloader **cannot** boot this device from SD, and no card layout changes
 that — three hardware experiments rule out partition naming, SD power, and FIT format
-in turn. GammaLoader's older preloader can, because it looks up a GPT partition named
+in turn. A preloader with a working `/pinctrl` can, and it looks up a GPT partition named
 `uboot` and reads the FIT from its first sector. Installing **only** that preloader
 (2 MiB to `mtd5`, leaving stock U-Boot, kernel and rootfs untouched) gives SD-if-present
 with stock fallback, no measurable boot-time cost, and DDR scaling intact.

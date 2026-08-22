@@ -76,7 +76,7 @@ Estimated total: **1.2–1.7 s**, taking power-on → NextUI input from 7.6 s to
 
 ## The risk is low, and it is not where it looks
 
-The `uboot` partition is **on the card**. GammaLoader's SPL resolves it by name; if
+The `uboot` partition is **on the card**. The SPL resolves it by name; if
 the FIT is missing or broken the SPL walks its boot order down to
 `/sfc@fe300000/flash@0` and boots stock from NAND — the behaviour already verified
 as Experiment 6's "NextUI card, no `uboot` partition" case. No NAND write is
@@ -194,7 +194,7 @@ From the build that was made and then removed (U-Boot v2026.07,
   `mmc read` needs a length, put the sector count as a little-endian `u32` in a
   512-byte header sector and read twice, so the kernel can change size without
   rebuilding U-Boot.
-- rkbin BL31 v1.46 against GammaLoader's DDR V1.10 is unverified. The check is
+- rkbin BL31 v1.46 against the DDR blob in `mtd5` is unverified. The check is
   `rockchip-dmc` in dmesg — all four FSPs, no `loader&trust unmatch!!!` — as
   [SD boot](02-sd-boot.md) did for the preloader swap. Stock's own BL31 is TF-A v2.3
   (Jun 2023), so an older rkbin BL31 is the fallback.

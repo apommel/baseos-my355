@@ -48,6 +48,11 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-22 | **Bug found and fixed:** `rk-kernel.dtb.hdmi` was never patched and still carried the stock `root=/dev/mtdblock3`. U-Boot selects it when `g_miyoo_use_hdmi` is set, so BaseOS would not have booted on that path |
 | 2026-08-22 | The vendor U-Boot takes its control tree from our `rk-kernel.dtb` (`USING_KERNEL_DTB`), so it is tunable without being replaced — but the tunings measured **22 ms** on a 3.14 s budget and were removed. The 10.9 MB/s read is not a UHS fallback ([U-Boot](09-uboot.md)) |
 | 2026-08-22 | Reported: **intermittent hang on the boot logo**, logo turning pixelated, on both SD and NAND. Open — see below |
+| 2026-08-22 | `unbrick/MiniLoaderAll.bin` is a *second* Rockchip generic loader (Dec 2021, DDR V1.16) with the identical nine `/pinctrl` properties — the patch now has two independent references. The defect is one missing `u-boot,dm-spl` tag on `&pinctrl` in Miyoo's DTS |
+| 2026-08-22 | This unit's `mtd5` **proven to come from the unbrick `update.img`**, not the factory: its `FlashBoot`, descrambled with the keystream recovered from the package's own plaintext DDR blob, is byte-identical to the on-device SPL ([SD boot](02-sd-boot.md)) |
+| 2026-08-22 | **Retracted:** the empty `/pinctrl` is not a regression in Miyoo's later SPL builds — it is in *every* Miyoo preloader sampled (Nov 02 and Dec 12 2024, two units). GammaLoader works because it is **Rockchip's generic `MiniLoaderAll.bin`** left behind by `rkdevtool`, not a Miyoo build; neither firmware image contains a preloader at all ([SD boot](02-sd-boot.md)) |
+| 2026-08-22 | **Stock-derived preloader written to `mtd5` and verified on hardware.** Stock boots with no card, BaseOS boots from SD, DMC healthy on the restored DDR **V1.18** — Experiment 7 below |
+| 2026-08-22 | Stock-derived preloader settled: the IDB carries **plain SHA-256, no signature**, and the fix is **+180 bytes of `/pinctrl` properties into 649 bytes of slack** — SPL code and DDR V1.18 byte-identical, boot order already SD-first. Built and self-verifying (`tools/mkpreloader_my355.py`), not flashed ([SD boot](02-sd-boot.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
@@ -407,6 +412,37 @@ flashes a `boot.img` whose kernel is 12 916 788 bytes with a 944 128-byte resour
 versus 36 647 424 / 465 408 in this unit's `mtd2` — i.e. it downgrades the kernel
 underneath a 2025-06-27 rootfs.
 
+## Experiment 6 — GammaLoader preloader only (2026-08-20) — **works**
+
+Only `mtd5` written, from the running stock system; GammaLoader's own installer was
+**not** run, so its foreign `boot.img` (a different kernel: 12 916 788 B against this
+unit's 36 647 424) never touched `mtd2`. Readback byte-exact, md5 `2252285d…`.
+`mtd0`–`mtd4` unchanged, so stock U-Boot, BL31, kernel and rootfs were all preserved.
+
+| card | result |
+|---|---|
+| none | stock → MainUI. Pre-kernel `[ 4.313678]` against a 4.26–4.29 s stock baseline — no measurable cost |
+| ROCKNIX + `uboot` partition | **boots from SD** |
+| NextUI (no `uboot` partition) | falls through to stock, normally |
+
+Two risks settled by it. `/proc/cmdline` reported `storagemedia=mtd`,
+`root=/dev/mtdblock3` on the fallback path, so **GammaLoader's SPL does emit the
+Rockchip `bootdev` ATAG** stock U-Boot needs. And DDR scaling survived the older blob —
+V1.10 (2021) against this unit's BL31 (TF-A v2.3, Jun 2023) still gave all four FSPs,
+`dmc_ondemand`, and no `loader&trust unmatch`.
+
+## Experiment 7 — patched stock preloader (2026-08-22) — **works**
+
+Replaces Experiment 6. `mtd5` rewritten with this unit's own Dec-2024 SPL and DDR
+V1.18, patched only to restore `/pinctrl` ([SD boot](02-sd-boot.md)). Battery 99% on
+USB power, 0 bad blocks; `flash_erase` + `nandwrite` both `rc=0`; readback byte-exact
+(md5 `ccc27973…`), 0 ECC failures, 0 corrected bits.
+
+Stock boots with no card; the BaseOS card boots from SD (`storagemedia=sd`,
+`root=/dev/mmcblk1p3`) into NextUI. Pre-kernel **3.114 s** against 3.118 s under
+GammaLoader. DMC healthy on V1.18: four FSPs, `dmc_ondemand`, ATF `0x102`, no
+`loader&trust unmatch`.
+
 ## Retracted conclusions
 
 Recorded because each cost a hardware experiment, and because the pattern matters:
@@ -490,10 +526,10 @@ self-documenting — worth doing before chasing this further.
 
 1. **Pin the DDR frequency** (`auto-freq-en = <0>`). Card-side, reversible, no NAND
    write. Tests mechanism (2), on the SD path only.
-2. **Restore this unit's own DDR V1.18** by patching the *stock* SPL's pinctrl
-   instead of replacing the whole preloader — the ~70-byte edit scoped in
-   [SD boot](02-sd-boot.md). The real fix if the hypothesis holds; needs a **NAND
-   write**, and `mtd5-spl.img` is backed up and md5-verified.
+2. **Restore this unit's own DDR V1.18** — **done 2026-08-22** (Experiment 7). The
+   device now runs Miyoo's V1.18 blob rather than GammaLoader's 2021 V1.10. If the
+   hypothesis is right the hang should stop; confirming that needs sustained
+   observation, since the fault was intermittent to begin with.
 
 ---
 

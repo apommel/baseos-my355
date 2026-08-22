@@ -6,7 +6,7 @@
 # chain reaches for — a U-Boot FIT in a GPT partition named `uboot`, an Android
 # boot image in one named `boot` — plus the BaseOS rootfs.
 #
-# This requires GammaLoader's preloader in mtd5; see docs/my355/02-sd-boot.md.
+# This requires a preloader with a working /pinctrl in mtd5; see docs/my355/02-sd-boot.md.
 #
 # Inputs come from ./prepare-stock-my355.sh, in work/my355/prepared:
 #   uboot.img   stock Rockchip U-Boot FIT, used verbatim

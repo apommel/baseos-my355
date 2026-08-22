@@ -11,7 +11,7 @@ device boots from the card to userspace.
 
 ## Prerequisite
 
-The device must be running **GammaLoader's preloader** in `mtd5`
+The device must be running a **preloader with a working `/pinctrl`** in `mtd5`
 ([SD boot](02-sd-boot.md)). Without it the stock SPL cannot read an SD card at
 all, and no card layout changes that.
 
@@ -22,7 +22,7 @@ reaches for a third by **number**:
 
 | | why it is load-bearing |
 |---|---|
-| GPT partition `uboot`, **starting at sector 16384** | GammaLoader's SPL calls `part_get_info_by_name(dev, "uboot")` and reads the U-Boot FIT from the partition's *first sector*. That SPL has **no raw-sector fallback** — without this entry it returns `-ENOSYS` and falls through to NAND. |
+| GPT partition `uboot`, **starting at sector 16384** | The SPL calls `part_get_info_by_name(dev, "uboot")` and reads the U-Boot FIT from the partition's *first sector*. |
 | GPT partition `boot` | Stock U-Boot runs `boot_android mmc 1`, which resolves the Android boot image by this name. |
 | rootfs as GPT **entry 3** | `root=/dev/mmcblk1p3` is baked into the DTB at build time. The name does not matter; the entry number does. |
 
