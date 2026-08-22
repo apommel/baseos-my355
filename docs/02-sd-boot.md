@@ -31,6 +31,72 @@ u-boot,spl-boot-order = "/dwmmc@fe2b0000", "/sdhci@fe310000", "/nandc@fe330000",
 
 — SD first, SPI NAND last, i.e. SD-with-stock-fallback by construction.
 
+## Why the *stock* SPL cannot read a card — settled from the binaries
+
+Three hardware experiments localised this to `spl_mmc_find_device()`/`mmc_init()`
+and left it there ([investigation log](05-investigation-log.md)). Comparing the two
+SPLs' embedded device trees settles it.
+
+**The stock SPL's `/pinctrl` node has zero properties.** Not `status = "disabled"` —
+an empty skeleton node:
+
+| | stock `mtd5` | GammaLoader |
+|---|---|---|
+| `/pinctrl` `compatible` | **absent** | `"rockchip,rk3568-pinctrl"` |
+| `/pinctrl` `rockchip,grf` / `rockchip,pmu` | **absent** | `<0x1000001b>` / `<0x100000dc>` |
+| `/pinctrl` `u-boot,dm-*` marker | **absent** | `u-boot,dm-pre-reloc` |
+| `/pinctrl/sdmmc0_pins/*` | present, marked | present, marked |
+| `dwmmc@fe2b0000` | **byte-identical to GammaLoader's**, incl. `pinctrl-0` | same |
+
+Meanwhile `rockchip,rk3568-pinctrl` *is* in the stock SPL's rodata at `0x5f545` —
+**the driver is compiled in; only the DT cannot reach it.** A property-level diff of
+the two trees shows nothing else material in the SD path: the remaining differences
+are marker naming (`dm-spl` vs `dm-pre-reloc`, different U-Boot vintages), ethernet
+and USB nodes, and the eMMC bus width.
+
+Mechanism: no `compatible` → no pinctrl device binds → `dwmmc@fe2b0000`'s
+`pinctrl-0` (`sdmmc0-clk/cmd/bus4/det`) is never applied → the SD pins stay in their
+reset function → the controller never sees a card and `mmc_init()` fails before a
+sector is read. SPI-NAND is unaffected because **the bootrom already muxed the SFC
+pins** to fetch the preloader in the first place. It also explains the absent GPIO:
+with `/pinctrl` unbound its children never bind either, including all three
+`gpio-bank` nodes.
+
+**How the defect arose:** this is the fingerprint of `fdtgrep`, which strips the SPL
+DTB to nodes and properties tagged `u-boot,dm-spl`/`dm-pre-reloc` and keeps untagged
+*ancestors* as empty skeletons. The vendor tagged the pin-config subnodes but not the
+pinctrl controller node above them. GammaLoader's older (Apr 2021) tree tags it. So
+"Miyoo's later SPL builds broke SD boot" is right, and it is a build-config
+regression rather than a design decision.
+
+This also confirms, from the other direction, that **the power theory was wrong**:
+the rail is on by default at reset (`regulator-boot-on`, active-low enable), which is
+why GammaLoader's equally regulator-less SPL works. The problem was never power, it
+was pin mux — and no card layout can fix a pin mux, which is why Experiments 1–3
+could not have succeeded.
+
+> **Status: inferred**, from static analysis of both SPLs; not yet proven on
+> hardware. Two falsifiers. UART on `ttyS2` should print `spl: mmc init failed with
+> error: …` rather than `could not find mmc device`. Better, the repair below either
+> works or it does not.
+
+### A stock-derived preloader is now a ~70-byte patch
+
+Everything the repair needs is already in the stock tree: both syscons are present
+**with the exact phandles GammaLoader's pinctrl references** (`0x1000001b` GRF,
+`0x100000dc` PMUGRF), both already marked `u-boot,dm-spl`; and there are **88 KB of
+zero padding** after the stock DTB (it ends at `0x69d77`, the next IDB copy starts at
+`0x80000`), so the tree can grow in place. The patch is to add `compatible`,
+`rockchip,grf`, `rockchip,pmu`, `ranges`, `#address-cells`/`#size-cells`, `status`
+and the `u-boot,dm-spl` marker to `/pinctrl`.
+
+That would keep **the unit's own SPL and its own DDR V1.18 blob** rather than
+GammaLoader's 2021 V1.10, and — because it is a patch against the user's own dump
+rather than a redistributed third-party binary — it answers the provenance objection
+in [port plan](04-port-plan.md) without building anything from source. One unknown to
+check first: whether the IDB's declared image size covers the padding or needs a
+size-field bump. **Not attempted; GammaLoader's preloader works and is in place.**
+
 ## Why it does not work with ROCKNIX — confirmed from the binary
 
 The two SPLs diverge at exactly one point, in `spl_mmc.c`:
@@ -190,4 +256,4 @@ which sits *before* partition 1 and leaves the space behind `storage` clear.
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [our own U-Boot](09-uboot.md)

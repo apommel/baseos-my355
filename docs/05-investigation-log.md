@@ -40,6 +40,10 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-20 | LZ4-legacy kernel tried → **does not boot**; reverted to gzip |
 | 2026-08-21 | U-Boot disassembled: it **does** sniff for LZ4, but only frame framing with independent blocks. **LZ4 boots — and is 0.17 s slower than gzip.** gzip stays; no zstd in this U-Boot |
 | 2026-08-20 | **NextUI launched from BaseOS** |
+| 2026-08-22 | Stock SPL's SD failure explained: its DTB's `/pinctrl` node is an **empty skeleton** — the driver is compiled in, the node has no `compatible`, so no pin mux is ever applied ([SD boot](02-sd-boot.md)) |
+| 2026-08-22 | Full boot measured over adb: power-on → NextUI input **7.62 s**, against ~18.5 s stock ([boot budget](01-boot-budget.md)) |
+| 2026-08-22 | Pre-kernel budget decomposed with a padded-kernel boot: **U-Boot init 1.21 s, read 1.19 s at 10.9 MB/s, inflate 0.35 s** ([boot budget](01-boot-budget.md)) |
+| 2026-08-22 | The 0.40 s silent kernel gap identified as `tracer_init_tracefs` (0.383 s) — a kernel config choice, not reachable from the DTB |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
@@ -220,18 +224,23 @@ unit's kernel (12 916 788-byte kernel and 944 128-byte resource, vs 36 647 424 a
 465 408 in `mtd2` here). Installing it replaces the preloader **and** downgrades the
 boot partition to a foreign kernel underneath a 2025-06-27 rootfs.
 
-### Remaining ways to settle it
+### Settled (2026-08-22): the SPL's device tree has no pinctrl provider
 
-1. **UART on `ttyS2` @ 1 500 000.** One line of SPL output names the cause
-   (`spl: could not find mmc device` / `spl: mmc init failed with error: %d` /
-   `spl: unsupported mmc boot device.`). Earlier revisions of this file twice argued
-   serial was not worth it "because the remedy is identical". That was wrong — the
-   three messages imply different fixes, and card-side debugging has now been exhausted
-   at a cost of three boots.
-2. **Bypass the SPL entirely — [investigation log](05-investigation-log.md).** U-Boot proper does PMIC and io-domain init
-   (`PMIC: RK8170`, `io-domain: OK`) that the SPL does not, and its own
-   `rkimg_bootdev` prefers `mmc dev 1`. Testable without opening the case, and
-   fail-safe.
+Both remedies below were overtaken by a binary comparison of the two SPLs' device
+trees. The stock SPL's `/pinctrl` node is an **empty skeleton** — no `compatible`,
+so no pinctrl device binds, so `dwmmc@fe2b0000`'s `pinctrl-0` is never applied and
+the SD pins are never muxed. The driver is compiled in; the DT cannot reach it.
+Full evidence and the `fdtgrep` mechanism that produced it are in
+[SD boot](02-sd-boot.md).
+
+This closes the question the three experiments left open, and confirms
+independently that no card layout could ever have worked. What was still open when
+it was written:
+
+1. **UART on `ttyS2` @ 1 500 000.** Still the cheapest falsifier — the prediction is
+   `spl: mmc init failed with error: …`, not `could not find mmc device`.
+2. **Bypass the SPL entirely.** Done as Experiments 4 and 5; U-Boot proper does
+   reach the card, at the cost of an `mtd1` patch that hung on non-bootable cards.
 
 ### The left slot is unreachable regardless
 
@@ -403,7 +412,7 @@ each was a plausible mechanism asserted before it was tested.
 |---|---|
 | The ROCKNIX artifact was the "generic" build, not device-specific | ROCKNIX ships one image per SoC family; per-device selection is the extlinux `FDT` line. The quartz64-a U-Boot DTB is expected. |
 | The *stock* SPL locates U-Boot only by GPT partition name | Disassembly showed a raw-sector `0x4000` fallback. (True of GammaLoader's SPL — [SD boot](02-sd-boot.md) — which is why the tip works there.) |
-| The SPL cannot power the SD rail | GammaLoader's working SPL has no regulator support either. |
+| The SPL cannot power the SD rail | GammaLoader's working SPL has no regulator support either. The actual cause is pin mux, not power — the rail is on by default at reset ([SD boot](02-sd-boot.md)). |
 | The SD chain must carry OP-TEE | Exp. 3 supplied an OP-TEE-bearing FIT with no change; Exp. 6 boots a ROCKNIX FIT that has none. |
 | The v1 `bootcmd` patch was "fail-safe by construction" | `mmc_boot` clobbers `devtype`; a card with no bootable content hung the device. |
 | v2 added a ~20 s pre-kernel regression | Kernel timestamps are unreliable across warm reboots; stopwatch showed no change. |
@@ -417,9 +426,9 @@ each was a plausible mechanism asserted before it was tested.
 | The rootfs "is not working perfectly well" | It was working: `rcS` ran to completion and wrote persistent state. Only the USB gadget had failed. |
 | This U-Boot does not sniff for LZ4 on the Android path | It does — `lz4_valid_frame` is called straight out of `android_image_get_comp`. The evidence was a byte-grep for the magic as a literal, but arm64 splits a 32-bit constant across `movz`/`movk` bitfields, so the grep could not have found the check either way. The failing card was **legacy**-framed, the one format the sniffer ignores. |
 | LZ4 would beat gzip because it inflates faster | Measured: 3.31 s against gzip's 3.14 s. It is 2.53 MiB larger, and the extra card read outweighs the faster inflate. |
-| The measured gzip saving implied a ~13 MB/s read with free decompression | That was the degenerate root of `23.6/R − D = 1.82`. At a realistic 8–10 MB/s the inflate costs 0.5–1.1 s — which is what made LZ4 worth measuring in the first place. |
+| The measured gzip saving implied a ~13 MB/s read with free decompression | That was the degenerate root of `23.6/R − D = 1.82`. Both guesses at the split were then wrong: a padded-kernel boot measured **R = 10.9 MB/s and inflate = 0.35 s**, not the 8–10 MB/s and 0.5–1.1 s this file went on to assume ([boot budget](01-boot-budget.md)). Estimating a two-unknown split from one equation stayed wrong twice; the fix was a third boot that moved one variable. |
 | The ROCKNIX stall was *not* the storage-partition collision | It was. The theory was abandoned when removing the blocking partition didn't help — but ROCKNIX's resize runs **once**, so the damage persisted. Correct diagnosis, wrong inference from the retest. |
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [our own U-Boot](09-uboot.md)

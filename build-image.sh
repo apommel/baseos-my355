@@ -64,14 +64,6 @@ DROP="earlycon="
 APPEND="rw init=$MY355_INIT"
 LED_TRIGGER=""
 
-if [ "${MY355_DIAG:-0}" = "1" ]; then
-  # panic=10 turns a silent hang into a visible reboot loop; the LED heartbeat
-  # fires at gpio-leds probe, proving the kernel is alive before userspace runs.
-  APPEND="$APPEND panic=10"
-  LED_TRIGGER="heartbeat"
-  echo "== diagnostics enabled (panic=10, LED heartbeat) =="
-fi
-
 # The BaseOS wordmark, cropped from the shared artwork so branding matches the
 # H700 port. Size keeps the rebuilt resource image well under the largest one
 # proven to boot (tools/rkbootimg.py, RESOURCE_SAFE_BYTES).
@@ -86,6 +78,18 @@ python3 "$HERE/tools/rkbootimg.py" setargs "$BOOT_SRC" "$WORK/boot-sd.img" \
   --drop "$DROP" --append "$APPEND" \
   ${LED_TRIGGER:+--led-trigger "$LED_TRIGGER"} \
   --compress-kernel "$COMPRESS"
+
+# The boot image is written at BOOT_START and the rootfs begins at ROOTFS_START.
+# Nothing enforced that before, because the boot image only ever shrank — but an
+# uncompressed kernel (MY355_COMPRESS_KERNEL=none) is 37.1 MB into 40 MiB of room,
+# so the margin is thinner than it looks and silent corruption of the rootfs is a
+# poor way to find out.
+BOOT_ROOM=$(( (MY355_ROOTFS_START - MY355_BOOT_START) * 512 ))
+BOOT_BYTES=$(wc -c < "$WORK/boot-sd.img")
+[ "$BOOT_BYTES" -le "$BOOT_ROOM" ] || {
+  echo "boot image is $BOOT_BYTES bytes; the boot partition holds $BOOT_ROOM" >&2
+  exit 1
+}
 
 echo "== composing $OUT =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \

@@ -47,8 +47,10 @@ Ordered by what currently blocks progress.
 - **The issues seen after the first NextUI hand-off.** It launches; behaviour
   differences are the next thing to characterise against the compatibility table
   in [08](08-rootfs.md).
-- **Ship our own U-Boot.** The largest remaining boot-time lever now that kernel
-  compression is done — see [01](01-boot-budget.md).
+- **Ship our own U-Boot.** The largest remaining boot-time lever, worth 1.2–1.7 s.
+  Evaluated 2026-08-22 and **shelved**: feasible without reverse engineering, but
+  only at the cost of a dark panel until the kernel comes up, because mainline
+  U-Boot has no VOP2 driver — see [09](09-uboot.md).
 - **Find the real resource-size threshold.** 465 408 bytes boots, 943 616 hangs
   U-Boot before display init. The build stays under the proven figure, but the
   actual limit is unknown and worth pinning down.
@@ -98,4 +100,4 @@ preloader write.
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [our own U-Boot](09-uboot.md)
