@@ -246,22 +246,28 @@ bootloader" is a conclusion from their numbers, not a principle we inherit.
 
 Remaining levers, now that the pre-kernel budget is decomposed:
 
-1. **Ship our own U-Boot — 1.2–1.7 s.** The largest single item in the whole boot
+1. **Tune the vendor U-Boot from its device tree — tried, 22 ms, dropped.** It
+   swaps its control tree for our `rk-kernel.dtb`, so its knobs are ours to set,
+   but there is no time in them. Notably the 10.9 MB/s read is **not** a UHS
+   fallback — see [U-Boot](09-uboot.md).
+2. **Ship our own U-Boot — 1.2–1.7 s.** The largest single item in the whole boot
    is the vendor U-Boot's 1.21 s of initialisation, and the read it then performs
    runs at 10.9 MB/s against ~25 MB/s of available bandwidth. The card already
    carries the `uboot` partition, so this needs **no NAND write** and is fail-safe.
    **Evaluated and shelved** — the boot path needs no reverse engineering, but
    mainline U-Boot has no VOP2 driver, so a boot logo means writing one. See
-   [our own U-Boot](09-uboot.md).
-2. **zstd for the kernel — 0.2–0.3 s.** Unlocked by (1), not independent of it: the
+   [U-Boot](09-uboot.md).
+3. **zstd for the kernel — 0.2–0.3 s.** Unlocked by (2), not independent of it: the
    blocker is not only that the vendor U-Boot lacks zstd, it is that the Android
    boot image path *sniffs* the format. A FIT declares `compression = "zstd"`, so
-   nothing is sniffed. Shelved with (1).
-3. **The kernel phase — nothing cheap left.** See the initcall table above.
-4. **Shrink what U-Boot reads further.** The resource image is already rebuilt at
-   442 880 bytes rather than the stock 943 616.
+   nothing is sniffed. Shelved with (2).
+4. **The kernel phase — nothing cheap left.** See the initcall table above.
+5. **Shrink what U-Boot reads further.** The resource image is already rebuilt at
+   442 880 bytes rather than the stock 943 616. Dropping the charge artwork would
+   save another 176 KB, worth ~16 ms.
 
-Projected with (1) and (2): pre-kernel **1.3–1.8 s**, power-on to input **5.8–6.3 s**.
+Projected with (2) and (3): pre-kernel **1.3–1.8 s**, power-on to input **5.8–6.3 s**.
+Lever (1) claims part of the same ground more cheaply, so they do not add.
 Not currently being pursued.
 
 ## Where the 9.9 s of userland goes
@@ -296,4 +302,4 @@ shim layer of H700 [01](../h700/01-rootfs-and-init.md) [backup & recovery](03-na
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [our own U-Boot](09-uboot.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [U-Boot](09-uboot.md)

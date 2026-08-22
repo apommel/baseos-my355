@@ -44,6 +44,10 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-22 | Full boot measured over adb: power-on → NextUI input **7.62 s**, against ~18.5 s stock ([boot budget](01-boot-budget.md)) |
 | 2026-08-22 | Pre-kernel budget decomposed with a padded-kernel boot: **U-Boot init 1.21 s, read 1.19 s at 10.9 MB/s, inflate 0.35 s** ([boot budget](01-boot-budget.md)) |
 | 2026-08-22 | The 0.40 s silent kernel gap identified as `tracer_init_tracefs` (0.383 s) — a kernel config choice, not reachable from the DTB |
+| 2026-08-22 | Replacing U-Boot evaluated and **shelved**: the boot path needs no reverse engineering, but mainline U-Boot has no VOP2 driver, so a splash means writing one ([U-Boot](09-uboot.md)) |
+| 2026-08-22 | **Bug found and fixed:** `rk-kernel.dtb.hdmi` was never patched and still carried the stock `root=/dev/mtdblock3`. U-Boot selects it when `g_miyoo_use_hdmi` is set, so BaseOS would not have booted on that path |
+| 2026-08-22 | The vendor U-Boot takes its control tree from our `rk-kernel.dtb` (`USING_KERNEL_DTB`), so it is tunable without being replaced — but the tunings measured **22 ms** on a 3.14 s budget and were removed. The 10.9 MB/s read is not a UHS fallback ([U-Boot](09-uboot.md)) |
+| 2026-08-22 | Reported: **intermittent hang on the boot logo**, logo turning pixelated, on both SD and NAND. Open — see below |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
@@ -429,6 +433,68 @@ each was a plausible mechanism asserted before it was tested.
 | The measured gzip saving implied a ~13 MB/s read with free decompression | That was the degenerate root of `23.6/R − D = 1.82`. Both guesses at the split were then wrong: a padded-kernel boot measured **R = 10.9 MB/s and inflate = 0.35 s**, not the 8–10 MB/s and 0.5–1.1 s this file went on to assume ([boot budget](01-boot-budget.md)). Estimating a two-unknown split from one equation stayed wrong twice; the fix was a third boot that moved one variable. |
 | The ROCKNIX stall was *not* the storage-partition collision | It was. The theory was abandoned when removing the blocking partition didn't help — but ROCKNIX's resize runs **once**, so the damage persisted. Correct diagnosis, wrong inference from the retest. |
 
+## Open — intermittent hang on the boot logo (2026-08-22)
+
+**Symptom.** Randomly, a boot stops on the boot logo and never proceeds, and
+**the logo becomes pixelated**. Seen on both the BaseOS SD path and the stock NAND
+path; reported to have started after the preloader swap.
+
+### The preloader is the prime suspect
+
+`mtd5` is read by the bootrom on *every* boot, whichever medium the SPL then picks,
+so it is the **only changed component common to both failing paths** — everything
+after it differs. And it is where DRAM is brought up:
+
+| | build | DDR blob |
+|---|---|---|
+| this unit's own `mtd5` | SPL 2017.09 (Dec 12 2024) | **V1.18 `f366f69a7d`, typ 23/07/17** |
+| GammaLoader, installed | SPL 2017.09 (Apr 13 2021) | **V1.10, 20210810** |
+
+A three-year-older blob is training this unit's LPDDR4. The pairing was already
+logged as an unverified risk in [SD boot](02-sd-boot.md).
+
+The pixelation is the informative part: blocky corruption of an image that was
+drawn correctly is what DRAM bit errors look like, not what a stalled bootloader
+looks like. DDR training also re-runs every boot and can land differently each
+time, which fits an intermittent fault.
+
+Two mechanisms fit, and they are distinguishable:
+
+1. **Marginal DRAM at the boot frequency.** U-Boot reads ~13 MB into DRAM and
+   inflates it; bad bits there corrupt the kernel and the framebuffer alike.
+2. **A bad DDR frequency transition under Linux.** `auto-freq-en = <1>` in `dmc`,
+   the kernel scales DDR across 324/528/780/1056 MHz with ATF performing the
+   switch from tables the DDR blob installed. `dmc` probes at 4.38 s and the logo
+   is on screen until 7.73 s, so the windows overlap.
+
+**Not supported:** the PMIC theory. On a healthy boot the battery reads `Full`,
+4.159 V, `health=Good`, thermal zones 41.9 / 39.4 / 18.8 °C.
+
+### Next time it hangs — read-only
+
+**`adb devices`.** `rcS` completes at ~1.55 s uptime, so adb is listening by roughly
+4.9 s after power-on. If it answers while the screen shows a frozen pixelated logo,
+the kernel survived and the fault is later — mechanism (2), and `dmesg | tail -40`
+will say where. If adb never appears, it died at or before early kernel —
+mechanism (1). That single check splits the hypothesis.
+
+`grep -c '^boot ' /data/boot.log` bounds the failure rate: `rcS` appends one line
+per successful boot.
+
+**pstore is registered but not mounted.** The kernel sets up `ramoops`
+(`0xf0000@0x110000`), which survives a warm reset, but nothing mounts `pstore`, so
+a panic leaves no readable record. Mounting it in `rcS` would make the next hang
+self-documenting — worth doing before chasing this further.
+
+### Candidate fixes
+
+1. **Pin the DDR frequency** (`auto-freq-en = <0>`). Card-side, reversible, no NAND
+   write. Tests mechanism (2), on the SD path only.
+2. **Restore this unit's own DDR V1.18** by patching the *stock* SPL's pinctrl
+   instead of replacing the whole preloader — the ~70-byte edit scoped in
+   [SD boot](02-sd-boot.md). The real fix if the hypothesis holds; needs a **NAND
+   write**, and `mtd5-spl.img` is backed up and md5-verified.
+
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [our own U-Boot](09-uboot.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [U-Boot](09-uboot.md)

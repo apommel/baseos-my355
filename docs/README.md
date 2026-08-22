@@ -56,7 +56,7 @@ from either the stock system or ROCKNIX.
 | [06 · Building a BaseOS card](06-card-image-build.md) | Card layout, boot image surgery, build and flash. |
 | [07 · Bring-up and diagnostics](07-bringup-and-diagnostics.md) | How to debug a device that can print nothing. |
 | [08 · The rootfs](08-rootfs.md) | Harvest, overlay, init, adb, NextUI compatibility. |
-| [09 · Our own U-Boot](09-uboot.md) | Evaluated and shelved: what it would buy, and the missing VOP2 driver. |
+| [09 · U-Boot](09-uboot.md) | Tuning it (tried, 22 ms) and replacing it (shelved). |
 
 ## If you only read one thing
 
@@ -73,4 +73,4 @@ Details in [SD boot](02-sd-boot.md). Building a card that uses it is
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [our own U-Boot](09-uboot.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [U-Boot](09-uboot.md)

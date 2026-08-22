@@ -47,6 +47,9 @@ Ordered by what currently blocks progress.
 - **The issues seen after the first NextUI hand-off.** It launches; behaviour
   differences are the next thing to characterise against the compatibility table
   in [08](08-rootfs.md).
+- **Intermittent hang on the boot logo, with the logo turning pixelated.** Random,
+  on both the SD and the NAND path. Prime suspect is GammaLoader's 2021 DDR blob
+  against this unit's own 2023 one — see the [investigation log](05-investigation-log.md).
 - **Ship our own U-Boot.** The largest remaining boot-time lever, worth 1.2–1.7 s.
   Evaluated 2026-08-22 and **shelved**: feasible without reverse engineering, but
   only at the cost of a dark panel until the kernel comes up, because mainline
@@ -100,4 +103,4 @@ preloader write.
 
 ---
 
-**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [our own U-Boot](09-uboot.md)
+**my355 docs:** [index](README.md) · [device & boot chain](00-device-and-boot-chain.md) · [boot budget](01-boot-budget.md) · [SD boot](02-sd-boot.md) · [backup & recovery](03-nand-backup-and-recovery.md) · [port plan](04-port-plan.md) · [investigation log](05-investigation-log.md) · [card image](06-card-image-build.md) · [bring-up](07-bringup-and-diagnostics.md) · [rootfs](08-rootfs.md) · [U-Boot](09-uboot.md)
