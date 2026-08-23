@@ -21,6 +21,27 @@ assets/boot.ttf is licensed under the SIL Open Font License; see assets/OFL.txt.
 Everything else — the Rockchip boot chain, the SPI NAND preloader work, the my355
 rootfs, overlay and documentation — is new in this repository.
 
+VENDOR FIRMWARE
+---------------
+
+BaseOS links against the vendor's own userland rather than rebuilding it, and boots
+the vendor's own U-Boot and kernel. Three artifacts are therefore vendor-derived:
+
+    uboot.img           Miyoo's Rockchip U-Boot FIT, used verbatim
+    boot.img            Miyoo's Android boot image; only the DTB's bootargs and
+                        logo are rewritten, the kernel stays byte-for-byte
+    stock-harvest.tar   74 allowlisted paths from the stock squashfs — glibc,
+                        Mali, SDL2, wpa_supplicant, BlueZ, firmware blobs
+
+None of them is committed to this repository. They are published as a release
+artifact by cache-pack.sh and pinned by hash from manifest/prepared/, and
+prepare-stock.sh regenerates the identical bytes from a dump of your own unit.
+
+Publishing that bundle redistributes Miyoo's firmware. Miyoo has not granted
+permission to do so, and parts of it are third-party works under their own terms
+(the Linux kernel is GPL-2.0 and its source has not been published for this build;
+glibc is LGPL; the Mali userspace is ARM proprietary).
+
 LICENSE
 -------
 

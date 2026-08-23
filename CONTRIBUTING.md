@@ -7,8 +7,8 @@ AArch64 code runs in an unprivileged Alpine container, so the host needs neither
 nor loop mounts. `tools/docker-platform.sh` picks the platform per step: `linux/arm64`
 where device binaries must run, the host architecture everywhere else.
 
-You need a NAND backup of your own unit. Making one, and recovering from a bad
-preloader write, are both in
+Take a NAND backup of your own unit even if you build from the published bundle.
+Making one, and recovering from a bad preloader write, are both in
 [docs/03-nand-backup-and-recovery.md](docs/03-nand-backup-and-recovery.md). Read it
 before flashing anything to `mtd5` — that is the one region where a mistake costs a
 MASKROM recovery.
@@ -16,16 +16,29 @@ MASKROM recovery.
 ## The build
 
 ```sh
-./prepare-stock.sh [NAND_DIR] [--boot PATH]   # → work/my355/prepared/
+./fetch-prepared.sh                           # → work/my355/prepared/
 ./build-rootfs.sh                             # → work/my355/rootfs.tar
 ./build-image.sh                              # → work/my355/baseos-my355.img
 ```
 
-`prepare-stock.sh` verifies the harvest is a **closed set** — every `DT_NEEDED` of
-every harvested ELF must resolve inside the harvest, or the build fails. That is what
-makes `manifest/harvest.list` a proof rather than a guess. What it cannot see is
-`dlopen` and `system()`; those entries are documented in
+To derive the inputs yourself instead of fetching them — which is what moving onto
+a new vendor release needs — replace the first line with `./prepare-stock.sh
+[NAND_DIR] [--boot PATH]`. It verifies the harvest is a **closed set**: every
+`DT_NEEDED` of every harvested ELF must resolve inside the harvest, or the build
+fails. That is what makes `manifest/harvest.list` a proof rather than a guess. What
+it cannot see is `dlopen` and `system()`; those are in
 [docs/08-rootfs.md](docs/08-rootfs.md).
+
+Both paths land in the same place and get the same check —
+`tools/source_manifest.py verify` runs at the start of `build-rootfs.sh` and
+`build-image.sh`.
+
+### Publishing a new bundle
+
+After a `prepare-stock.sh` run against new firmware, `./cache-pack.sh` verifies,
+packs, writes `manifest/prepared/*` and prints the `gh release create` line.
+Publish before committing the manifests — they name a URL that has to resolve.
+This distributes vendor firmware; see [NOTICE](NOTICE).
 
 Build knobs:
 
@@ -67,4 +80,6 @@ this device, so attach afterwards.
 - Claims in `docs/` are marked *verified* (observed on hardware) or *inferred* (from
   binaries). Retracted claims are kept, not deleted, in
   [docs/05-investigation-log.md](docs/05-investigation-log.md).
-- Nothing vendor-derived is committed. Tools patch the user's own dump.
+- Nothing vendor-derived is committed to git. The prepared bundle is published as
+  a release artifact and pinned by hash from `manifest/prepared/`; the repository
+  itself stays free of vendor binaries.

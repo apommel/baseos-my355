@@ -31,12 +31,17 @@ ROOTFS_TAR="$WORK/rootfs.tar"
 UBOOT_SRC="$PREPARED/uboot.img"
 BOOT_SRC="$PREPARED/boot.img"
 
-for f in "$UBOOT_SRC" "$BOOT_SRC"; do
+for f in "$PREPARED/source.json" "$UBOOT_SRC" "$BOOT_SRC"; do
   [ -f "$f" ] || {
-    echo "missing $f (run ./prepare-stock.sh)" >&2
+    echo "missing $f" >&2
+    echo "run ./fetch-prepared.sh, or ./prepare-stock.sh from a NAND dump" >&2
     exit 1
   }
 done
+# U-Boot goes on the card verbatim and the kernel must stay byte-for-byte
+# vendor, so both are checked before either is touched.
+python3 "$HERE/tools/source_manifest.py" verify "$PREPARED/source.json" "$PREPARED" --quiet
+
 [ -f "$ROOTFS_TAR" ] || { echo "missing $ROOTFS_TAR (run ./build-rootfs.sh)" >&2; exit 1; }
 
 mkdir -p "$WORK"

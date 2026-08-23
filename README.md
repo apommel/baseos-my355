@@ -33,24 +33,41 @@ Builds run on macOS using unprivileged Alpine containers (Docker or OrbStack) �
 sudo, no loop mounts. Steps that execute AArch64 device binaries pin `linux/arm64`;
 the rest pin the host architecture.
 
-You need a **NAND backup of your own unit** (see
-[docs/03-nand-backup-and-recovery.md](docs/03-nand-backup-and-recovery.md)). Nothing
-vendor-derived is redistributed here — every build starts from your dump.
+Three files are needed before a card can be built: the vendor U-Boot, the vendor
+Android boot image, and the measured subset of the vendor rootfs BaseOS links
+against. Either restore them from the published bundle:
+
+```sh
+./fetch-prepared.sh
+./build-all.sh
+```
+
+or derive them from a dump of your own unit's SPI NAND, which produces
+byte-identical artifacts and the same hashes:
 
 ```sh
 ./prepare-stock.sh ~/Development/miyoo-flip-nand-backup
-./build-rootfs.sh
-./build-image.sh
+./build-all.sh
 ```
 
-That produces `work/my355/baseos-my355.img`. Flashing, the preloader patch and the
-recovery path are in [docs/02-sd-boot.md](docs/02-sd-boot.md) and
+Either way you get `baseos-my355-<version>.img.zip`. The bundle is a cache, not a second source of truth: `manifest/prepared/source.json`
+carries each artifact's size and SHA-256, travels in git rather than inside the
+download, and is checked by every build.
+
+**Take a NAND backup regardless.** The bundle has no preloader —
+`tools/mkpreloader.py` patches your unit's own `mtd5` — and a backup is how you
+recover from a bad NAND write. See
+[docs/03-nand-backup-and-recovery.md](docs/03-nand-backup-and-recovery.md);
+flashing and the preloader are in [docs/02-sd-boot.md](docs/02-sd-boot.md) and
 [docs/06-card-image-build.md](docs/06-card-image-build.md).
 
 ## Layout
 
 ```
-prepare-stock.sh    NAND backup  → work/my355/prepared/
+fetch-prepared.sh   published bundle → work/my355/prepared/
+prepare-stock.sh    NAND backup      → the same three files
+cache-pack.sh       work/my355/prepared/ → a bundle to publish
+build-all.sh        rootfs → image → the release .img.zip
 build-rootfs.sh     harvest + overlay/ + BusyBox → rootfs.tar
 build-image.sh      prepared + rootfs → baseos-my355.img
 overlay/            init, inittab, rcS, the frontend session — what makes it ours

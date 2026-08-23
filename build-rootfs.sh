@@ -25,10 +25,14 @@ BASEOS_VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
 BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
 
 
-[ -f "$PREPARED/stock-harvest.tar" ] || {
-  echo "missing $PREPARED/stock-harvest.tar (run ./prepare-stock.sh)" >&2
-  exit 1
-}
+for artifact in source.json stock-harvest.tar; do
+  [ -f "$PREPARED/$artifact" ] || {
+    echo "missing $PREPARED/$artifact" >&2
+    echo "run ./fetch-prepared.sh, or ./prepare-stock.sh from a NAND dump" >&2
+    exit 1
+  }
+done
+python3 "$HERE/tools/source_manifest.py" verify "$PREPARED/source.json" "$PREPARED" --quiet
 
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
@@ -47,6 +51,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
 
   mkdir -p "$R"/proc "$R"/sys "$R"/dev "$R"/tmp "$R"/run "$R"/var \
            "$R"/data "$R"/mnt/SDCARD "$R"/root "$R"/etc
+
+  # Stock uses the lowercase path, NextUI the uppercase one.
+  ln -sfn /mnt/SDCARD "$R"/mnt/sdcard
 
   # 1. BusyBox and its applet links (mount, sh, init, getty, ... — rcS calls
   #    them by path, so the links must exist).
@@ -90,6 +97,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
 
   # resolv.conf is written by the udhcpc event script into /run.
   ln -sf /run/resolv.conf "$R"/etc/resolv.conf
+
+  # machine-id is restored from /data into tmpfs by rcS; baking the symlink
+  # keeps the root filesystem off the boot path.
+  ln -sf /run/machine-id "$R"/etc/machine-id
 
   tar -cf /work/rootfs.tar -C "$R" .
   echo "  rootfs: $(tar -tf /work/rootfs.tar | wc -l) entries, $(stat -c %s /work/rootfs.tar) bytes"
