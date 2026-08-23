@@ -1,0 +1,29 @@
+BaseOS for the Miyoo Flip
+=========================
+
+Derived from BaseOS for Allwinner H700 handhelds by Prashant Vaibhav:
+
+    https://github.com/pvaibhav/BaseOS
+
+Forked at commit dbe5211 ("docs: update README.md", 2026-08-15). The full upstream
+history is preserved in this repository's git history; upstream authorship is intact
+on every commit that carries it.
+
+Files that remain upstream's work, unmodified or nearly so:
+
+    src/fbsplash.c              the framebuffer splash renderer
+    assets/bootlogo.bmp         the BaseOS wordmark
+    tools/docker-platform.sh    container platform selection
+    upstream-h700/**            the whole H700 port, parked and not built here
+
+assets/boot.ttf is licensed under the SIL Open Font License; see assets/OFL.txt.
+
+Everything else — the Rockchip boot chain, the SPI NAND preloader work, the my355
+rootfs, overlay and documentation — is new in this repository.
+
+LICENSE
+-------
+
+Upstream BaseOS ships no license file, so the terms under which this derivative may
+be used are currently unsettled. Do not treat this repository as licensed for reuse
+until that is resolved.
