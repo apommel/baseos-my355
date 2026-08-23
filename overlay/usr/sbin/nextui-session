@@ -17,8 +17,14 @@ SDCARD=/mnt/SDCARD
 USERDATA_DIR="$SDCARD/.userdata/my355/userdata"
 LOG=/tmp/nextui-session.log
 
+# `read` and `echo` are ash builtins, so this costs no fork.
+uptime_now() {
+	read -r _up _rest < /proc/uptime
+	echo "$_up"
+}
+
 log() {
-	line="$(/bin/cut -d" " -f1 /proc/uptime) $*"
+	line="$(uptime_now) $*"
 	echo "$line" >> "$LOG" 2>/dev/null
 	[ -d "$SDCARD" ] && echo "$line" >> "$SDCARD/baseos-session.log" 2>/dev/null
 }
@@ -98,7 +104,7 @@ grep -q ' /userdata/bluetooth ' /proc/mounts || \
 	/bin/mount --bind /run/bluetooth_fix /userdata/bluetooth
 
 # --- hand off ---------------------------------------------------------------
-/bin/cut -d" " -f1 /proc/uptime > /run/boot-frontend-exec
+uptime_now > /run/boot-frontend-exec
 
 UPDATER="$SDCARD/.tmp_update/updater"
 if [ -x "$UPDATER" ]; then
