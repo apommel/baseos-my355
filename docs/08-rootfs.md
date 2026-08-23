@@ -121,8 +121,8 @@ kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init
 
 `init=/init` is not optional; see [06](06-card-image-build.md).
 
-`rcS` is short — **0.21 s** (`rcS-start 1.50`, `rcS-done 1.71`, 2026-08-23; it was
-60 ms before Bluetooth, and the system bus accounts for only ~20 ms of the growth —
+`rcS` is short — **0.20 s**, of which `dbus-daemon --system` is 0.14 s and
+everything else 0.06 s (2026-08-23; it was 60 ms before Bluetooth added the bus —
 see the [boot budget](01-boot-budget.md)) — and shorter than the H700 equivalent
 because this kernel does more for us:
 

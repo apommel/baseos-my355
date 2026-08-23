@@ -2,16 +2,11 @@
 # Publish the prepared-input bundle that fetch-prepared.sh restores.
 # Usage: ./cache-pack.sh [YYYYMMDD]
 #
-# Packs uboot.img, boot.img and stock-harvest.tar into one zstd stream and
-# writes the manifests that make it verifiable:
+# Packs uboot.img, boot.img and stock-harvest.tar into one zstd stream, and
+# writes manifest/prepared/{source.json,bundle.sha256,bundle.url}.
 #
-#   manifest/prepared/source.json     per-artifact size + SHA-256, the anchor
-#   manifest/prepared/bundle.sha256   hash of the published bundle
-#   manifest/prepared/bundle.url      where it lives
-#
-# No --long window: unlike H700's ten near-identical targets these three members
-# share almost no bytes, so a large window buys nothing and would have to be
-# repeated on every decompression.
+# No --long window: unlike H700's ten near-identical targets these members share
+# almost no bytes, and it would have to be repeated on every decompression.
 #
 # This redistributes vendor firmware. Read NOTICE before publishing.
 set -eu
@@ -51,8 +46,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   alpine:3.20 sh -euc '
   apk add -q tar zstd
   cd /in
-  # Fixed member metadata, so the same inputs pack to the same stream and the
-  # published hash only moves when the firmware does.
+  # Fixed metadata: the published hash then moves only when the firmware does.
   tar --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - \
     prepared/uboot.img prepared/boot.img prepared/stock-harvest.tar \
     | zstd -19 -T0 -o "/out/$NAME" -f

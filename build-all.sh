@@ -2,9 +2,8 @@
 # Build the release artifact from prepared inputs.
 # Usage: ./build-all.sh
 #
-# Produces work/my355/baseos-my355-<version>.img.zip — the one file a release
-# publishes. Inputs come from fetch-prepared.sh or prepare-stock.sh; the steps
-# below remain individually runnable.
+# Produces work/my355/baseos-my355-<version>.img.zip. Inputs come from
+# fetch-prepared.sh or prepare-stock.sh; each step below runs standalone.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -14,7 +13,7 @@ VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
 [ -n "$VERSION" ] || { echo "VERSION is empty" >&2; exit 1; }
 command -v zip >/dev/null 2>&1 || { echo "zip is required to package images" >&2; exit 1; }
 
-# Check the inputs up front rather than part-way through a long build.
+# Up front, rather than part-way through a long build.
 for artifact in source.json uboot.img boot.img stock-harvest.tar; do
   [ -f "$WORK/prepared/$artifact" ] || {
     echo "missing $WORK/prepared/$artifact — run ./fetch-prepared.sh" >&2
@@ -27,8 +26,7 @@ done
 
 archive="$WORK/baseos-my355-$VERSION.img.zip"
 rm -f "$archive"
-# -j so the archive holds a bare baseos-my355.img, -X so no host metadata rides
-# along into a published file.
+# -j: bare baseos-my355.img inside. -X: no host metadata in a published file.
 zip -q -j -X "$archive" "$WORK/baseos-my355.img"
 
 if command -v sha256sum >/dev/null 2>&1; then

@@ -22,7 +22,7 @@ grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 /bin/mount -t tmpfs -o mode=1777,size=256m tmpfs /tmp
 /bin/mount -t tmpfs -o mode=755,size=32m   tmpfs /run
 
-# `read` and `echo` are ash builtins, so a marker costs no fork.
+# Builtins only: a marker costs no fork.
 mark() {
 	read -r _up _rest < /proc/uptime
 	echo "$_up" > "$1"
@@ -30,7 +30,6 @@ mark() {
 mark /run/boot-rcS-start
 
 /bin/mount -t tmpfs -o mode=755,size=64m   tmpfs /var
-# One mkdir for every tmpfs directory this script needs.
 /bin/mkdir -p /var/lib /var/log /var/tmp /var/empty /var/lib/dbus /run/dbus
 /bin/ln -s /run /var/run
 
@@ -40,15 +39,15 @@ mark /run/boot-rcS-start
 # start-up and treats the failure as fatal, so without `lo` there is no adb.
 /sbin/ifconfig lo 127.0.0.1 netmask 255.0.0.0 up 2>/dev/null
 
-# Persistent state (mmcblk1p4). It survives system updates: an A/B slot flip
-# moves only the rootfs partition. Mount point baked into the image.
+# Persistent state (mmcblk1p4). Survives an A/B slot flip, which moves only the
+# rootfs partition. Mount point is baked into the image.
 if ! /bin/mount -t ext4 -o rw,noatime /dev/mmcblk1p4 /data 2>/dev/null; then
 	/bin/mount -t tmpfs tmpfs /data
 fi
 mark /run/boot-data-mounted
 
-# machine-id: stable across boots, generated once. /etc/machine-id is baked as
-# a symlink, so nothing here writes to the root filesystem.
+# Stable across boots, generated once. /etc/machine-id is a baked symlink, so
+# nothing here writes to the root filesystem.
 if [ -s /data/machine-id ]; then
 	/bin/cp /data/machine-id /run/machine-id
 else
@@ -82,7 +81,7 @@ mark /run/boot-dbus-start
 # mmcblk2p1. Falling back to this card's own FAT partition keeps a single-card
 # setup working. NextUI itself is slot-agnostic: nothing in its scripts names a
 # block device, only /mnt/SDCARD.
-# Mount point and the lowercase /mnt/sdcard alias are baked into the image.
+# Mount point and the /mnt/sdcard alias are baked into the image.
 if ! /bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed /dev/mmcblk2p1 /mnt/SDCARD 2>/dev/null; then
 	/bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed /dev/mmcblk1p5 /mnt/SDCARD 2>/dev/null
 fi
@@ -91,15 +90,24 @@ fi
 [ -x /usr/sbin/usb-gadget-adb ] && /usr/sbin/usb-gadget-adb &
 
 mark /run/boot-rcS-done
-# Persistent copy: /run is tmpfs and vanishes with the power. On a device with
-# no console this is the only boot record that survives to be read later.
+
+# Boot record, since /run is tmpfs and this device has no console. The card copy
+# is readable from any computer. Backgrounded: no write on the hand-off path.
 {
-	echo "boot $(/bin/date 2>/dev/null)"
-	echo "  rcS-start $(/bin/cat /run/boot-rcS-start 2>/dev/null)"
-	echo "  data-mnt  $(/bin/cat /run/boot-data-mounted 2>/dev/null)"
-	echo "  dbus      $(/bin/cat /run/boot-dbus-start 2>/dev/null)"
-	echo "  rcS-done  $(/bin/cat /run/boot-rcS-done 2>/dev/null)"
-	echo "  cmdline   $(/bin/cat /proc/cmdline)"
-	echo "  mounts    $(/bin/grep -c . /proc/mounts) entries"
-	/bin/grep -E 'mmcblk|/data|SDCARD' /proc/mounts | /bin/sed 's/^/    /'
-} >> /data/boot.log 2>/dev/null
+	. /etc/baseos-release 2>/dev/null
+	{
+		echo "boot $(/bin/date 2>/dev/null)"
+		echo "  version   $BASEOS_VERSION ($BASEOS_BUILD)"
+		echo "  rcS-start $(/bin/cat /run/boot-rcS-start 2>/dev/null)"
+		echo "  data-mnt  $(/bin/cat /run/boot-data-mounted 2>/dev/null)"
+		echo "  dbus      $(/bin/cat /run/boot-dbus-start 2>/dev/null)"
+		echo "  rcS-done  $(/bin/cat /run/boot-rcS-done 2>/dev/null)"
+		echo "  cmdline   $(/bin/cat /proc/cmdline)"
+		echo "  mounts    $(/bin/grep -c . /proc/mounts) entries"
+		/bin/grep -E 'mmcblk|/data|SDCARD' /proc/mounts | /bin/sed 's/^/    /'
+	} > /run/boot-record
+	/bin/cat /run/boot-record >> /data/boot.log
+	if /bin/grep -q ' /mnt/SDCARD ' /proc/mounts; then
+		/bin/cat /run/boot-record >> /mnt/SDCARD/baseos-boot.log
+	fi
+} 2>/dev/null &

@@ -3,10 +3,9 @@
 
     source_manifest.py verify SOURCE_JSON PREPARED_DIR
 
-source.json is the trust anchor for both ways of getting those artifacts:
-deriving them from a NAND dump, or restoring the published bundle. A bad restore
-then fails where a bad prepare would, and the bundle stays an optimisation
-rather than a second source of truth.
+The trust anchor for both ways of getting those artifacts — deriving them from a
+NAND dump, or restoring the published bundle. A bad restore then fails where a
+bad prepare would.
 """
 from __future__ import annotations
 

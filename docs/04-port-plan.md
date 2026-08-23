@@ -68,11 +68,10 @@ Ordered by what currently blocks progress.
 - **Which vendor daemons NextUI actually needs** for brightness, battery and
   Bluetooth. H700 needed three shims (`systemctl`, `timedatectl`,
   `setBluetooth.sh`); the my355 surface looks smaller but is unmeasured.
-- ~~**Boot budget for a real card.**~~ **Done (2026-08-23).** Both systems measured
-  end to end: hand-off 5.05 s against stock's 15.79 s, first frame 7.98 s against
-  31.50 s. Pre-kernel from the card is 3.13 s against 4.30 s from NAND. What the
-  measurement opened rather than closed is why NextUI's `launch.sh` costs 12.45 s on
-  stock and 0.88 s here ([boot budget](01-boot-budget.md)).
+- ~~**Boot budget for a real card.**~~ **Done (2026-08-23).** Hand-off 4.98 s
+  against stock's 15.79 s, first frame 7.93 s against 31.50 s, pre-kernel 3.13 s
+  from the card against 4.30 s from NAND. Left open: why NextUI's `launch.sh` costs
+  12.45 s on stock and 0.89 s here ([boot budget](01-boot-budget.md)).
 - **Root read-only.** The card currently mounts root `rw`. H700 targets a
   read-only root with writable state on `/data` ([docs/06](../upstream-h700/docs/06-status-and-lessons.md)).
 - **A/B updates.** Slot B is reserved but `baseos-update`, `mkupdate.py` and

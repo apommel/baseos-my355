@@ -38,8 +38,7 @@ for f in "$PREPARED/source.json" "$UBOOT_SRC" "$BOOT_SRC"; do
     exit 1
   }
 done
-# U-Boot goes on the card verbatim and the kernel must stay byte-for-byte
-# vendor, so both are checked before either is touched.
+# U-Boot goes on the card verbatim and the kernel must stay byte-for-byte vendor.
 python3 "$HERE/tools/source_manifest.py" verify "$PREPARED/source.json" "$PREPARED" --quiet
 
 [ -f "$ROOTFS_TAR" ] || { echo "missing $ROOTFS_TAR (run ./build-rootfs.sh)" >&2; exit 1; }

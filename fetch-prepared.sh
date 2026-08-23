@@ -2,17 +2,14 @@
 # Restore the prepared build inputs without a NAND dump of your own.
 # Usage: ./fetch-prepared.sh [--from BUNDLE] [--force]
 #
-# Fetches the three things prepare-stock.sh derives from internal SPI NAND —
-# uboot.img, boot.img, stock-harvest.tar — and installs the source.json that
-# describes them from git.
+# Fetches uboot.img, boot.img and stock-harvest.tar, and installs the
+# source.json describing them from git.
 #
-# A cache restore, not a second build path. The bundle SHA-256
-# (manifest/prepared/bundle.sha256) covers the download; each artifact's own
-# hash in source.json covers the contents, and is the check every build runs.
+# A cache restore, not a second build path: bundle.sha256 covers the download,
+# source.json covers the contents and is what every build checks.
 #
-# It does not give you a preloader: tools/mkpreloader.py patches your unit's own
-# mtd5, and you need a NAND backup to recover from a bad write. Take one either
-# way — docs/03-nand-backup-and-recovery.md.
+# No preloader — mkpreloader.py patches your own mtd5, and recovery needs a NAND
+# backup. Take one either way (docs/03-nand-backup-and-recovery.md).
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -29,7 +26,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --from) BUNDLE="${2:?--from needs a path}"; shift 2 ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -54,8 +51,8 @@ sha256_of() {
   fi
 }
 
-# A local source.json that differs means a prepare against a different dump.
-# Overwriting it throws away the only record of what that build came from.
+# A differing local source.json means a prepare against another dump; it is the
+# only record of what that build came from.
 if [ -f "$WORK/source.json" ] && ! cmp -s "$PREPARED/source.json" "$WORK/source.json" \
    && [ "$FORCE" -eq 0 ]; then
   echo "work/my355/prepared was prepared locally from a different dump" >&2
@@ -106,8 +103,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
     prepared/uboot.img prepared/boot.img prepared/stock-harvest.tar
 '
 
-# Derived artifacts from the previous inputs are now stale; leaving them lets a
-# build mix a fresh boot image with an old rootfs.
+# Stale now: keeping them lets a build mix a fresh boot image with an old rootfs.
 rm -f "$HERE/work/my355/rootfs.tar" "$HERE/work/my355/boot-sd.img" \
       "$HERE/work/my355/baseos-my355.img" "$HERE/work/my355/baseos-logo.bmp"
 

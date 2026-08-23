@@ -82,12 +82,18 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
            "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb \
            "$R"/usr/bin/baseos-splash "$R"/usr/share/udhcpc/default.script
 
-  # Version identity, from VERSION so it cannot drift. NextUI reads
-  # /usr/miyoo/version for the About screen; on stock it is a build timestamp.
+  # All three from VERSION so they cannot drift. NextUI reads
+  # /usr/miyoo/version for its About screen.
   {
     printf "BASEOS_VERSION=%s\n" "$BASEOS_VERSION"
     printf "BASEOS_BUILD=%s\n" "$BASEOS_BUILD"
   } >> "$R"/etc/baseos-release
+  {
+    printf "NAME=\"BaseOS\"\nID=baseos\n"
+    printf "VERSION_ID=%s\n" "$BASEOS_VERSION"
+    printf "PRETTY_NAME=\"BaseOS %s (my355)\"\n" "$BASEOS_VERSION"
+    printf "HOME_URL=\"https://github.com/apommel/baseos-my355\"\n"
+  } > "$R"/etc/os-release
   mkdir -p "$R"/usr/miyoo
   printf "BaseOS %s\n" "$BASEOS_VERSION" > "$R"/usr/miyoo/version
 
@@ -98,8 +104,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # resolv.conf is written by the udhcpc event script into /run.
   ln -sf /run/resolv.conf "$R"/etc/resolv.conf
 
-  # machine-id is restored from /data into tmpfs by rcS; baking the symlink
-  # keeps the root filesystem off the boot path.
+  # rcS restores machine-id from /data into tmpfs; the baked symlink keeps the
+  # root filesystem off the boot path.
   ln -sf /run/machine-id "$R"/etc/machine-id
 
   tar -cf /work/rootfs.tar -C "$R" .

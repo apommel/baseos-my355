@@ -17,7 +17,7 @@ SDCARD=/mnt/SDCARD
 USERDATA_DIR="$SDCARD/.userdata/my355/userdata"
 LOG=/tmp/nextui-session.log
 
-# `read` and `echo` are ash builtins, so this costs no fork.
+# Builtins only: no fork.
 uptime_now() {
 	read -r _up _rest < /proc/uptime
 	echo "$_up"
