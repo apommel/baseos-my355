@@ -25,8 +25,9 @@ way, so the mainline path is open too.
 `storagemedia=sd`.
 
 NextUI has been launched from it successfully. With the kernel stored gzipped,
-BaseOS reaches frontend hand-off in **≈4.8 s** against stock's **15.8 s** — and
-boots from SD faster than stock does from internal NAND. See the
+BaseOS reaches frontend hand-off in **5.05 s** against stock's **15.79 s**, and a
+first NextUI frame in **7.98 s** against stock's **31.50 s** (both measured
+2026-08-23) — and boots from SD faster than stock does from internal NAND. See the
 [boot budget](01-boot-budget.md) and the [port plan](04-port-plan.md).
 
 **As of 2026-08-20 this unit runs:**
@@ -48,7 +49,7 @@ from either the stock system or ROCKNIX.
 | | |
 |---|---|
 | [00 · Device and boot chain](00-device-and-boot-chain.md) | Hardware, MTD layout, kernel config, SD slot mapping, SPL boot order. Start here. |
-| [01 · Boot budget](01-boot-budget.md) | Where the ~18 s to frontend goes, and what a port can reclaim. |
+| [01 · Boot budget](01-boot-budget.md) | Stock and BaseOS measured end to end, how to read the two clocks, and what is left to win. |
 | [02 · SD boot](02-sd-boot.md) | The working mechanism, the card recipe, and the gotchas. |
 | [03 · NAND backup and recovery](03-nand-backup-and-recovery.md) | Hashes, provenance, how to get back to stock. |
 | [04 · Port plan](04-port-plan.md) | Stock-kernel vs mainline, open questions, whether to build our own preloader. |

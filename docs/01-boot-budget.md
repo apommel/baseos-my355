@@ -1,73 +1,148 @@
 # my355 · Boot budget
 
-Where the ~18 s from power-on to frontend actually goes, and what a BaseOS port can
-realistically reclaim.
+Where the 31.5 s from power-on to a NextUI frame on stock actually goes, what BaseOS
+reclaims, and what is left.
 
-> **Provenance.** Measured on hardware over adb, 2026-08-19 to 2026-08-20, on a unit
-> running stock firmware with NextUI installed. Claims are *verified* (observed on
-> hardware) or *inferred* (from binaries); retracted ones are kept in the
+> **Provenance.** Measured on hardware over adb. The end-to-end stock and BaseOS
+> figures below are from **2026-08-23**, one cold boot each, USB unplugged at
+> power-on. Earlier structural findings are from 2026-08-19/22 and are dated where
+> they matter. Claims are *verified* (observed on hardware) or *inferred* (from
+> binaries); retracted ones are kept in the
 > [investigation log](05-investigation-log.md).
+
+## Reading the two clocks
 
 Rockchip's arch counter runs from SoC reset and U-Boot does not reset it, so kernel
 timestamps are **power-on-relative**. This is confirmed by the reference serial log,
 where U-Boot prints `Total: 3295.512/3340.136 ms` immediately before
 `Starting kernel ...` and the first kernel line reads `[ 3.344904]`.
 
-| phase | boundary | duration |
-|---|---|---|
-| bootrom + DDR training + SPL + BL31 + OP-TEE | → 0.39 s | **~0.39 s** |
-| U-Boot | → 3.34 s (no card) / 4.29 s (card present) | **~2.9–3.9 s** |
-| kernel → `/sbin/init` | 4.29 → 5.90 s | **1.61 s** |
-| stock userland → frontend hand-off | 5.90 → 15.80 s | **9.90 s** |
-| NextUI's own init | → ~18–20 s | ~2–4 s |
+`/proc/uptime` is *not* power-on-relative: it starts when the kernel initialises
+timekeeping, about 0.16–0.19 s after the first printk. Every process `starttime`
+(`/proc/<pid>/stat` field 22, USER\_HZ = 100) is on that second clock, so a
+per-boot offset has to be pinned before the two can be read together. Two ways,
+which agree:
 
-`launch.sh` (NextUI's entry point) starts at uptime 11.51 s = **15.80 s from power-on**.
-That is the direct analogue of BaseOS's `boot-frontend-exec`, which is **2.96 s** on
-RG40XXV ([05](../upstream-h700/docs/05-runtime-power-network.md)).
+* **Direct.** `u=$(cut -d" " -f1 /proc/uptime); echo "probe $u" > /dev/kmsg`, then
+  read the printk timestamp back. The difference *is* the offset. Three probes on
+  the stock boot gave 4.495 / 4.491 / 4.498 → **4.49 s**.
+* **By anchor.** A `jbd2/mmcblk1p*` thread's `starttime` against its
+  `EXT4-fs … mounted` printk. On the BaseOS boot: 1.39 against 4.686, and 1.53
+  against 4.823 → **3.295 s**, the two agreeing to 2 ms.
 
-## BaseOS, measured end to end (2026-08-21)
+Use the direct probe where there is no ext4 to anchor on — stock's root is squashfs.
 
-Read over adb from a **cold** boot with USB unplugged (see the caveat below),
-kernel stored gzipped. `/proc/uptime` is offset from the power-on-relative kernel
-clock by a fixed amount — **uptime + 3.31 s = seconds from power-on** — pinned by
-two events visible in both clocks: `jbd2/mmcblk1p3` starts at uptime 1.38 against
-`EXT4-fs (mmcblk1p3): mounted` at 4.690, and `/data` at 1.52 against 4.825.
+## Stock, measured end to end (2026-08-23)
+
+`uptime + 4.49 = seconds from power-on`. The USB cable was attached at 37 s, well
+after the frame, so no charge animation is in these numbers.
+
+| phase | duration | at power-on | source |
+|---|---|---|---|
+| bootrom + DDR + SPL + BL31 + **U-Boot, from NAND** | 4.30 s | 4.30 | first printk `4.295967` |
+| kernel → `/sbin/init` | 1.61 s | 5.91 | `Freeing unused kernel memory` |
+| init → `S01syslogd` | 4.27 s | 10.18 | `/proc/<pid>/stat` |
+| `S10udev` … `S50usbdevice` | 5.23 s | 15.41 | dbus 12.85, ntp 14.38, dropbear 14.85 |
+| `S60mainui` → `runmiyoo.sh` → `updater` → `my355.sh` | 0.24 s | 15.79 | |
+| **frontend hand-off — `launch.sh` starts** | | **15.79** | |
+| `launch.sh` starts `miyoo_inputd`, `keymon`, `batmon`, `audiomon` | 0.15 s | 15.94 | |
+| **NextUI `launch.sh` prologue** | **12.45 s** | 28.39 | `nextui.elf` starttime 2390 |
+| `nextui.elf` init → first frame | 3.11 s | **31.50** | `Freeing drm_logo memory` |
+
+**Power-on to a NextUI frame on stock: 31.50 s.** A stopwatch says 28–32 s, which is
+the number this table had to reproduce and the older ~18 s estimate never did.
+
+The 15.79 s hand-off is exactly the 15.80 s measured in 2026-08-19. What was wrong
+was the line after it: NextUI's own init was guessed at 2–4 s. It is **15.7 s**.
+
+## BaseOS, measured end to end (2026-08-23)
+
+`uptime + 3.295 = seconds from power-on`, kernel stored gzipped, cold boot with USB
+unplugged.
 
 | phase | duration | at power-on | source |
 |---|---|---|---|
 | bootrom + DDR + SPL + BL31 | 0.39 s | 0.39 | [SD boot](02-sd-boot.md) |
-| **vendor U-Boot 2017.09, from the card** | **2.75 s** | 3.14 | first printk |
-| kernel → `Run /init` | 1.57 s | 4.71 | dmesg |
-| busybox init → first `rcS` breadcrumb | 0.08 s | 4.79 | `/run/boot-rcS-start` |
-| **`rcS`** | **0.07 s** | 4.86 | `/run/boot-rcS-done` |
-| `rcS` → frontend exec | 0.05 s | 4.91 | `/run/boot-frontend-exec` |
-| updater → `my355.sh` → `launch.sh` | 0.05 s | 4.96 | `/proc/<pid>/stat` field 22 |
-| NextUI `launch.sh` prologue | 0.89 s | 5.85 | `nextui.elf` starttime |
-| `nextui.elf` init → first frame | 1.77 s | **7.62** | `Freeing drm_logo memory` |
+| **vendor U-Boot 2017.09, from the card** | **2.74 s** | 3.13 | first printk `3.132398` |
+| kernel → `Run /init` | 1.57 s | 4.70 | dmesg `4.701144` |
+| busybox init → first `rcS` breadcrumb | 0.09 s | 4.80 | `/run/boot-rcS-start` |
+| **`rcS`** | **0.21 s** | 5.01 | `/run/boot-rcS-done` |
+| init spawns `nextui-session` | 0.01 s | 5.02 | `/proc/<pid>/stat` |
+| **frontend hand-off — `exec updater`** | 0.03 s | **5.05** | `/run/boot-frontend-exec` |
+| `updater` → `my355.sh` → `launch.sh` | 0.09 s | 5.14 | |
+| NextUI `launch.sh` prologue | 0.88 s | 6.02 | `nextui.elf` starttime |
+| `nextui.elf` init → first frame | 1.97 s | **7.98** | `Freeing drm_logo memory` |
 
-**Power-on to a usable frontend: ≈7.6 s, against ≈18.5 s on stock.**
+**Power-on to a usable frontend: 7.98 s, against 31.50 s on stock — 3.9x.**
 
-"First frame" is the kernel releasing the bootloader framebuffer when userspace
-takes the display over. Corroborated two ways: `nextui.txt` mtime lands in
-21:25:04–06 (FAT's 2 s granularity → 6.8–8.8 s), and a stopwatch says 7–8 s.
+"First frame" is the kernel releasing the bootloader framebuffer when userspace takes
+the display over, and it is the same event on both systems.
+
+### `rcS` grew, and it was not dbus
+
+`rcS` was 0.07 s in 2026-08-21 and is 0.21 s now. The system bus that the Bluetooth
+work added is **not** the cost: `dbus-daemon` forks at uptime 1.69 against
+`rcS-done` 1.71, so it is worth ~20 ms, exactly as predicted. The 0.16 s sits between
+the `/data` mount landing (kernel logs it at uptime 1.53) and that fork — the first
+writes to a freshly mounted ext4 on the card, plus a busybox fork per line. That
+attribution is inferred from the surrounding timestamps, not instrumented.
+
+## The comparison
 
 | phase | stock | BaseOS | |
 |---|---|---|---|
-| pre-kernel | 4.26 s from NAND | **3.14 s** from SD | −1.1 s |
-| kernel → `/init` | 1.61 s | 1.57 s | |
-| userland → frontend hand-off | **9.90 s** | **0.20 s** | |
-| **total to hand-off** | **15.8 s** | **4.91 s** | **−10.9 s** |
+| pre-kernel | 4.30 s from NAND | **3.13 s** from SD | −1.17 s |
+| kernel → `/init` | 1.61 s | 1.57 s | −0.04 s |
+| OS userland → frontend hand-off | **9.88 s** | **0.35 s** | **−9.53 s** |
+| **total to hand-off** | **15.79 s** | **5.05 s** | **−10.74 s** |
+| NextUI `launch.sh` prologue | **12.45 s** | **0.88 s** | **−11.57 s** |
+| `nextui.elf` init → first frame | 3.11 s | 1.97 s | −1.14 s |
+| **total to first frame** | **31.50 s** | **7.98 s** | **−23.52 s** |
 
 Essentially the entire vendor userland — `mount -a` over SPI NAND,
 `udevadm settle --timeout=30`, then eight serialised `S*` scripts — is gone, and
-BaseOS now boots from SD *faster than stock does from internal NAND*.
+BaseOS boots from SD *faster than stock does from internal NAND*.
 
-Nothing of ours is left on the critical path: `adbd` starts at 4.90 and `ntpd` at
-4.87, both after the hand-off, and WiFi does not associate until 18.5 s.
-The 0.89 s `launch.sh` prologue is NextUI's own script — FAT32 `mkdir`s,
-`rm -rf .shadercache`, two synchronous `nextval.elf` calls, `touch && sync`,
-`tinymix` — and is identical on stock, so it is not a BaseOS cost. It is,
-however, now the second-largest single block in the boot.
+Nothing of ours is left on the critical path: `adbd` starts at 5.04 and `ntpd` at
+5.01, both after the hand-off, and WiFi does not associate until well after the
+frame.
+
+### Half the win is not ours, and it is the half we do not understand
+
+**Retracted (2026-08-23):** this file used to say the `launch.sh` prologue "is
+identical on stock, so it is not a BaseOS cost". It is not identical. It is
+**0.88 s on BaseOS and 12.45 s on stock** — a bigger single saving than the entire
+vendor userland we deleted, and it comes from a script we do not own and did not
+change.
+
+What that 12.45 s is remains **unattributed**. During it the kernel log is silent
+from 15.95 s to the frame at 31.50 s, and syslog is silent too. Post-hoc on the
+running device, every candidate was excluded:
+
+| candidate | measured on stock | |
+|---|---|---|
+| card I/O | 22 MB/s; the whole 14.4 MB `.system/lib`+`bin` cold in 0.66 s | not it |
+| `nextval.elf` ×2 | 0.60 s cold, 0.04 s warm | 1.2 s of 12.45 |
+| `amixer scontents` | 0.25 s cold | not it |
+| `modetest -M rockchip` | 0.15 s cold | not it |
+| `sync`, `killall`, `run_hooks.sh boot.d` | 0.02 s each; no `boot.d`, no `auto.sh` | not it |
+| walking the card | `/userdata` (the whole card root on stock) cold in 0.03 s | not it |
+
+File mtimes bracket it rather than explain it: `batmon.elf` writes `/tmp/percBat` at
+26.4 s and `audiomon.elf` writes its log at 27.4 s, both ~11 s after starting at
+15.94 s, and `touch /tmp/nextui_exec` lands at 28.4 s. So the whole cohort that
+`launch.sh` starts stalls for the same ~11 s, which points at something shared rather
+than at one slow step. Attributing it needs `launch.sh` instrumented across a reboot,
+which means editing a NextUI install.
+
+Two consequences worth stating plainly:
+
+1. **The honest BaseOS claim is the hand-off number, 5.05 s against 15.79 s.** The
+   3.9x on the frame is real and is what an owner experiences, but 11.6 s of the
+   23.5 s saved is NextUI behaving differently in our environment, not work we
+   removed.
+2. **`launch.sh` is now the largest single block in a BaseOS boot after U-Boot** —
+   0.88 s against `rcS`'s 0.21 s.
 
 > **Measuring caveat.** With a USB cable attached at power-on, U-Boot runs its
 > charge animation (`/charge-animation`, `rockchip,uboot-charge`) before booting,
@@ -221,19 +296,24 @@ Use the [H700 project README](../upstream-h700/README.md) figures, not
 for the same reason they are here — the arch counter is not reset by the bootloader.
 Read as kernel-relative they contradict the README and flatter us by ~2 s.
 
-| | H700 (RG40XXV) | my355 | |
+| | H700 (RG40XXV) | my355 (2026-08-23) | |
 |---|---|---|---|
-| LED → frontend hand-off | **2.96 s** | 4.91 s | we are 1.95 s behind |
-| ├ bootloader + kernel + init | 2.04 s | 4.79 s | −2.75 s |
-| └ `rcS` + hand-off | 0.92 s | **0.12 s** | **+0.80 s** |
-| frontend init → input | 4.18 s | **2.71 s** | **+1.47 s** |
-| **LED → input** | **7.14 s** | **7.62 s** | −0.48 s |
+| LED → frontend hand-off | **2.96 s** | 5.05 s | we are 2.09 s behind |
+| ├ bootloader + kernel + init | 2.04 s | 4.80 s | −2.76 s |
+| └ `rcS` + hand-off | 0.92 s | **0.25 s** | **+0.67 s** |
+| frontend init → first frame | 4.18 s | **2.93 s** | **+1.25 s** |
+| **LED → first frame** | **7.14 s** | **7.98 s** | −0.84 s |
 
-The two ports land within half a second of each other by *trading opposite
-strengths*. Our userland is ~7x leaner than theirs and our NextUI init is 1.5 s
-faster (an RK3566 with four A55s and a 50 MHz card against their A53s) — and the
-entire 2.75 s deficit is the bootloader-and-kernel phase, which is large enough to
-swallow both advantages.
+The two ports land within a second of each other by *trading opposite strengths*.
+Our userland is ~4x leaner than theirs and our NextUI start is 1.25 s faster (an
+RK3566 with four A55s and a 50 MHz card against their A53s) — and the entire 2.76 s
+deficit is the bootloader-and-kernel phase, which is large enough to swallow both
+advantages.
+
+Their frontend figure carries the same caveat ours now does: it is NextUI's own
+start, not work BaseOS controls, and nobody has measured what the H700 NextUI does
+on *stock* for comparison. If it behaves the way this device's does, that 4.18 s is
+also a fraction of what an owner would see on the vendor OS.
 
 **H700 has no U-Boot strategy to copy.** Per
 [h700/00](../upstream-h700/docs/00-boot-chain-and-partitions.md), boot0, the U-Boot blobs, the
@@ -270,7 +350,7 @@ Projected with (2) and (3): pre-kernel **1.3–1.8 s**, power-on to input **5.8�
 Lever (1) claims part of the same ground more cheaply, so they do not add.
 Not currently being pursued.
 
-## Where the 9.9 s of userland goes
+## Where the 9.9 s of stock userland goes
 
 Sequential, all blocking, all before `S60mainui`:
 
@@ -280,10 +360,11 @@ Sequential, all blocking, all before `S60mainui`:
 - `S30dbus`, `S36load_wifi_modules`, `S40bluetooth`, `S40network`, `S41dhcpcd`,
   `S49ntp`, `S50dropbear`, `S50usbdevice`
 
-This is exactly the class of work BaseOS deletes. Replacing the userland alone —
-keeping the stock bootloader and kernel byte-for-byte — should land hand-off near
-**5.5–6.5 s**, i.e. ~10 s reclaimed. Reaching H700-class numbers additionally requires
-owning U-Boot, which costs another ~2 s.
+This is exactly the class of work BaseOS deletes, and deleting it is what the
+measured hand-off confirms: **15.79 s → 5.05 s**, 9.53 s of it from this list alone.
+(The 2026-08-19 projection was "5.5–6.5 s"; the outcome beat it, because the SD path
+also saved 1.17 s of pre-kernel that the projection assumed we would keep.) Reaching
+H700-class numbers additionally requires owning U-Boot, which costs another ~2 s.
 
 ## NextUI's vendor surface is small
 

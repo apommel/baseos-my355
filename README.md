@@ -11,16 +11,21 @@ SD card first — stock still boots when no BaseOS card is present.
 
 ## Where the time goes
 
-Measured on hardware over adb, 2026-08-23, cold boot with USB unplugged:
+Both systems measured on hardware over adb, 2026-08-23, one cold boot each with the
+USB cable unplugged at power-on:
 
-| | |
-|---|---|
-| power-on → frontend hand-off | **≈5.0 s** (stock: 15.8 s) |
-| power-on → NextUI's first frame | **≈8.0 s** (stock + NextUI: ≈18.5 s) |
+| | stock | BaseOS | |
+|---|---|---|---|
+| power-on → frontend hand-off | 15.79 s | **5.05 s** | −10.74 s |
+| power-on → NextUI's first frame | 31.50 s | **7.98 s** | −23.52 s |
 
-It boots from SD faster than stock boots from internal NAND. The full breakdown,
-including what each phase costs and which levers are left, is in
-[docs/01-boot-budget.md](docs/01-boot-budget.md).
+It boots from SD faster than stock boots from internal NAND.
+
+Read the second row with a caveat that the boot budget spells out: 11.6 s of that
+23.5 s is NextUI's own `launch.sh` taking 12.45 s on stock against 0.88 s here, which
+is a script BaseOS neither owns nor changed and cannot yet explain. **The honest
+BaseOS claim is the first row.** The full breakdown, including what each phase costs
+and which levers are left, is in [docs/01-boot-budget.md](docs/01-boot-budget.md).
 
 ## Building
 

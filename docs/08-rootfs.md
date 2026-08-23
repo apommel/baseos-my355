@@ -121,8 +121,10 @@ kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init
 
 `init=/init` is not optional; see [06](06-card-image-build.md).
 
-`rcS` is short — measured at **60 ms** (`rcS-start 1.43`, `rcS-done 1.49`) — and
-shorter than the H700 equivalent because this kernel does more for us:
+`rcS` is short — **0.21 s** (`rcS-start 1.50`, `rcS-done 1.71`, 2026-08-23; it was
+60 ms before Bluetooth, and the system bus accounts for only ~20 ms of the growth —
+see the [boot budget](01-boot-budget.md)) — and shorter than the H700 equivalent
+because this kernel does more for us:
 
 | H700 does | my355 does not need to |
 |---|---|

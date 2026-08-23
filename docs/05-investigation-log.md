@@ -41,7 +41,7 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-21 | U-Boot disassembled: it **does** sniff for LZ4, but only frame framing with independent blocks. **LZ4 boots — and is 0.17 s slower than gzip.** gzip stays; no zstd in this U-Boot |
 | 2026-08-20 | **NextUI launched from BaseOS** |
 | 2026-08-22 | Stock SPL's SD failure explained: its DTB's `/pinctrl` node is an **empty skeleton** — the driver is compiled in, the node has no `compatible`, so no pin mux is ever applied ([SD boot](02-sd-boot.md)) |
-| 2026-08-22 | Full boot measured over adb: power-on → NextUI input **7.62 s**, against ~18.5 s stock ([boot budget](01-boot-budget.md)) |
+| 2026-08-22 | Full boot measured over adb: power-on → NextUI input **7.62 s**, against ~18.5 s stock — the stock half **superseded 2026-08-23**, see below ([boot budget](01-boot-budget.md)) |
 | 2026-08-22 | Pre-kernel budget decomposed with a padded-kernel boot: **U-Boot init 1.21 s, read 1.19 s at 10.9 MB/s, inflate 0.35 s** ([boot budget](01-boot-budget.md)) |
 | 2026-08-22 | The 0.40 s silent kernel gap identified as `tracer_init_tracefs` (0.383 s) — a kernel config choice, not reachable from the DTB |
 | 2026-08-22 | Replacing U-Boot evaluated and **shelved**: the boot path needs no reverse engineering, but mainline U-Boot has no VOP2 driver, so a splash means writing one ([U-Boot](09-uboot.md)) |
@@ -53,6 +53,10 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-22 | **Retracted:** the empty `/pinctrl` is not a regression in Miyoo's later SPL builds — it is in *every* Miyoo preloader sampled (Nov 02 and Dec 12 2024, two units). GammaLoader works because it is **Rockchip's generic `MiniLoaderAll.bin`** left behind by `rkdevtool`, not a Miyoo build; neither firmware image contains a preloader at all ([SD boot](02-sd-boot.md)) |
 | 2026-08-22 | **Stock-derived preloader written to `mtd5` and verified on hardware.** Stock boots with no card, BaseOS boots from SD, DMC healthy on the restored DDR **V1.18** — Experiment 7 below |
 | 2026-08-22 | Stock-derived preloader settled: the IDB carries **plain SHA-256, no signature**, and the fix is **+180 bytes of `/pinctrl` properties into 649 bytes of slack** — SPL code and DDR V1.18 byte-identical, boot order already SD-first. Built and self-verifying (`tools/mkpreloader.py`), not flashed ([SD boot](02-sd-boot.md)) |
+| 2026-08-23 | **Stock measured end to end for the first time: power-on → NextUI frame 31.50 s**, not the ~18.5 s this project had been quoting. The 15.8 s hand-off was right; NextUI's own start was guessed at 2–4 s and is **15.7 s**. A stopwatch had been saying 28–32 s all along ([boot budget](01-boot-budget.md)) |
+| 2026-08-23 | **Retracted:** "the `launch.sh` prologue is identical on stock, so it is not a BaseOS cost". It is **0.88 s on BaseOS against 12.45 s on stock** — a bigger saving than the whole vendor userland we delete, from a script we neither own nor changed. Unattributed: the kernel log and syslog are both silent through it, and I/O, `nextval.elf`, `amixer`, `modetest`, `sync` and card walks were each excluded on the running device ([boot budget](01-boot-budget.md)) |
+| 2026-08-23 | BaseOS re-measured after Bluetooth: first frame **7.98 s** (was 7.62), hand-off **5.05 s** (was 4.91). `rcS` 0.07 → 0.21 s, of which the system bus is only ~20 ms — the rest is the first writes to a freshly mounted `/data` ([boot budget](01-boot-budget.md)) |
+| 2026-08-23 | Clock method pinned: `/proc/uptime` and printk timestamps differ by a per-boot offset, measurable directly by writing an uptime reading into `/dev/kmsg` and reading the printk timestamp back. Needed on stock, whose squashfs root offers no `jbd2` anchor ([boot budget](01-boot-budget.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
