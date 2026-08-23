@@ -52,6 +52,8 @@ second source of truth: `manifest/prepared/source.json` holds each artifact's si
 and SHA-256, travels in git rather than inside the download, and every build checks
 against it.
 
+Step-by-step instructions for users are in [INSTALL.md](INSTALL.md).
+
 **The card installs the preloader itself.** On first boot with a stock device, the
 stock OS picks up `miyoo355_fw.img` from the card, patches your own `mtd5` and reboots
 into BaseOS — about four seconds, no host needed. It refuses if the preloader is
