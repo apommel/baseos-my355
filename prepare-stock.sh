@@ -8,7 +8,7 @@
 # boot.img must be PRISTINE stock. A unit whose bootlogo has been replaced
 # carries a rewritten resource image; pass --boot to point at a clean one.
 #
-# Usage: ./prepare-stock-my355.sh [NAND_DIR] [--boot PATH]
+# Usage: ./prepare-stock.sh [NAND_DIR] [--boot PATH]
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -25,8 +25,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$HERE/manifest":/manifest:ro \
   alpine:3.20 sh -euc '
   apk add -q squashfs-tools python3
-  python3 /tools/prepare_stock_my355.py /nand /out \
-    --harvest-list /manifest/harvest-my355.list "$@"
+  python3 /tools/prepare_stock.py /nand /out \
+    --harvest-list /manifest/harvest.list "$@"
   ' -- "$@"
 
 echo "prepared: $OUT"

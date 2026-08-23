@@ -52,7 +52,7 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-22 | This unit's `mtd5` **proven to come from the unbrick `update.img`**, not the factory: its `FlashBoot`, descrambled with the keystream recovered from the package's own plaintext DDR blob, is byte-identical to the on-device SPL ([SD boot](02-sd-boot.md)) |
 | 2026-08-22 | **Retracted:** the empty `/pinctrl` is not a regression in Miyoo's later SPL builds — it is in *every* Miyoo preloader sampled (Nov 02 and Dec 12 2024, two units). GammaLoader works because it is **Rockchip's generic `MiniLoaderAll.bin`** left behind by `rkdevtool`, not a Miyoo build; neither firmware image contains a preloader at all ([SD boot](02-sd-boot.md)) |
 | 2026-08-22 | **Stock-derived preloader written to `mtd5` and verified on hardware.** Stock boots with no card, BaseOS boots from SD, DMC healthy on the restored DDR **V1.18** — Experiment 7 below |
-| 2026-08-22 | Stock-derived preloader settled: the IDB carries **plain SHA-256, no signature**, and the fix is **+180 bytes of `/pinctrl` properties into 649 bytes of slack** — SPL code and DDR V1.18 byte-identical, boot order already SD-first. Built and self-verifying (`tools/mkpreloader_my355.py`), not flashed ([SD boot](02-sd-boot.md)) |
+| 2026-08-22 | Stock-derived preloader settled: the IDB carries **plain SHA-256, no signature**, and the fix is **+180 bytes of `/pinctrl` properties into 649 bytes of slack** — SPL code and DDR V1.18 byte-identical, boot order already SD-first. Built and self-verifying (`tools/mkpreloader.py`), not flashed ([SD boot](02-sd-boot.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 

@@ -11,10 +11,10 @@ NextUI behaves exactly as it does on stock.
 ## Pipeline
 
 ```
-./prepare-stock-my355.sh   NAND backup → work/my355/prepared/
+./prepare-stock.sh   NAND backup → work/my355/prepared/
                              uboot.img, boot.img, stock-harvest.tar, source.json
-./build-rootfs-my355.sh    harvest + overlay-my355 + static BusyBox → rootfs.tar
-./build-image-my355.sh     prepared + rootfs → baseos-my355.img
+./build-rootfs.sh    harvest + overlay + static BusyBox → rootfs.tar
+./build-image.sh     prepared + rootfs → baseos-my355.img
 ```
 
 This is the same shape as the H700 path, so the prepared set can later ship as a
@@ -30,7 +30,7 @@ Four, applied in order so each can override the last:
 3. **The merged-`/usr` skeleton** the harvest assumes: `bin`, `sbin`, `lib`,
    `lib64` are symlinks and real content lives under `/usr`, exactly as the
    vendor rootfs is laid out.
-4. **`overlay-my355/`** — `init`, `inittab`, `rcS`, `rcK`, the frontend session,
+4. **`overlay/`** — `init`, `inittab`, `rcS`, `rcK`, the frontend session,
    the USB gadget.
 
 `mtd3` is **squashfs**, so preparation uses `unsquashfs`, not the H700 `debugfs`
@@ -40,7 +40,7 @@ a case-insensitive host filesystem such as macOS.
 
 ## The harvest is measured, not guessed
 
-`manifest/harvest-my355.list` was derived by reading `/proc/<pid>/maps` across the
+`manifest/harvest.list` was derived by reading `/proc/<pid>/maps` across the
 whole running NextUI stack on hardware — every entry was observed mapped, or is
 needed by something that was.
 
@@ -171,7 +171,7 @@ backgrounds it. Because it must fail quietly, it **logs** to `/data/usb-gadget.l
 > **Unlike H700, a cable is not required before power-on — verified.** That
 > port's restriction comes from the sunxi OTG role manager, which clears the UDC
 > binding on disconnect and wedges the kernel if its role attributes are touched
-> ([h700/08](../h700/08-usb-adb-and-otg.md)). RK3566 uses dwc3 with plain
+> ([h700/08](../upstream-h700/docs/08-usb-adb-and-otg.md)). RK3566 uses dwc3 with plain
 > configfs and VBUS detection, and we only ever write `UDC`. Hot-plugging after
 > boot works, which is also how a clean boot time gets measured.
 
@@ -220,7 +220,7 @@ because `wifi_init.sh` and `bt_init.sh` call them anyway and boot must not grow.
 **DHCP.** Stock's `dhcpcd` 9.4.1 would mean a 368 KB binary, its hook and share
 directories and a privsep user. BusyBox `udhcpc` is already in the image and needs
 only an event script, so my355 follows H700
-([h700/05](../h700/05-runtime-power-network.md)):
+([h700/05](../upstream-h700/docs/05-runtime-power-network.md)):
 `usr/share/udhcpc/default.script` sets the address, default route and
 `/run/resolv.conf`, with `/etc/resolv.conf` a baked symlink to it.
 
@@ -345,7 +345,7 @@ to `/tmp/nextui-session.log`, mirrored to `baseos-session.log` on the card.
 - A2DP audio has not been heard from BaseOS. Pairing, connection and the mixer
   controls check out; nobody has played a sound through them.
 - Root is mounted `rw`. H700 targets a read-only root with writable state on
-  `/data` ([h700/06](../h700/06-status-and-lessons.md)).
+  `/data` ([h700/06](../upstream-h700/docs/06-status-and-lessons.md)).
 
 ---
 

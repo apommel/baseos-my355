@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the my355 (Miyoo Flip) SD card partition table from scratch.
 
-Unlike the H700 port — which inherits the vendor GPT and edits it (tools/mkgpt.py)
+Unlike the H700 port — which inherits the vendor GPT and edits it (upstream-h700/tools/mkgpt.py)
 — the Flip's boot chain lives in internal SPI NAND, so a BaseOS card owns its
 whole table. Three names are load-bearing:
 
@@ -14,7 +14,7 @@ whole table. Three names are load-bearing:
              `root=/dev/mmcblk1p3` is baked into rk-kernel.dtb at build time
              (tools/rkbootimg.py), so rootfs must stay entry 3.
 
-Layout, mirroring the H700 A/B scheme (docs/07):
+Layout, mirroring the H700 A/B scheme (upstream-h700/docs/07-partition-layout-and-updates.md):
 
     1 uboot    8 MiB   @ sector 16384
     2 boot    40 MiB
@@ -31,8 +31,8 @@ Unique GUIDs are derived deterministically from the partition name, so two
 builds of the same layout produce byte-identical tables.
 
 Usage:
-    mkgpt_my355.py IMAGE [--primary-sectors N]   write the table into IMAGE
-    mkgpt_my355.py --shell                       emit the layout as shell vars
+    mkgpt.py IMAGE [--primary-sectors N]   write the table into IMAGE
+    mkgpt.py --shell                       emit the layout as shell vars
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ def main() -> int:
     ap.add_argument("--print-only", action="store_true")
     ap.add_argument("--shell", action="store_true",
                     help="emit the layout as shell variables; this is the single "
-                         "source of truth for build-image-my355.sh")
+                         "source of truth for build-image.sh")
     a = ap.parse_args()
 
     parts, total, slot_b = layout(a.primary_sectors)
@@ -153,10 +153,10 @@ def main() -> int:
     prev_end = first_usable - 1
     for name, _t, first, last, _a in parts:
         if first <= prev_end:
-            sys.exit(f"mkgpt_my355: {name} overlaps the previous region")
+            sys.exit(f"mkgpt: {name} overlaps the previous region")
         prev_end = last
     if parts[-1][3] > last_usable:
-        sys.exit("mkgpt_my355: primary extends past the last usable LBA")
+        sys.exit("mkgpt: primary extends past the last usable LBA")
 
     print(f"  {'partition':10s} {'start':>10s} {'end':>10s} {'size':>10s}")
     for name, _t, first, last, _a in parts:
@@ -173,7 +173,7 @@ def main() -> int:
     disk_guid = guid_for("__disk__")
 
     if not a.image:
-        sys.exit("mkgpt_my355: IMAGE is required unless --shell/--print-only")
+        sys.exit("mkgpt: IMAGE is required unless --shell/--print-only")
     with open(a.image, "r+b") as f:
         f.truncate(total * SECTOR)
         f.seek(0)

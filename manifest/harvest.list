@@ -8,7 +8,7 @@
 # Derived from the on-device runtime closure of the whole NextUI stack, read
 # from /proc/<pid>/maps while it was running (2026-08-20). Not guessed: every
 # entry below was observed mapped, or is required by a binary that is.
-# See docs/my355/08-rootfs.md.
+# See docs/08-rootfs.md.
 #
 # Smaller than the H700 list: NextUI ships its own SDL/tinyalsa/sqlite in
 # .system/my355/lib, and miyoo_inputd does not link /usr/miyoo/lib at all.

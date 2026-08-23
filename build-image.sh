@@ -6,18 +6,18 @@
 # chain reaches for — a U-Boot FIT in a GPT partition named `uboot`, an Android
 # boot image in one named `boot` — plus the BaseOS rootfs.
 #
-# This requires a preloader with a working /pinctrl in mtd5; see docs/my355/02-sd-boot.md.
+# This requires a preloader with a working /pinctrl in mtd5; see docs/02-sd-boot.md.
 #
-# Inputs come from ./prepare-stock-my355.sh, in work/my355/prepared:
+# Inputs come from ./prepare-stock.sh, in work/my355/prepared:
 #   uboot.img   stock Rockchip U-Boot FIT, used verbatim
 #   boot.img    stock Android boot image; the kernel stays byte-for-byte
 #               identical, only the DTB's bootargs and logo are rewritten
 #
 # Environment:
 #   MY355_DIAG=1     bring-up aids: kernel-side LED heartbeat + panic=10
-#                    (see docs/my355/07-bringup-and-diagnostics.md)
+#                    (see docs/07-bringup-and-diagnostics.md)
 #
-# Usage: ./build-image-my355.sh
+# Usage: ./build-image.sh
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -33,17 +33,17 @@ BOOT_SRC="$PREPARED/boot.img"
 
 for f in "$UBOOT_SRC" "$BOOT_SRC"; do
   [ -f "$f" ] || {
-    echo "missing $f (run ./prepare-stock-my355.sh)" >&2
+    echo "missing $f (run ./prepare-stock.sh)" >&2
     exit 1
   }
 done
-[ -f "$ROOTFS_TAR" ] || { echo "missing $ROOTFS_TAR (run ./build-rootfs-my355.sh)" >&2; exit 1; }
+[ -f "$ROOTFS_TAR" ] || { echo "missing $ROOTFS_TAR (run ./build-rootfs.sh)" >&2; exit 1; }
 
 mkdir -p "$WORK"
 
-# tools/mkgpt_my355.py is the single source of truth for the sector layout and
+# tools/mkgpt.py is the single source of truth for the sector layout and
 # for which partition root= must name.
-eval "$(python3 "$HERE/tools/mkgpt_my355.py" --shell)"
+eval "$(python3 "$HERE/tools/mkgpt.py" --shell)"
 
 # The vendor command line uses all 100 available bytes and in-place FDT patching
 # cannot grow it (tools/rkbootimg.py). `earlycon=` is dead weight on a unit with
@@ -57,7 +57,7 @@ eval "$(python3 "$HERE/tools/mkgpt_my355.py" --shell)"
 # The vendor kernel is a raw 34.9 MiB arm64 Image and U-Boot reads every byte off
 # the card each boot, so storing it compressed is the big pre-kernel lever:
 # 4.96 s raw -> 3.14 s gzip -> 3.31 s lz4. gzip wins on size; both boot.
-# MY355_COMPRESS_KERNEL = none | gzip | lz4 (docs/my355/01-boot-budget.md).
+# MY355_COMPRESS_KERNEL = none | gzip | lz4 (docs/01-boot-budget.md).
 COMPRESS="${MY355_COMPRESS_KERNEL:-gzip}"     # none | gzip | lz4
 
 DROP="earlycon="
@@ -69,7 +69,7 @@ LED_TRIGGER=""
 # proven to boot (tools/rkbootimg.py, RESOURCE_SAFE_BYTES).
 MY355_LOGO_SIZE="${MY355_LOGO_SIZE:-240x48}"
 MY355_LOGO_ASSET="${MY355_LOGO_ASSET:-$HERE/assets/bootlogo.bmp}"
-python3 "$HERE/tools/mkbootlogo_my355.py" "$MY355_LOGO_ASSET" \
+python3 "$HERE/tools/mkbootlogo.py" "$MY355_LOGO_ASSET" \
   "$WORK/baseos-logo.bmp" --size "$MY355_LOGO_SIZE" --preview
 
 echo "== repointing the vendor boot image at the card =="
@@ -104,7 +104,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
 
   OUT="/work/$OUT_NAME"
   rm -f "$OUT"; : > "$OUT"
-  python3 /tools/mkgpt_my355.py "$OUT"
+  python3 /tools/mkgpt.py "$OUT"
 
   # The vendor chain: U-Boot verbatim, boot image with only the DTB rewritten.
   dd if=/work/prepared/uboot.img of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none

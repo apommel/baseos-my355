@@ -11,7 +11,7 @@
 #
 # Boot forensics land in /run/boot-* and /data, because this device has neither
 # a UART attached nor a framebuffer console — see
-# docs/my355/07-bringup-and-diagnostics.md.
+# docs/07-bringup-and-diagnostics.md.
 
 /bin/mount -t proc  -o nodev,noexec,nosuid proc /proc
 /bin/mount -t sysfs -o nodev,noexec,nosuid sys  /sys

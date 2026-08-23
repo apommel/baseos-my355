@@ -73,7 +73,7 @@ all unchanged. Afterwards the whole SD path — `dwmmc@fe2b0000`, the four `sdmm
 groups, both syscons, `/pinctrl` — is byte-identical to GammaLoader's, bar the marker
 spelling (ours uses `u-boot,dm-spl`, what stock's own bound nodes use).
 
-`tools/mkpreloader_my355.py` builds it from a dump and re-checks every invariant,
+`tools/mkpreloader.py` builds it from a dump and re-checks every invariant,
 refusing to write if any fails.
 
 ### The container
@@ -131,7 +131,7 @@ time was never the aim. DDR DVFS is healthy on the restored V1.18: all four FSPs
 unit's own dump**, never a redistributed binary:
 
 ```sh
-python3 tools/mkpreloader_my355.py mtd5-spl.img baseos-preloader.img
+python3 tools/mkpreloader.py mtd5-spl.img baseos-preloader.img
 ```
 
 Stage the image *and both rollbacks* in `/tmp` (tmpfs, RAM) before erasing, so recovery

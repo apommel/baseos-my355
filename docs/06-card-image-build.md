@@ -1,6 +1,6 @@
 # my355 · Building a BaseOS card
 
-How `build-image-my355.sh` composes a bootable card, and why each piece is
+How `build-image.sh` composes a bootable card, and why each piece is
 shaped the way it is. **This chain is verified end to end on hardware** — the
 device boots from the card to userspace.
 
@@ -31,7 +31,7 @@ The right slot enumerates as `mmcblk1` (left is `mmcblk2`) — fixed by DT alias
 
 ## Layout
 
-`tools/mkgpt_my355.py` is the single source of truth; the build script reads it
+`tools/mkgpt.py` is the single source of truth; the build script reads it
 via `--shell` rather than duplicating constants.
 
 ```
@@ -44,7 +44,7 @@ entry 5  primary 2473984 .. 2605055    64 MiB   FAT32, the only visible volume
 ```
 
 Slot B is unallocated on purpose, mirroring the H700 A/B scheme
-([docs/07](../h700/07-partition-layout-and-updates.md)): it costs no visible
+([docs/07](../upstream-h700/docs/07-partition-layout-and-updates.md)): it costs no visible
 partition and no desktop offers to format it. Every entry but `primary` carries
 GPT attribute bits 62 and 63, so a desktop assigns one drive letter.
 
@@ -112,7 +112,7 @@ console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait rw init=/init
 `/sbin/init`, `/etc/init`, `/bin/init`, `/bin/sh` — `/init` is the initramfs
 convention. Without it the kernel execs `/bin/sh`, which then waits forever on a
 console that does not exist: LED alive, root mounted, nothing happening, no
-panic. The H700 port sets `init=/init` too ([docs/01](../h700/01-rootfs-and-init.md) §3).
+panic. The H700 port sets `init=/init` too ([docs/01](../upstream-h700/docs/01-rootfs-and-init.md) §3).
 
 `rkbootimg.py info` reports the budget, so this cannot be discovered the hard way.
 
@@ -123,7 +123,7 @@ rectangle against the panel.
 
 ### Check the logo before spending a boot
 
-`mkbootlogo_my355.py` prints a percent-painted figure and `--preview` renders
+`mkbootlogo.py` prints a percent-painted figure and `--preview` renders
 ASCII, both run by the build. A logo that renders almost blank looks exactly like
 a boot failure on this device, and did once: the vendor BMP is **top-down**
 (`height = -198`), and using the raw negative height in the scale calculation
@@ -148,14 +148,14 @@ The build asserts `decompress(stored) == vendor kernel` before writing, so the
 `^orphan_file` only. This kernel is **5.10.160**: `orphan_file` needs 5.15+, but
 `metadata_csum`, `metadata_csum_seed` and `64bit` are all fine — unlike the H700
 port, which must disable them for its 4.9 kernel
-([docs/00](../h700/00-boot-chain-and-partitions.md) §3). Verified: the vendor kernel
+([docs/00](../upstream-h700/docs/00-boot-chain-and-partitions.md) §3). Verified: the vendor kernel
 mounts these filesystems.
 
 ## Build and flash
 
 ```sh
-./build-rootfs-my355.sh --smoke          # or the real rootfs, once it exists
-./build-image-my355.sh [NAND_BACKUP_DIR] # default: ~/Development/miyoo-flip-nand-backup
+./build-rootfs.sh --smoke          # or the real rootfs, once it exists
+./build-image.sh [NAND_BACKUP_DIR] # default: ~/Development/miyoo-flip-nand-backup
 ```
 
 `MY355_DIAG=1` adds bring-up aids — see

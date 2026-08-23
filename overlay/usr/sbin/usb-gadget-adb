@@ -16,7 +16,7 @@
 # Because it must not fail loudly, it logs instead. /data is persistent and
 # survives a power cut, so a boot where adb never appeared can still be
 # diagnosed afterwards by reading the card — the only way to see anything on a
-# device with no console. See docs/my355/07-bringup-and-diagnostics.md.
+# device with no console. See docs/07-bringup-and-diagnostics.md.
 #
 # Ordering is load-bearing. adbd must be running and have written its
 # descriptors into functionfs BEFORE the UDC is bound, or the host sees a

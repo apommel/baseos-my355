@@ -52,7 +52,7 @@ RESOURCE_SAFE_BYTES = 465408
 # This U-Boot sniffs the Android boot image's kernel payload for its compression:
 # android_image_get_comp() tries zImage, then LZ4, then gzip, then LZMA, else
 # IH_COMP_NONE. Read out of the vendor binary (FIT /images/uboot, load 0xa00000),
-# not assumed — see docs/my355/01-boot-budget.md.
+# not assumed — see docs/01-boot-budget.md.
 LZ4_FRAME_MAGIC = b"\x04\x22\x4d\x18"
 LZ4_LEGACY_MAGIC = b"\x02\x21\x4c\x18"
 
@@ -234,7 +234,7 @@ class ResourceImage:
         Building the image instead lets the logo be any size — and, critically,
         lets the whole resource stay small. A 943 616-byte resource (the stock
         one, with its two 480x198 logos) hangs this U-Boot before display init;
-        465 408 bytes boots. See docs/my355/06-card-image-build.md.
+        465 408 bytes boots. See docs/06-card-image-build.md.
         """
         header_blocks = 1
         entry_blocks = 1

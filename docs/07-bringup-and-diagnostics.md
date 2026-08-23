@@ -24,7 +24,7 @@ Ordered by how early they fire.
 
 | signal | proves | how |
 |---|---|---|
-| **boot logo** | U-Boot ran *and* read the card's `boot` partition | `mkbootlogo_my355.py` repaints the vendor BMP; only our card carries it |
+| **boot logo** | U-Boot ran *and* read the card's `boot` partition | `mkbootlogo.py` repaints the vendor BMP; only our card carries it |
 | **LED, kernel-side** | the kernel started and reached driver probe | DTB `/leds/work linux,default-trigger = heartbeat`; fires long before root is mounted |
 | **reboot loop** | the kernel panicked (rather than hung) | `panic=10` on the command line |
 | **LED, userspace** | init is alive *now* | init sets trigger `none` and drives `brightness` in a loop — stops the instant PID 1 dies |
@@ -33,7 +33,7 @@ Ordered by how early they fire.
 Both LED signals are distinguishable by eye: the kernel's `heartbeat` is a
 double-thump; a userspace 1 s on / 1 s off loop is an even square wave.
 
-Enable the first three with `MY355_DIAG=1 ./build-image-my355.sh`.
+Enable the first three with `MY355_DIAG=1 ./build-image.sh`.
 
 ## Reading the card afterwards
 

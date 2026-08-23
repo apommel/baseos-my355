@@ -23,7 +23,7 @@ where U-Boot prints `Total: 3295.512/3340.136 ms` immediately before
 
 `launch.sh` (NextUI's entry point) starts at uptime 11.51 s = **15.80 s from power-on**.
 That is the direct analogue of BaseOS's `boot-frontend-exec`, which is **2.96 s** on
-RG40XXV ([05](../h700/05-runtime-power-network.md)).
+RG40XXV ([05](../upstream-h700/docs/05-runtime-power-network.md)).
 
 ## BaseOS, measured end to end (2026-08-21)
 
@@ -215,8 +215,8 @@ there is no cheap win left in the kernel phase.
 
 ## Compared with H700
 
-Use the [project README](../../README.md) figures, not
-[h700/05](../h700/05-runtime-power-network.md)'s marker table: that file labels its
+Use the [H700 project README](../upstream-h700/README.md) figures, not
+[h700/05](../upstream-h700/docs/05-runtime-power-network.md)'s marker table: that file labels its
 `boot-*` markers "seconds since kernel start", but they are power-on-relative there
 for the same reason they are here — the arch counter is not reset by the bootloader.
 Read as kernel-relative they contradict the README and flatter us by ~2 s.
@@ -236,7 +236,7 @@ entire 2.75 s deficit is the bootloader-and-kernel phase, which is large enough 
 swallow both advantages.
 
 **H700 has no U-Boot strategy to copy.** Per
-[h700/00](../h700/00-boot-chain-and-partitions.md), boot0, the U-Boot blobs, the
+[h700/00](../upstream-h700/docs/00-boot-chain-and-partitions.md), boot0, the U-Boot blobs, the
 `env` partition and the vendor Android boot image are all kept **verbatim**;
 `bootdelay=0` was already set by the vendor. That port replaces the rootfs and
 nothing else. It works there because the vendor put the whole chain on the SD card
@@ -294,7 +294,7 @@ owning U-Boot, which costs another ~2 s.
 - `/usr/miyoo/bin/miyoo_inputd`
 
 No `systemctl`, no `dmenu.bin` model detection, no vendor Bluetooth scripts. The whole
-shim layer of H700 [01](../h700/01-rootfs-and-init.md) [backup & recovery](03-nand-backup-and-recovery.md) largely evaporates. The stock
+shim layer of H700 [01](../upstream-h700/docs/01-rootfs-and-init.md) [backup & recovery](03-nand-backup-and-recovery.md) largely evaporates. The stock
 `runmiyoo.sh` is already a NextUI shim baked into the squashfs, chaining to
 `/mnt/SDCARD/.tmp_update/updater`.
 

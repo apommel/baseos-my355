@@ -15,7 +15,7 @@ The asset sits on a near-black gradient. U-Boot draws the logo onto an
 otherwise black panel, so that backdrop would show as a lighter rectangle; it is
 subtracted so only the wordmark remains.
 
-Usage: mkbootlogo_my355.py ASSET OUT --size WxH [--preview]
+Usage: mkbootlogo.py ASSET OUT --size WxH [--preview]
 """
 
 from __future__ import annotations
@@ -37,12 +37,12 @@ def load_bmp(path: str):
     """Return (width, rows, pixels[y][x] as (r,g,b)), normalised to top-down."""
     d = open(path, "rb").read()
     if d[:2] != b"BM":
-        sys.exit(f"mkbootlogo_my355: {path} is not a BMP")
+        sys.exit(f"mkbootlogo: {path} is not a BMP")
     off = struct.unpack("<I", d[10:14])[0]
     w, h = struct.unpack("<ii", d[18:26])
     bpp = struct.unpack("<H", d[28:30])[0]
     if bpp != 24:
-        sys.exit(f"mkbootlogo_my355: {path} is {bpp}bpp, expected 24")
+        sys.exit(f"mkbootlogo: {path} is {bpp}bpp, expected 24")
     rows = abs(h)
     stride = (w * 3 + 3) & ~3
     out = []
@@ -73,7 +73,7 @@ def find_wordmark(pix, width, rows):
     if cur:
         bands.append(cur)
     if not bands:
-        sys.exit("mkbootlogo_my355: no content found in the asset")
+        sys.exit("mkbootlogo: no content found in the asset")
     y0, y1 = max(bands, key=lambda b: sum(counts[b[0]:b[1] + 1]))
     xs = [x for y in range(y0, y1 + 1) for x in range(width)
           if _lum(pix[y][x]) > CONTENT_THRESHOLD]

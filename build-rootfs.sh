@@ -4,9 +4,9 @@
 # Four sources, assembled in this order so each can override the last:
 #   1. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
 #   2. the stock harvest (work/my355/prepared/stock-harvest.tar) — glibc, Mali,
-#      SDL2, adbd, wpa_supplicant; a verified closure, see prepare-stock-my355.sh
+#      SDL2, adbd, wpa_supplicant; a verified closure, see prepare-stock.sh
 #   3. the merged-/usr skeleton the harvest assumes
-#   4. overlay-my355/ — init, inittab, rcS, the frontend session
+#   4. overlay/ — init, inittab, rcS, the frontend session
 #
 # fbsplash is built from the shared src/fbsplash.c: this device has no console,
 # so a status message on the panel is the only way to say "insert a card" or
@@ -26,12 +26,12 @@ BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unk
 
 
 [ -f "$PREPARED/stock-harvest.tar" ] || {
-  echo "missing $PREPARED/stock-harvest.tar (run ./prepare-stock-my355.sh)" >&2
+  echo "missing $PREPARED/stock-harvest.tar (run ./prepare-stock.sh)" >&2
   exit 1
 }
 
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
-  -v "$WORK":/work -v "$HERE/overlay-my355":/overlay:ro \
+  -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
   alpine:3.20 sh -euc '

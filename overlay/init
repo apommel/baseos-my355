@@ -6,6 +6,6 @@
 # /etc/init, /bin/init and /bin/sh — `/init` is the initramfs convention.
 # Getting that wrong costs a silent hang: the kernel finds /bin/sh, execs it,
 # and the shell waits forever on a console this device does not have.
-# See docs/my355/06-card-image-build.md.
+# See docs/06-card-image-build.md.
 
 exec /bin/busybox init

@@ -63,7 +63,7 @@ Ordered by what currently blocks progress.
 - **Which card holds the frontend.** BaseOS takes the right slot (the only
   boot-capable one), so a NextUI card moves to the left and BaseOS mounts it at
   `/mnt/SDCARD` — or falls back to its own `primary` partition, as H700 does
-  ([docs/01](../h700/01-rootfs-and-init.md) §5 step 8a). NextUI itself is slot-agnostic:
+  ([docs/01](../upstream-h700/docs/01-rootfs-and-init.md) §5 step 8a). NextUI itself is slot-agnostic:
   nothing in `my355.sh` or `MinUI.pak/launch.sh` names a block device.
 - **Which vendor daemons NextUI actually needs** for brightness, battery and
   Bluetooth. H700 needed three shims (`systemctl`, `timedatectl`,
@@ -71,7 +71,7 @@ Ordered by what currently blocks progress.
 - **Boot budget for a real card.** Unmeasured. The interesting figure is pre-kernel
   time with a bootable card, against stock's ~2.95 s U-Boot.
 - **Root read-only.** The card currently mounts root `rw`. H700 targets a
-  read-only root with writable state on `/data` ([docs/06](../h700/06-status-and-lessons.md)).
+  read-only root with writable state on `/data` ([docs/06](../upstream-h700/docs/06-status-and-lessons.md)).
 - **A/B updates.** Slot B is reserved but `baseos-update`, `mkupdate.py` and
   `gptslot` are not ported.
 
@@ -84,7 +84,7 @@ for benefits that are now largely gone:
 
 1. **Distribution and provenance — largely resolved.** This was the strongest argument
    while the plan was to ship GammaLoader's prebuilt binary. It no longer applies the
-   same way: `tools/mkpreloader_my355.py` redistributes nothing, it patches nine device
+   same way: `tools/mkpreloader.py` redistributes nothing, it patches nine device
    tree properties into **the user's own dump**. What remains is a delivery problem
    rather than a licensing one — see below.
 2. **A measured boot-time gain — no.** Measured at 3.114 s pre-kernel against 3.118 s

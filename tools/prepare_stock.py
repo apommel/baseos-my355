@@ -4,7 +4,7 @@
 The H700 port prepares its inputs from an 11.7 GB vendor disk image
 (tools/prepare_stock.py). The Flip has no such image: its firmware lives in
 internal SPI NAND, so the inputs come from a backup of that
-(docs/my355/03-nand-backup-and-recovery.md).
+(docs/03-nand-backup-and-recovery.md).
 
 Three artifacts are produced, mirroring the H700 shape:
 
@@ -28,7 +28,7 @@ must resolve inside the harvest, or preparation fails. That is the check that
 turns an allowlist into a closure.
 
 Usage:
-    prepare_stock_my355.py NAND_DIR OUT_DIR [--boot PATH] [--harvest-list PATH]
+    prepare_stock.py NAND_DIR OUT_DIR [--boot PATH] [--harvest-list PATH]
 """
 
 from __future__ import annotations
@@ -110,7 +110,7 @@ def elf_needed(path: str) -> tuple[list[str], str | None]:
 
 def unpack_rootfs(image: str, dest: str) -> None:
     if shutil.which("unsquashfs") is None:
-        sys.exit("prepare_stock_my355: unsquashfs not found "
+        sys.exit("prepare_stock: unsquashfs not found "
                  "(run this inside the build container, or `brew install squashfs`)")
     if os.path.isdir(dest):
         shutil.rmtree(dest)
@@ -179,13 +179,13 @@ def main() -> int:
     a = ap.parse_args()
 
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    harvest_list = a.harvest_list or os.path.join(here, "manifest", "harvest-my355.list")
+    harvest_list = a.harvest_list or os.path.join(here, "manifest", "harvest.list")
     uboot_src = os.path.join(a.nand_dir, MTD1)
     boot_src = a.boot or os.path.join(a.nand_dir, MTD2)
     rootfs_src = os.path.join(a.nand_dir, MTD3)
     for p in (uboot_src, boot_src, rootfs_src, harvest_list):
         if not os.path.exists(p):
-            sys.exit(f"prepare_stock_my355: missing {p}")
+            sys.exit(f"prepare_stock: missing {p}")
 
     os.makedirs(a.out_dir, exist_ok=True)
     uboot_out = os.path.join(a.out_dir, "uboot.img")
@@ -208,7 +208,7 @@ def main() -> int:
         print("  MISSING from the stock rootfs:", file=sys.stderr)
         for m in missing:
             print(f"    {m}", file=sys.stderr)
-        sys.exit("prepare_stock_my355: harvest list does not match this firmware")
+        sys.exit("prepare_stock: harvest list does not match this firmware")
     print(f"  stock-harvest.tar  {os.path.getsize(tar_out)} bytes, {len(taken)} paths")
 
     unresolved = verify_closure(tar_out, scratch)
@@ -216,8 +216,8 @@ def main() -> int:
         print("  UNRESOLVED shared library dependencies:", file=sys.stderr)
         for u in unresolved:
             print(f"    {u}", file=sys.stderr)
-        sys.exit("prepare_stock_my355: harvest is not a closed set — add these to "
-                 "manifest/harvest-my355.list")
+        sys.exit("prepare_stock: harvest is not a closed set — add these to "
+                 "manifest/harvest.list")
     print("  closure verified: every DT_NEEDED resolves inside the harvest")
 
     source = {
