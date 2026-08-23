@@ -19,6 +19,10 @@ This costs a **2 MiB** change to internal NAND (the preloader) and nothing else 
 stock U-Boot, kernel, rootfs and BL31 are all untouched. ROCKNIX also boots this
 way, so the mainline path is open too.
 
+The card applies that change itself: stock's own firmware-update mechanism runs an
+installer off the card, which patches the `mtd5` already on the unit and reboots.
+No preloader binary is redistributed. See [SD boot](02-sd-boot.md).
+
 **BaseOS boots on this device and adb works over USB.** PID 1 is BusyBox init,
 `rcS` completes in **50 ms**, the harvested vendor libraries execute
 (`wpa_supplicant v2.9`, `dbus-daemon 1.12.20`), and `/proc/cmdline` reports

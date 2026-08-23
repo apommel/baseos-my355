@@ -43,6 +43,16 @@ entry 4  data    2211840 .. 2473983   128 MiB   ext4, persistent state
 entry 5  primary 2473984 .. 2605055    64 MiB   FAT32, the only visible volume
 ```
 
+The FAT volume is made with `-s 1`. At 63 MiB dosfstools would otherwise choose 4 KiB
+clusters and produce 16092 of them, under the **65525 minimum a FAT32 must have** —
+Linux's vfat driver mounts that anyway, but macOS validates the count and refuses, so
+the card reads as damaged on a desktop. If `primary` is ever grown to fill the card,
+reformat it rather than extending: 512-byte clusters do not scale to 58 GiB.
+
+All three filesystems carry `miyoo355_fw.img`, the preloader installer stock picks up
+off the card. All three, because which one stock's automounter mounts where is a lock
+race with no reliable winner ([SD boot](02-sd-boot.md)).
+
 Slot B is unallocated on purpose, mirroring the H700 A/B scheme
 ([docs/07](../upstream-h700/docs/07-partition-layout-and-updates.md)): it costs no visible
 partition and no desktop offers to format it. Every entry but `primary` carries

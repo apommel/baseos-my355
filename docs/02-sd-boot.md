@@ -124,9 +124,10 @@ time was never the aim. DDR DVFS is healthy on the restored V1.18: all four FSPs
 (324/528/780/1056 MHz), `dmc_ondemand`, ATF version `0x102`, and **no
 `loader&trust unmatch`**, so the V1.18 ↔ BL31 pairing is fine.
 
-### Procedure
+### By hand, over adb
 
-`mtd5` is 2 MiB, 16 erase blocks of 128 KiB, `writesize` 2048, and
+The normal route is the card installer below; this is the developer one, and what the
+first flash used. `mtd5` is 2 MiB, 16 erase blocks of 128 KiB, `writesize` 2048, and
 `flash_erase`/`nandwrite`/`nanddump` are all in the stock rootfs. Generate from **this
 unit's own dump**, never a redistributed binary:
 
@@ -159,49 +160,171 @@ unit**. Note it is a Dec 2024 full image, so the later firmware must be reapplie
 afterwards. Keep `mtd5-spl.img` (md5 `de535483…`) and `gammaloader-preloader.img`
 (md5 `2252285d…`) to hand — [backup & recovery](03-nand-backup-and-recovery.md).
 
-### Distribution — not done, but the route is clear
+### Installing it from a card
 
-Stock's own firmware-update mechanism is a **root shell script runner**, which makes a
-card-only installer possible. `/usr/miyoo/bin/runmiyoo.sh` looks for
-`miyoo355_fw.img` on `/media/sdcard0` or `sdcard1`, compares the `version:` line in
-its 512-byte text header against `/usr/miyoo/version`, and on a mismatch runs
-`/usr/miyoo/apps/fw_update/miyoo_fw_update`, which does exactly:
+A BaseOS card patches the preloader by itself on first boot, with no host and no adb.
+Stock boots, notices `miyoo355_fw.img` on the card, and runs it as root; the installer
+reads `mtd5`, repairs the device tree, writes it back, and reboots into BaseOS.
 
-```sh
-dd if=miyoo355_fw.img of=/tmp/miyoo_fw_version.txt bs=128 count=1
-dd if=miyoo355_fw.img of=/tmp/miyoo_update.sh bs=512 skip=1 count=8
-chmod 777 /tmp/miyoo_update.sh
-/tmp/miyoo_update.sh &
+Verified end to end on 2026-08-23, from a freshly flashed card, on battery:
+
+```
+18:35:55 mtd5 reads as 36d663ef…            stock preloader
+18:35:57 patched image is 620648c2…
+18:35:58 original backed up to /tmp/baseos-fat
+18:35:58 flash attempt 1
+18:35:59 readback verified - rebooting into the card
 ```
 
-So the image layout is: header at 0, **an arbitrary 4 KiB root shell script at sector
-1**, then whatever payloads that script wants (Miyoo's own uses 1 MiB `uboot.img`,
-8 MiB `boot.img`, 80 MiB `rootfs.img`, and writes `mtd1`/`mtd2`/`mtd3` with
-`flash_erase` + `dd`). Nothing stops such a script writing `mtd5`.
+Four seconds, first attempt. The device came up in BaseOS at `storagemedia=sd`.
 
-It runs in **userspace**, late — stock preloader → stock U-Boot → stock kernel →
-`runmiyoo.sh` — so it is the same layer GammaOS and ROCKNIX use a stock App for, just
-triggered automatically instead of by the user.
+Code: [tools/preloader-installer](../tools/preloader-installer) — `bootstrap.sh` (what
+stock executes), `install.sh` (the procedure), `patch-preloader.sh` + `fdtpatch.awk`
+(the edit), `mkfwimg.py` (packs the image, run by `build-image.sh`).
 
-The shape that would work:
+### Why patch in place instead of shipping a preloader
 
-- The installer ships **no preloader binary**. The script `nanddump`s the unit's own
-  `mtd5`, applies the 180-byte patch and rewrites it — so nothing of Miyoo's is
-  redistributed, and units with a different SPL build (Nov 02 and Dec 12 2024 both
-  exist in the wild) are handled correctly rather than being overwritten with a
-  foreign loader.
-- Everything needed is already in the stock rootfs: `nanddump`, `nandwrite`,
-  `flash_erase`, `dd`, `sha256sum`, `xxd -r -p`, `cmp`. No Python, but the patch is
-  byte splicing plus one SHA-256, so BusyBox shell suffices. The distributable is
-  header + script, on the order of 4.5 KiB.
-- It **self-terminates**: once the new preloader is in, the card's `uboot` partition
-  wins and stock never runs again, so the image is never read a second time. But
-  `/usr/miyoo/version` is not touched, so the version gate keeps matching — the script
-  must be idempotent and exit if `/pinctrl` already has a `compatible`.
-- Non-negotiable for unattended use: back the original `mtd5` up **to the card** first;
-  verify all four IDB SHA-256s before touching anything; refuse on any unrecognised
-  layout; check battery level; verify the readback before rebooting; and log to the
-  card either way.
+The repo distributes vendor binaries elsewhere, so provenance is not the argument.
+Three technical ones are:
+
+- **The DDR blob is paired with the unit.** IDB entry 1 is DRAM init, matched to the
+  board revision, the RAM part and the BL31 behind it. One shipped image forces ours
+  onto every unit — what GammaLoader did, and how this unit came to run V1.10 against
+  a V1.18-era BL31.
+- **More than one stock SPL exists** (Nov 02 and Dec 12 2024, and firmware may add
+  more). A patch adapts; a fixed image silently up- or downgrades the SPL along with
+  the fix.
+- **It survives Miyoo firmware updates.** Neither shipped `miyoo355_fw.img` touches
+  `mtd5` — both write `mtd1`/`mtd2`/`mtd3` only — but if one ever did, an installer
+  that re-derives the patch simply re-applies it to the new build.
+
+### The delivery vehicle
+
+Stock's firmware updater is a root shell-script runner. `/usr/miyoo/bin/runmiyoo.sh`
+in the official 250527 rootfs is **byte-identical** to this unit's
+`runmiyoo-original.sh`, so the mechanism is the same on both firmwares. It looks for
+`miyoo355_fw.img` on `/media/sdcard0` or `/media/sdcard1`, requires `model:miyoo355` on
+line 1, and runs the update when line 2's `version:` **differs** from
+`/usr/miyoo/version`. Then `miyoo_fw_update` does exactly:
+
+```sh
+dd if=miyoo355_fw.img of=/tmp/miyoo_update.sh bs=512 skip=1 count=8
+chmod 777 /tmp/miyoo_update.sh
+/tmp/miyoo_update.sh&
+```
+
+The payload is therefore **an arbitrary 4 KiB root shell script at sector 1**. Ours is
+a 566-byte bootstrap that untars the real installer from sector 16 — Miyoo's own puts
+its payload at 1 MiB, but that is convention, not format, so the whole image is
+**28 KiB**. `miyoo_fw_update` also draws a progress bar from `/tmp/fwupdate_progress`
+and exits on `/tmp/fwupdate_done`, so the installer gets the stock UI for free.
+
+This runs in **userspace**, late — stock preloader → stock U-Boot → stock kernel →
+`runmiyoo.sh` — the same layer GammaOS and ROCKNIX use a stock App for, only automatic.
+It self-terminates: once patched, the card's `uboot` partition wins and stock never
+runs again. `/usr/miyoo/version` is on a read-only squashfs and is never updated, so
+the gate keeps firing as long as stock boots — the installer must be, and is,
+idempotent.
+
+### What the installer does
+
+Refuses unless `mtd5` is the `spl` partition and the battery is over 25% or on charger.
+Reads `mtd5`, derives the patch, and **copies the original to the card and verifies it
+before erasing anything**. Writes, verifies the readback, and retries up to three
+times; if it still cannot verify, it restores the original and says so. `BASEOS_DRY=1`
+rehearses everything up to the erase.
+
+**It writes only when it has something to add.** All three cases were exercised on
+hardware:
+
+| `mtd5` holds | what happens |
+|---|---|
+| a stock Miyoo preloader | patch, verify, write |
+| an already-patched preloader | `/pinctrl` has properties → refuse, nothing written |
+| **GammaLoader's loader** | same guard — its Rockchip-generic `/pinctrl` is complete |
+
+Leaving GammaLoader alone is a requirement, not a side effect: someone running it has
+working SD boot, and replacing it would swap their DDR blob. Its container passes all
+four IDB SHA-256 checks, so the installer reaches the device tree and refuses on the
+merits rather than on a failed integrity check. Anything it cannot make sense of —
+wrong size, no `RKNS`, a hash that does not match its own payload, a `/pinctrl` that is
+neither empty nor complete — is also a refusal. There is no path where it writes a
+preloader it did not fully derive.
+
+**It reboots only when it wrote**, and only if the card sits on `mmcblk1`, the slot the
+SPL can boot from; from the left-hand slot a reboot would just return to stock, so it
+logs *move the card to the right-hand slot* instead. Every refusal path finishes
+without rebooting, leaving the device in MainUI exactly as it was.
+
+The backup and log go on the card's FAT volume, the one a desktop can read. Stock may
+not have mounted it, so the installer mounts it itself: it reads the device behind the
+directory it was run from, finds the `TYPE="vfat"` sibling on the same disk with
+`blkid`, and mounts that. **Resolve the directory first** — `/media/sdcard0` is a
+symlink to `/mnt/sdcard`, and `/mnt/sdcard` is the name `/proc/mounts` carries, so a
+literal match finds nothing. That cost one run its reboot and sent the backup to the
+rootfs. `/media/sdcard1` is a real directory, so the left-hand slot never showed it.
+
+### Where the file goes on the card — every filesystem
+
+Stock automounts with usbmount, driven by `/lib/udev/rules.d/usbmount.rules`:
+
+```
+KERNEL=="mmcblk1*", ATTRS{type}=="SD", RUN+="/usr/share/usbmount/usbmount add sd1"
+KERNEL=="mmcblk2*", ATTRS{type}=="SD", RUN+="/usr/share/usbmount/usbmount add sd2"
+```
+
+Any partition whose type is in `FILESYSTEMS` (`vfat ext2 ext3 ext4 hfsplus ntfs exfat
+fuseblk`) is mounted into the **first free** mountpoint of that slot's list, and each
+slot has only two: `/media/sdcard0 /media/sdcard2` on the right, `/media/sdcard1
+/media/sdcard3` on the left. GPT attribute bits 62/63 are not consulted. A BaseOS card
+offers three filesystems for those two mountpoints, and only `sdcard0`/`sdcard1` is
+consulted for the image.
+
+**Which partition wins is a lock race with no reliable outcome.** The handlers are
+parallel udev workers serialised by `lockfile-create`; the winner is whichever reaches
+the lock first. Six trials on the same hardware:
+
+| # | slot | when | won the first mountpoint |
+|---|---|---|---|
+| 1 | right | hot insert | rootfs |
+| 2 | right | hot re-insert | primary (FAT) |
+| 3 | left | cold boot | rootfs |
+| 4 | left | cold boot | rootfs |
+| 5 | right | cold boot | primary (FAT) |
+| 6 | right | cold boot | rootfs |
+
+No correlation with slot, first LBA, GPT entry number, or cache state. Trial 5 is the
+one that settles it: a cold boot in the boot slot, where trials 3 and 4 had suggested
+the rootfs always won — and the rootfs got no mountpoint at all, so the installer
+sitting on it was never seen.
+
+So the image ships on **every mountable filesystem**: rootfs, data and the FAT, 28 KiB
+each. It is a workaround, and the only one available. A single copy would need the card
+to present a single mountable filesystem, which means `rootfs` and `data` would have to
+use a type outside usbmount's list — the one writable candidate this kernel has is
+**xfs** — and changing the root filesystem to dodge an automounter is a worse trade
+than duplicating 28 KiB.
+
+Two earlier answers were retracted: giving `primary` GPT entry 3, and shipping only on
+the rootfs. Both were read off too few trials.
+
+### The device-tree patch in BusyBox
+
+`fdtpatch.awk` inserts the nine properties working on the tree as one hex string — it
+is 6 KB, so this is comfortable. It looks each property name up in the string block and
+appends the two that are missing (`rockchip,pmu` and `ranges`, the latter needing an
+exact match so it is not confused with `gpio-ranges`), then fixes `totalsize`,
+`off_dt_strings`, `size_dt_strings` and `size_dt_struct`.
+
+`patch-preloader.sh` wraps it: parse both IDB copies, **verify all four entry SHA-256s
+before touching anything**, locate the tree by scanning back from the end of the SPL
+payload, check the growth fits the slack and that the slack is zero, splice both copies,
+reseal the two SPL hashes, then re-verify and confirm the DDR blob and SPL code are
+byte-identical.
+
+It takes **2.2 s** on the device and produces output **byte-identical to
+`tools/mkpreloader.py`'s**. It fails closed on a corrupted image, a wrong size, a
+non-preloader, and on an already-patched one.
 
 ---
 

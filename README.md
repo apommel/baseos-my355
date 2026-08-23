@@ -52,9 +52,15 @@ second source of truth: `manifest/prepared/source.json` holds each artifact's si
 and SHA-256, travels in git rather than inside the download, and every build checks
 against it.
 
-**Take a NAND backup regardless.** The bundle has no preloader —
-`tools/mkpreloader.py` patches your own `mtd5` — and a backup is how you recover from
-a bad NAND write. See
+**The card installs the preloader itself.** On first boot with a stock device, the
+stock OS picks up `miyoo355_fw.img` from the card, patches your own `mtd5` and reboots
+into BaseOS — about four seconds, no host needed. It refuses if the preloader is
+already patched or is GammaLoader's, and copies the original to the card before
+erasing.
+
+**Take a NAND backup regardless.** Nothing here ships a preloader binary: the installer
+and `tools/mkpreloader.py` both patch the copy already on your device. A backup is how
+you recover from a bad NAND write. See
 [docs/03-nand-backup-and-recovery.md](docs/03-nand-backup-and-recovery.md);
 flashing and the preloader are in [docs/02-sd-boot.md](docs/02-sd-boot.md) and
 [docs/06-card-image-build.md](docs/06-card-image-build.md).
