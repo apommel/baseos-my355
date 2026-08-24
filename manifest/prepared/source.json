@@ -1,8 +1,7 @@
 {
   "boot": {
-    "sha256": "e658c4ae052dba19bb8abe7083bda7f456dd95a26ca1c14debf6664d1f1abae3",
-    "size": 39845888,
-    "source_filename": "mtd2-boot.img"
+    "sha256": "7e77b4dcf0b363aa315f0d04f6f62fe58f8f1c6fcb720a438ea4a8538dff0e8d",
+    "size": 39845888
   },
   "harvest": {
     "paths": 74,
@@ -10,7 +9,7 @@
     "size": 48302080
   },
   "model": "Miyoo Flip",
-  "prepared_utc": "2026-08-23T08:33:15Z",
+  "prepared_utc": "2026-08-24T20:24:57Z",
   "provenance": "nand-backup",
   "schema": 1,
   "source": {

@@ -16,7 +16,6 @@ Three artifacts are produced, mirroring the H700 shape:
 `boot.img` must be **pristine stock**. A unit whose bootlogo has been replaced
 carries a rewritten resource image — different logo geometry and a reordered
 entry table — which still boots but is not what should be redistributed.
-`--boot` takes an explicit path for that case.
 
 Unlike the H700 source, mtd3 is **squashfs**, so it is unpacked with unsquashfs
 rather than debugfs. It is unpacked to a container-local scratch directory, never
@@ -28,7 +27,7 @@ must resolve inside the harvest, or preparation fails. That is the check that
 turns an allowlist into a closure.
 
 Usage:
-    prepare_stock.py NAND_DIR OUT_DIR [--boot PATH] [--harvest-list PATH]
+    prepare_stock.py NAND_DIR OUT_DIR [--harvest-list PATH]
 """
 
 from __future__ import annotations
@@ -173,15 +172,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("nand_dir")
     ap.add_argument("out_dir")
-    ap.add_argument("--boot", default=None,
-                    help="pristine stock mtd2 image (default: NAND_DIR/mtd2-boot.img)")
     ap.add_argument("--harvest-list", default=None)
     a = ap.parse_args()
 
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     harvest_list = a.harvest_list or os.path.join(here, "manifest", "harvest.list")
     uboot_src = os.path.join(a.nand_dir, MTD1)
-    boot_src = a.boot or os.path.join(a.nand_dir, MTD2)
+    boot_src = os.path.join(a.nand_dir, MTD2)
     rootfs_src = os.path.join(a.nand_dir, MTD3)
     for p in (uboot_src, boot_src, rootfs_src, harvest_list):
         if not os.path.exists(p):
@@ -227,8 +224,7 @@ def main() -> int:
         "provenance": "nand-backup",
         "prepared_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "uboot": {"size": os.path.getsize(uboot_out), "sha256": sha256_of(uboot_out)},
-        "boot": {"size": os.path.getsize(boot_out), "sha256": sha256_of(boot_out),
-                 "source_filename": os.path.basename(boot_src)},
+        "boot": {"size": os.path.getsize(boot_out), "sha256": sha256_of(boot_out)},
         "harvest": {"size": os.path.getsize(tar_out), "sha256": sha256_of(tar_out),
                     "paths": len(taken)},
         "source": {

@@ -189,6 +189,17 @@ burden is in reproducing what stock's `runmiyoo.sh` sets up.
 symlinks `/mnt/sdcard` for the lowercase path stock uses. BaseOS takes the right
 slot because it is the only slot the SPL can boot from.
 
+`nextui-session` mounts it too, same devices and options: `rcS` is `::sysinit:`
+and runs once, the session is `::respawn:`, so only the session can pick up a
+card inserted after boot — as on H700. The kernel needs no help; neither `dwmmc`
+node sets `broken-cd`, and `/dev` is devtmpfs.
+
+A retry alone is not enough. With the left slot empty at boot `rcS` mounts the
+fallback, leaving `/mnt/SDCARD` occupied and a later card nowhere to go, so the
+session releases it — `/userdata` binds included — when `mmcblk2p1` turns up.
+Safe only there: no frontend is running, before or after. A card already mounted
+from the left slot is never disturbed.
+
 `nextui-session` then reproduces, in order:
 
 | | why |

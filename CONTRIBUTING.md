@@ -22,10 +22,10 @@ recovery.
 ```
 
 To derive the inputs instead — needed to move onto a new vendor release — replace
-the first line with `./prepare-stock.sh [NAND_DIR] [--boot PATH]`. It verifies the
-harvest is a **closed set**: every `DT_NEEDED` of every harvested ELF must resolve
-inside it, or the build fails. That is what makes `manifest/harvest.list` a proof
-rather than a guess. It cannot see `dlopen` or `system()`; those are in
+the first line with `./prepare-stock.sh [NAND_DIR]`. It verifies the harvest is a
+**closed set**: every `DT_NEEDED` of every harvested ELF must resolve inside it, or
+the build fails. That is what makes `manifest/harvest.list` a proof rather than a
+guess. It cannot see `dlopen` or `system()`; those are in
 [docs/08-rootfs.md](docs/08-rootfs.md).
 
 Both paths get the same check — `tools/source_manifest.py verify` runs at the start

@@ -5,17 +5,16 @@
 # — the same shape the H700 path produces from a vendor disk image, and the set
 # that would later ship as a release bundle (cf. fetch-prepared.sh).
 #
-# boot.img must be PRISTINE stock. A unit whose bootlogo has been replaced
-# carries a rewritten resource image; pass --boot to point at a clean one.
+# boot.img must be PRISTINE stock: a unit whose bootlogo has been replaced
+# carries a rewritten resource image, which is not what should be redistributed.
 #
-# Usage: ./prepare-stock.sh [NAND_DIR] [--boot PATH]
+# Usage: ./prepare-stock.sh [NAND_DIR]
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/tools/docker-platform.sh"
 
 NAND="${1:-$HOME/Development/miyoo-flip-nand-backup}"
-[ "$#" -gt 0 ] && shift || true
 OUT="$HERE/work/my355/prepared"
 mkdir -p "$OUT"
 
@@ -26,7 +25,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   alpine:3.20 sh -euc '
   apk add -q squashfs-tools python3
   python3 /tools/prepare_stock.py /nand /out \
-    --harvest-list /manifest/harvest.list "$@"
-  ' -- "$@"
+    --harvest-list /manifest/harvest.list
+  '
 
 echo "prepared: $OUT"
