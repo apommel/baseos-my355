@@ -338,17 +338,24 @@ Remaining levers, now that the pre-kernel budget is decomposed:
    swaps its control tree for our `rk-kernel.dtb`, so its knobs are ours to set,
    but there is no time in them. Notably the 10.9 MB/s read is **not** a UHS
    fallback — see [U-Boot](09-uboot.md).
-2. **Ship our own U-Boot — 1.2–1.7 s.** The largest single item in the whole boot
-   is the vendor U-Boot's 1.21 s of initialisation, and the read it then performs
-   runs at 10.9 MB/s against ~25 MB/s of available bandwidth. The card already
-   carries the `uboot` partition, so this needs **no NAND write** and is fail-safe.
-   **Evaluated and shelved** — the boot path needs no reverse engineering, but
-   mainline U-Boot has no VOP2 driver, so a boot logo means writing one. See
-   [U-Boot](09-uboot.md).
+2. **Ship our own U-Boot — 1.2–1.7 s. Built 2026-08-23, not yet booted.** The
+   largest single item in the whole boot is the vendor U-Boot's 1.21 s of
+   initialisation, and the read it then performs runs at 10.9 MB/s against
+   ~25 MB/s of available bandwidth. The card already carries the `uboot`
+   partition, so this needs **no NAND write** and is fail-safe.
+   `./build-uboot.sh` now produces a mainline U-Boot 2026.01 FIT carrying the
+   vendor's BL31, OP-TEE and control device tree byte-for-byte, and
+   `MY355_UBOOT=mainline ./build-image.sh` writes it; the default stays
+   `vendor`. The VOP2 blocker stands, so that card draws **no boot logo** until
+   the kernel takes the display. Nothing below has moved: no card built this way
+   has been powered on. See [U-Boot](09-uboot.md) Part 3.
 3. **zstd for the kernel — 0.2–0.3 s.** Unlocked by (2), not independent of it: the
    blocker is not only that the vendor U-Boot lacks zstd, it is that the Android
    boot image path *sniffs* the format. A FIT declares `compression = "zstd"`, so
-   nothing is sniffed. Shelved with (2).
+   nothing is sniffed. **Now built with (2)**: the kernel stores at 10 836 333
+   bytes against gzip's 12 991 358, so 2.16 MB less to read — worth ~0.2 s of
+   read at the measured 10.9 MB/s, and more if the mainline SD path is faster.
+   The inflate half is still expected to be small, per the error bar above.
 4. **The kernel phase — nothing cheap left.** See the initcall table above.
 5. **Shrink what U-Boot reads further.** The resource image is already rebuilt at
    442 880 bytes rather than the stock 943 616. Dropping the charge artwork would
@@ -356,7 +363,8 @@ Remaining levers, now that the pre-kernel budget is decomposed:
 
 Projected with (2) and (3): pre-kernel **1.3–1.8 s**, power-on to input **5.8–6.3 s**.
 Lever (1) claims part of the same ground more cheaply, so they do not add.
-Not currently being pursued.
+(2) and (3) are built and unmeasured; the projection is unchanged until a card
+boots.
 
 ## Where the 9.9 s of stock userland goes
 

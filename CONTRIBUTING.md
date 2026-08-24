@@ -21,6 +21,15 @@ recovery.
 ./build-image.sh                              # → work/my355/baseos-my355.img
 ```
 
+The card ships the vendor bootloader. To build one carrying our own instead —
+faster in principle, unbooted so far, and it draws no boot logo
+([docs/09-uboot.md](docs/09-uboot.md) Part 3):
+
+```sh
+./build-uboot.sh                              # → work/my355/uboot-mainline.itb
+MY355_UBOOT=mainline ./build-image.sh
+```
+
 To derive the inputs instead — needed to move onto a new vendor release — replace
 the first line with `./prepare-stock.sh [NAND_DIR] [--boot PATH]`. It verifies the
 harvest is a **closed set**: every `DT_NEEDED` of every harvested ELF must resolve

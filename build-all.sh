@@ -21,6 +21,16 @@ for artifact in source.json uboot.img boot.img stock-harvest.tar; do
   }
 done
 
+# Fail before the rootfs build rather than after it.
+if [ "${MY355_UBOOT:-vendor}" = mainline ]; then
+  for artifact in uboot-mainline.itb uboot-mainline.json; do
+    [ -f "$WORK/$artifact" ] || {
+      echo "missing $WORK/$artifact — run ./build-uboot.sh" >&2
+      exit 1
+    }
+  done
+fi
+
 "$HERE/build-rootfs.sh"
 "$HERE/build-image.sh"
 

@@ -76,9 +76,10 @@ cache-pack.sh       work/my355/prepared/ → a bundle to publish
 build-all.sh        rootfs → image → the release .img.zip
 build-rootfs.sh     harvest + overlay/ + BusyBox → rootfs.tar
 build-image.sh      prepared + rootfs → baseos-my355.img
+build-uboot.sh      mainline U-Boot + the vendor ATF → uboot-mainline.itb
 overlay/            init, inittab, rcS, the frontend session — what makes it ours
 manifest/           the harvest allowlist, verified closed at prepare time
-tools/              GPT, Android boot image, preloader and bootlogo surgery
+tools/              GPT, Android boot image, FIT, preloader and bootlogo surgery
 src/fbsplash.c      the panel is this device's only output
 docs/               how it works and why — start at docs/README.md
 upstream-h700/      parked H700 code, not built here (see upstream-h700/PARKED.md)
