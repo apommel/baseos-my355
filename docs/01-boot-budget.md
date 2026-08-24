@@ -77,6 +77,11 @@ unplugged.
 
 **Power-on to a usable frontend: 7.93 s, against 31.50 s on stock — 4.0x.**
 
+> This table is the **pre-SDR104 baseline**. Raising the boot slot's bus took it
+> to **6.87 s** on 2026-08-24 — see [the SD bus
+> section](#the-sd-bus-was-capped-in-the-device-tree-2026-08-24) for the phase
+> split. The rows above are kept as the reference the change is measured against.
+
 "First frame" is the kernel releasing the bootloader framebuffer as userspace takes
 the display — the same event on both systems.
 
@@ -111,6 +116,7 @@ in Bluetooth audio.
 | NextUI `launch.sh` prologue | **12.45 s** | **0.89 s** | **−11.56 s** |
 | `nextui.elf` init → first frame | 3.11 s | 1.98 s | −1.13 s |
 | **total to first frame** | **31.50 s** | **7.93 s** | **−23.57 s** |
+| total to first frame, with SDR104 | 31.50 s | **6.87 s** | **−24.63 s** |
 
 Essentially the entire vendor userland — `mount -a` over SPI NAND,
 `udevadm settle --timeout=30`, then eight serialised `S*` scripts — is gone, and
@@ -243,9 +249,12 @@ same resource image, same rootfs, same session.
 | reading 12.99 MB off the card | 1.19 s | 38% |
 | gzip inflate | 0.35 s | 11% |
 
-**Card read rate: 10.9 MB/s.** The kernel drives the same card at SDR25/50 MHz
+**Card read rate: 10.9 MB/s.** The kernel drove the same card at SDR25/50 MHz
 (`mmc1: new ultra high speed SDR25 SDXC card`, bus speed 50 MHz), which is ~25 MB/s
 of headroom — so U-Boot is leaving better than half the available bandwidth unused.
+Since 2026-08-24 the kernel runs the slot at SDR104/148.5 MHz and 63 MB/s, so
+U-Boot now leaves better than **five sixths** of it unused; the 10.9 MB/s figure
+is the vendor binary's own limit and did not move.
 
 Two consequences, and they reorder the plan:
 
@@ -264,16 +273,33 @@ Two consequences, and they reorder the plan:
 > carry **±0.15 s** there.
 >
 > Feeding the lz4 boot through the same split gives a 0.285 s lz4 inflate — where a
-> desktop intuition says LZ4 should be ~10x faster than gzip, not 0.8x. The likely
-> reading is not that a number is wrong but that **both inflaters are bounded by
-> memory bandwidth, not by CPU**: 0.346 s and 0.285 s are 106 and 128 MB/s of
-> *output*, and both are writing the same 36.6 MB into DRAM. If that is right, the
-> algorithm barely matters on this path and only the output size does.
+> desktop intuition says LZ4 should be ~10x faster than gzip, not 0.8x. Both
+> numbers stand; the explanation offered for them did not.
 >
-> That caps what zstd can return. Expect the read half (12.99 → 10.82 MB ≈ 0.2 s)
-> to be reliable and the inflate half to be worth ~0.05–0.1 s rather than the ~0.3 s
-> a CPU-bound model predicts. **This is testable the same way**: pad a zstd payload
-> to the raw size and compare. Worth one boot before attributing any zstd win.
+> **Retracted (2026-08-24):** that "both inflaters are bounded by memory
+> bandwidth, not by CPU". Measured on hardware with `dd if=/dev/zero of=/dev/null
+> bs=1M count=2000` while DDR sat at its *lowest* rate (324 MHz, idle governor):
+> **1.9 GB/s**. The inflates run at 106 and 128 MB/s of output — 15–18x below the
+> floor of the mechanism blamed for them, so memory bandwidth cannot be the
+> bound. DDR is not the constraint at any point: the FSP table is
+> `freq_0 = 1056` MHz and Rockchip's ddrbin trains up to it and stays there
+> (`change to: 1056MHz(final freq)` in the mainline serial log), and the kernel
+> then *lowers* it to `normal_rate = 780000000`.
+>
+> What the numbers fit instead is **the CPU clock during U-Boot**. 106 MB/s of
+> gzip output is an A55 somewhere near 600 MHz–1 GHz; the parts run to 1992 MHz
+> and cpufreq does not probe until ~1.2 s into the kernel. That tax is paid
+> across U-Boot's 1.21 s of init, the 0.35 s inflate, and the first second of
+> kernel. `cpu@0` carries no `assigned-clock-rates` and no
+> `rockchip,cpu-init-rate`, and armclk cannot be raised without moving `vdd_cpu`
+> — a ranged `tcs4525` rail U-Boot never programs — so like the 10.9 MB/s read
+> this is real, large, and unreachable from the device tree.
+>
+> The consequence for zstd is the opposite of what was written here: the read
+> half (12.99 → 10.82 MB ≈ 0.2 s) is still reliable, and the inflate half is
+> **not** capped at 0.05–0.1 s by a bandwidth wall. **Still testable the same
+> way**: pad a zstd payload to the raw size and compare. Worth one boot before
+> attributing any zstd win.
 
 ### The kernel phase is close to its floor
 
@@ -313,6 +339,7 @@ Read as kernel-relative they contradict the README and flatter us by ~2 s.
 | └ `rcS` + hand-off | 0.92 s | **0.25 s** | **+0.67 s** |
 | frontend init → first frame | 4.18 s | **2.95 s** | **+1.23 s** |
 | **LED → first frame** | **7.14 s** | **7.93 s** | −0.79 s |
+| LED → first frame, with SDR104 | 7.14 s | **6.87 s** | **+0.27 s** |
 
 The two ports land within a second of each other by trading opposite strengths. Our
 userland is ~4x leaner and our NextUI start 1.23 s faster (an RK3566 with four A55s
@@ -353,10 +380,124 @@ Remaining levers, now that the pre-kernel budget is decomposed:
 5. **Shrink what U-Boot reads further.** The resource image is already rebuilt at
    442 880 bytes rather than the stock 943 616. Dropping the charge artwork would
    save another 176 KB, worth ~16 ms.
+6. **Raise the SD bus above SDR25 — taken, measured at 1.06 s.** Independent of
+   (2): it is a kernel-side change and helps everything after `Starting kernel`,
+   plus every read at runtime. 22.3 → 63.0 MB/s on the boot card. See below.
+7. **Stripping the rootfs libraries — nothing there.** Checked 2026-08-24:
+   `libc`, `libSDL2`, `libcrypto`, `libgio`, `libasound` and `libglib` all carry
+   zero `.debug_*` sections and no `.symtab` already. The one unstripped ELF on
+   the boot path is NextUI's own 150 KB `nextui.elf`, which is not ours. It would
+   not have mattered either way: debug sections are non-`ALLOC`, so the dynamic
+   linker never faults them in — stripping an mmap'd `.so` saves file size and
+   page cache, not load time.
 
 Projected with (2) and (3): pre-kernel **1.3–1.8 s**, power-on to input **5.8–6.3 s**.
 Lever (1) claims part of the same ground more cheaply, so they do not add.
 Not currently being pursued.
+
+
+## The SD bus was capped in the device tree (2026-08-24)
+
+The vendor DTB declares this on the boot slot and stops:
+
+```
+dwmmc@fe2b0000 {          /* sdmmc0 — mmcblk1, the right-hand slot */
+    max-frequency = <150000000>;
+    bus-width    = <4>;
+    sd-uhs-sdr12;
+    sd-uhs-sdr25;         /* and nothing above */
+    vqmmc-supply = <&vccio_sd>;
+}
+```
+
+`sd-uhs-sdr25` pins the bus at 50 MHz. Measured sequential reads: **22.3 MB/s on
+the boot card and 22.4 MB/s on the game card** — both exactly at the 50 MHz × 4-bit
+ceiling, so **the controller is the limit and neither card is**. The RK3566
+`sdmmc0` does SDR104, and `max-frequency` is already set high enough for it.
+
+The usual reason to hesitate does not apply here. UHS needs 1.8 V signalling, and
+the rail is already there: `vccio_sd` reads **1 800 000 µV, enabled, 3 users**, and
+the card negotiates `mmc1: new ultra high speed SDR25 SDXC card` today. So adding
+SDR50/SDR104 is a **clock change, not a voltage change**, and the warm-reboot
+hazard that comes with leaving a card at 1.8 V is already the status quo — warm
+reboots work.
+
+Slot 1 (`dwmmc@fe2c0000`) is left alone. It shares `vccio_sd` with slot 0, so the
+two cannot sit at different I/O voltages, and it currently declares no UHS modes
+at all.
+
+Corroboration from outside this project: the Miyoo Flip mainline port runs
+`sd-uhs-sdr12/25/50/104` with `max-frequency = <150000000>` on this slot, and
+Miyoo themselves shipped SDR104 in `miyoo355_fw_20241119` before capping it to
+SDR12/SDR25 in the 2025-05 firmware.
+
+Default is `sdr104` (`MY355_SD_UHS=off|sdr50|sdr104`). Modes negotiate down, so a
+card that cannot sustain SDR104 lands on SDR50 or SDR25 by itself.
+
+### Measured on hardware (2026-08-24)
+
+One cold boot, USB unplugged at power-on — the first printk lands at 3.134113 s
+against the baseline's 3.134233 s, which is how we know no charge animation is in
+these numbers.
+
+The card negotiates the top mode and the controller runs one divider step below
+the requested clock:
+
+```
+mmc_host mmc1: Bus speed (slot 0) = 148500000Hz (slot req 150000000Hz, div = 0)
+mmc1: new ultra high speed SDR104 SDXC card at address 0001
+```
+
+| `dd bs=1M count=64`, same offsets both runs | before | after | |
+|---|---|---|---|
+| `mmcblk1` — boot card, **changed** | 22.3 / 22.2 MB/s | **62.8 / 62.7 / 63.0 MB/s** | **2.8x** |
+| `mmcblk2` — game card, **untouched control** | 22.4 / 22.3 MB/s | 22.4 / 22.3 MB/s | — |
+| `mmcblk1`, 256 MB sustained | — | 63.2 MB/s | not a cache artefact |
+
+63 MB/s is 85% of the 74.25 MB/s that 148.5 MHz × 4-bit allows. The untouched
+second slot holding its 22.4 MB/s is what rules out anything environmental.
+
+`vccio_sd` still reads 1 800 000 µV with 3 users, confirming the prediction that
+this moves the clock and not the rail.
+
+### What it bought: 7.93 s → 6.87 s
+
+`Freeing drm_logo memory` and the first printk are both on the power-on-relative
+printk clock, so the headline needs no offset at all. The phase split does:
+`uptime + 3.302 = power-on` for this boot, from the two `jbd2` anchors (3.301 and
+3.303, agreeing to 2 ms).
+
+| phase | 2026-08-23 | SDR104 | Δ |
+|---|---|---|---|
+| pre-kernel (bootrom → first printk) | 3.13 s | 3.13 s | 0.00 |
+| kernel → `Run /init` | 1.51 s | 1.52 s | +0.01 |
+| `Run /init` → `rcS` start | 0.08 s | 0.06 s | −0.02 |
+| **`rcS`** | 0.20 s | **0.12 s** | **−0.08** |
+| ├ of which `dbus-daemon` | 0.14 s | **0.07 s** | −0.07 |
+| **hand-off → `nextui.elf` start** | 1.00 s | **0.52 s** | **−0.48** |
+| **`nextui.elf` init → first frame** | 1.98 s | **1.52 s** | **−0.46** |
+| **power-on → first frame** | **7.93 s** | **6.87 s** | **−1.06** |
+
+**Nothing before the kernel moved, and nothing was expected to** — U-Boot's own
+10.9 MB/s read is a property of the vendor binary, unreachable from the device
+tree, and the kernel-phase 1.51 s is initcalls rather than I/O. Every hundredth
+came from userland, which is where the reads are.
+
+The estimate written here before the boot was 0.3–0.6 s; the outcome is 1.06 s,
+so the estimate was low by about 2x. Two reasons. The `/proc/diskstats` figure
+that tempered it (~11.5–12 MB/s effective against 22 MB/s sequential) was taken
+over a whole session including adb traffic, not over a boot. And the phase that
+gained most was the one attributed to NextUI: `nextui.elf` lives on the *game*
+card, which we did not touch, but every shared library it links lives in our
+rootfs on the boot card — so speeding up `mmcblk1` speeds up NextUI's start
+without touching NextUI at all.
+
+**Runtime, not just boot.** The same 2.8x applies to anything read off the boot
+card while the device is in use.
+
+**Single cold boot**, like every other figure in this file. The throughput
+numbers are three runs each and tight; the phase splits are one boot, so read
+the small rows as indicative and the 1.06 s total as solid.
 
 ## Where the 9.9 s of stock userland goes
 

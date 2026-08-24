@@ -16,6 +16,8 @@
 # Environment:
 #   MY355_DIAG=1     bring-up aids: kernel-side LED heartbeat + panic=10
 #                    (see docs/07-bringup-and-diagnostics.md)
+#   MY355_SD_UHS     boot slot UHS ceiling: off | sdr50 | sdr104 (default
+#                    sdr104; the vendor caps at sdr25 = 50 MHz = 22 MB/s)
 #
 # Usage: ./build-image.sh
 set -eu
@@ -70,6 +72,23 @@ python3 "$HERE/tools/preloader-installer/mkfwimg.py" "$FWIMG" >/dev/null
 # MY355_COMPRESS_KERNEL = none | gzip | lz4 (docs/01-boot-budget.md).
 COMPRESS="${MY355_COMPRESS_KERNEL:-gzip}"     # none | gzip | lz4
 
+# The vendor DTB declares sd-uhs-sdr12/sdr25 on the boot slot and stops there,
+# which pins the bus at 50 MHz: both cards measure 22.3 MB/s, exactly the SDR25
+# ceiling, so the controller is the limit and not the media. The RK3566 sdmmc
+# does SDR104, max-frequency is already 150 MHz, and vccio_sd already sits at
+# 1.8 V because the card negotiates SDR25 today — so this is a clock change, not
+# a voltage change, and slot 1's shared rail does not move. The Miyoo Flip
+# mainline port runs sdr12/25/50/104 here, and Miyoo themselves shipped SDR104
+# in the 2024-11 firmware before capping it in 2025-05.
+# Modes negotiate down, so a card that cannot do SDR104 lands on SDR50 or SDR25
+# by itself. Set MY355_SD_UHS=sdr50 to be conservative, or =off for the vendor
+# behaviour. See docs/01-boot-budget.md.
+SD_UHS="${MY355_SD_UHS:-sdr104}"              # off | sdr50 | sdr104
+case "$SD_UHS" in
+  off|sdr50|sdr104) ;;
+  *) echo "MY355_SD_UHS must be off, sdr50 or sdr104 (got '$SD_UHS')" >&2; exit 1 ;;
+esac
+
 DROP="earlycon="
 APPEND="rw init=$MY355_INIT"
 LED_TRIGGER=""
@@ -87,6 +106,7 @@ python3 "$HERE/tools/rkbootimg.py" setargs "$BOOT_SRC" "$WORK/boot-sd.img" \
   --root "$MY355_ROOT_DEV" --rootfstype ext4 --logo "$WORK/baseos-logo.bmp" \
   --drop "$DROP" --append "$APPEND" \
   ${LED_TRIGGER:+--led-trigger "$LED_TRIGGER"} \
+  --sd-uhs "$SD_UHS" \
   --compress-kernel "$COMPRESS"
 
 # The boot image is written at BOOT_START and the rootfs begins at ROOTFS_START.

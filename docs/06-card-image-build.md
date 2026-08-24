@@ -168,6 +168,14 @@ mounts these filesystems.
 ./build-image.sh [NAND_BACKUP_DIR] # default: ~/Development/miyoo-flip-nand-backup
 ```
 
+`MY355_SD_UHS` raises the boot slot's UHS ceiling: `sdr104` (default), `sdr50`,
+or `off` for the vendor's SDR25. `tools/rkbootimg.py` inserts the missing
+`sd-uhs-*` flags into `dwmmc@fe2b0000` in every `rk-kernel.dtb*` — the only patch
+here that *grows* the FDT rather than rewriting a value in place, so it relays
+out the struct and strings blocks and reads the result back before returning.
+Slot 1 is left alone: it shares `vccio_sd`. See
+[docs/01](01-boot-budget.md#the-sd-bus-was-capped-in-the-device-tree-2026-08-24).
+
 `MY355_DIAG=1` adds bring-up aids — see
 [bring-up and diagnostics](07-bringup-and-diagnostics.md).
 

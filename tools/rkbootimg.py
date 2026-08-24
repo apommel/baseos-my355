@@ -53,6 +53,10 @@ RESOURCE_SAFE_BYTES = 465408
 # android_image_get_comp() tries zImage, then LZ4, then gzip, then LZMA, else
 # IH_COMP_NONE. Read out of the vendor binary (FIT /images/uboot, load 0xa00000),
 # not assumed — see docs/01-boot-budget.md.
+# SD slot 0 — the boot card, `mmcblk1` in Linux, the right-hand slot next to the
+# power button. Slot 1 is dwmmc@fe2c0000 and shares vccio_sd with it, so the two
+# cannot sit at different I/O voltages; we raise only this one.
+SD_SLOT0_NODE = "dwmmc@fe2b0000"
 LZ4_FRAME_MAGIC = b"\x04\x22\x4d\x18"
 LZ4_LEGACY_MAGIC = b"\x02\x21\x4c\x18"
 
@@ -310,6 +314,152 @@ def set_prop_string(dtb: bytes, node: str, prop: str, value: str) -> bytes:
     return bytes(b)
 
 
+
+# UHS modes the RK3566 sdmmc controller can drive, in ascending order, with the
+# bus clock each one implies. Anything above SDR25 also needs max-frequency to
+# allow it and the I/O rail to be switchable to 1.8 V — both asserted below.
+SD_UHS_MODES = {
+    "sdr50": (["sd-uhs-sdr50"], 100_000_000),
+    "sdr104": (["sd-uhs-sdr50", "sd-uhs-sdr104"], 150_000_000),
+}
+
+
+def fdt_node_props(dtb: bytes, node: str) -> "dict[str, bytes]":
+    """Every property of the first node named `node`, as name -> raw value."""
+    if dtb[:4] != FDT_MAGIC:
+        raise ValueError("not a device tree blob")
+    off_struct, off_strings = struct.unpack(">II", dtb[8:16])
+    size_strings, size_struct = struct.unpack(">II", dtb[32:40])
+    strings = dtb[off_strings:off_strings + size_strings]
+    p, end, path, found = off_struct, off_struct + size_struct, [], None
+    while p < end:
+        tok = struct.unpack(">I", dtb[p:p + 4])[0]
+        p += 4
+        if tok == 1:
+            e = dtb.index(b"\0", p)
+            path.append(dtb[p:e].decode() or "/")
+            p = (e + 1 + 3) & ~3
+            if path[-1] == node:
+                found = {}
+        elif tok == 2:
+            if path[-1:] == [node] and found is not None:
+                return found
+            path.pop()
+        elif tok == 3:
+            length, nameoff = struct.unpack(">II", dtb[p:p + 8])
+            p += 8
+            if found is not None and path[-1:] == [node]:
+                name_end = strings.index(b"\0", nameoff)
+                found[strings[nameoff:name_end].decode()] = dtb[p:p + length]
+            p = (p + length + 3) & ~3
+        elif tok == 9:
+            break
+    raise KeyError(node)
+
+
+def fdt_add_props(dtb: bytes, node: str,
+                  props: "list[tuple[str, bytes]]") -> bytes:
+    """Insert properties into the first node named `node`, growing the FDT.
+
+    The other patchers here all work in place, because a string value can be
+    NUL- or space-padded back to its original length. A property that does not
+    exist yet has no length to reuse, so this one relays out the blob: the new
+    FDT_PROP tokens go at the head of the node's property list (the spec
+    requires properties before subnodes, and right after FDT_BEGIN_NODE always
+    satisfies that), their names are appended to the strings block, and the
+    header's offsets and sizes are corrected.
+
+    Properties already present are skipped rather than duplicated, so this is
+    idempotent.
+    """
+    if dtb[:4] != FDT_MAGIC:
+        raise ValueError("not a device tree blob")
+    off_struct, off_strings = struct.unpack(">II", dtb[8:16])
+    size_strings, size_struct = struct.unpack(">II", dtb[32:40])
+    if off_strings < off_struct + size_struct:
+        raise ValueError("FDT strings block does not follow the struct block; "
+                         "this rewriter assumes dtc's layout")
+
+    existing = fdt_node_props(dtb, node)
+    todo = [(n, v) for n, v in props if n not in existing]
+    if not todo:
+        return dtb
+
+    # Locate the insertion point: just past this node's FDT_BEGIN_NODE.
+    p, end, path, insert_at = off_struct, off_struct + size_struct, [], None
+    while p < end and insert_at is None:
+        tok = struct.unpack(">I", dtb[p:p + 4])[0]
+        p += 4
+        if tok == 1:
+            e = dtb.index(b"\0", p)
+            path.append(dtb[p:e].decode() or "/")
+            p = (e + 1 + 3) & ~3
+            if path[-1] == node:
+                insert_at = p
+        elif tok == 2:
+            path.pop()
+        elif tok == 3:
+            length, _ = struct.unpack(">II", dtb[p:p + 8])
+            p = (p + 8 + length + 3) & ~3
+        elif tok == 9:
+            break
+    if insert_at is None:
+        raise KeyError(node)
+
+    strings = bytearray(dtb[off_strings:off_strings + size_strings])
+    tokens = bytearray()
+    for name, value in todo:
+        encoded = name.encode() + b"\0"
+        # Reuse an existing string only on a whole-entry match; a suffix match
+        # (e.g. "sdr50" inside "sd-uhs-sdr50") would name the wrong property.
+        at = 0 if strings.startswith(encoded) else strings.find(b"\0" + encoded)
+        nameoff = at + 1 if at > 0 else (0 if at == 0 else len(strings))
+        if at < 0:
+            strings += encoded
+        tokens += struct.pack(">III", 3, len(value), nameoff)
+        tokens += value + b"\0" * ((-len(value)) % 4)
+
+    body = (dtb[off_struct:insert_at] + bytes(tokens)
+            + dtb[insert_at:off_struct + size_struct])
+    head = bytearray(dtb[:off_struct])
+    out = bytearray(head + body + bytes(strings))
+    struct.pack_into(">I", out, 4, len(out))                 # totalsize
+    struct.pack_into(">I", out, 12, off_struct + len(body))  # off_dt_strings
+    struct.pack_into(">I", out, 32, len(strings))            # size_dt_strings
+    struct.pack_into(">I", out, 36, len(body))               # size_dt_struct
+
+    # Read it back rather than trust the arithmetic: a mislaid offset here is a
+    # card that hangs before any output exists to debug it.
+    check = fdt_node_props(bytes(out), node)
+    for name, value in props:
+        if check.get(name) != value:
+            raise ValueError(f"{node}/{name}: not readable after insertion")
+    for name, value in existing.items():
+        if check.get(name) != value:
+            raise ValueError(f"{node}/{name}: damaged by insertion")
+    return bytes(out)
+
+
+def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
+    """Raise the SD slot's ceiling from the vendor's SDR25 to `mode`.
+
+    The vendor DTB declares sd-uhs-sdr12/sdr25 and stops, which pins the bus at
+    50 MHz — ~22 MB/s measured, against a controller that does SDR104. The rail
+    is already where UHS needs it (the card negotiates SDR25, so vccio_sd is at
+    1.8 V), which makes this a clock change rather than a voltage change.
+    """
+    flags, needed = SD_UHS_MODES[mode]
+    props = fdt_node_props(dtb, node)
+    if "vqmmc-supply" not in props:
+        raise ValueError(f"{node}: no vqmmc-supply; UHS needs a switchable "
+                         "I/O rail and this slot has none")
+    maxfreq = struct.unpack(">I", props["max-frequency"])[0]
+    if maxfreq < needed:
+        raise ValueError(f"{node}: max-frequency is {maxfreq}, but {mode} "
+                         f"needs {needed}; raising it is a separate decision")
+    return fdt_add_props(dtb, node, [(f, b"") for f in flags])
+
+
 def fdt_find_bootargs(dtb: bytes) -> tuple[int, int]:
     """Return (offset, length) of /chosen/bootargs' value inside `dtb`."""
     if dtb[:4] != FDT_MAGIC:
@@ -441,6 +591,8 @@ def cmd_setargs(a) -> int:
         if a.led_trigger:
             out = set_prop_string(out, "work", "linux,default-trigger",
                                   a.led_trigger)
+        if a.sd_uhs != "off":
+            out = set_sd_uhs(out, SD_SLOT0_NODE, a.sd_uhs)
         print(f"  {name}")
         print(f"      old: {old}")
         print(f"      new: {new}")
@@ -462,6 +614,10 @@ def cmd_setargs(a) -> int:
     if a.led_trigger:
         print(f"  led: /leds/work default-trigger -> {a.led_trigger} "
               f"(kernel-side signal, fires at gpio-leds probe)")
+    if a.sd_uhs != "off":
+        added = ", ".join(SD_UHS_MODES[a.sd_uhs][0])
+        print(f"  sd: {SD_SLOT0_NODE} += {added} "
+              f"(vendor stops at SDR25 = 50 MHz; slot 1 left alone)")
 
     second = ResourceImage.build(entries)
     print(f"  resource: rebuilt, {boot.second_size} -> {len(second)} bytes "
@@ -542,6 +698,10 @@ def main() -> int:
                    help="set /leds/work linux,default-trigger (e.g. heartbeat)")
     p.add_argument("--logo", default=None, metavar="BMP",
                    help="replace logo.bmp/logo_kernel.bmp (must be the same byte size)")
+    p.add_argument("--sd-uhs", choices=("off", "sdr50", "sdr104"), default="off",
+                   help="raise the boot slot's UHS ceiling above the vendor's "
+                        "SDR25. The controller does SDR104 and max-frequency is "
+                        "already 150 MHz; only the mode flags are missing")
     p.set_defaults(fn=cmd_setargs)
 
     a = ap.parse_args()

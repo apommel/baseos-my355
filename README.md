@@ -17,7 +17,7 @@ USB cable unplugged at power-on:
 | | stock | BaseOS | |
 |---|---|---|---|
 | power-on → frontend hand-off | 15.79 s | **4.98 s** | −10.81 s |
-| power-on → NextUI's first frame | 31.50 s | **7.93 s** | −23.57 s |
+| power-on → NextUI's first frame | 31.50 s | **6.87 s** | −24.63 s |
 
 It boots from SD faster than stock boots from internal NAND.
 

@@ -43,6 +43,7 @@ Build knobs:
 | | |
 |---|---|
 | `MY355_COMPRESS_KERNEL` | `gzip` (default), `lz4`, `none`. Worth 1.8 s — [docs/01](docs/01-boot-budget.md) |
+| `MY355_SD_UHS` | boot-slot UHS ceiling: `sdr104` (default), `sdr50`, `off`. The vendor DTB caps at SDR25; measured 22.3 → 63.0 MB/s and 1.06 s off the boot — [docs/01](docs/01-boot-budget.md) |
 | `MY355_DIAG=1` | kernel-side LED heartbeat and `panic=10` — [docs/07](docs/07-bringup-and-diagnostics.md) |
 | `MY355_LOGO_SIZE`, `MY355_LOGO_ASSET` | boot logo, rebuilt into the resource image |
 
