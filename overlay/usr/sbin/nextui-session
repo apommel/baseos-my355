@@ -103,6 +103,29 @@ grep -q ' /userdata ' /proc/mounts || /bin/mount --bind "$USERDATA_DIR" /userdat
 grep -q ' /userdata/bluetooth ' /proc/mounts || \
 	/bin/mount --bind /run/bluetooth_fix /userdata/bluetooth
 
+# --- first boot from a fresh card ------------------------------------------
+# .tmp_update sits inside the base zip's miyoo355/app/, not at the card root.
+# On stock it is my355.sh that copies it up — reached through runmiyoo.sh's
+# CUSTOMER_DIR and a /proc/cpuinfo shim — and then deletes miyoo355/ so stock
+# can never reach it again. Replacing that chain means inheriting the copy; the
+# rest of my355.sh is the NAND hook BaseOS exists to replace. miyoo355/ is the
+# only customer dir this device reads, so the zip's miyoo/ is left alone.
+if [ ! -f "$SDCARD/.tmp_update/updater" ]; then
+	if [ -d "$SDCARD/miyoo355/app/.tmp_update" ]; then
+		log "staging .tmp_update from miyoo355/app"
+		/bin/cp -rf "$SDCARD/miyoo355/app/.tmp_update" "$SDCARD/"
+	elif [ -f "$SDCARD/MinUI.zip" ]; then
+		# The zip carries the same .tmp_update. Stock has no such fallback.
+		log "staging .tmp_update from MinUI.zip"
+		/bin/unzip -o "$SDCARD/MinUI.zip" '.tmp_update/*' -d "$SDCARD" >> "$LOG" 2>&1
+	fi
+	# Only once staging is known good, so a failed copy can try again.
+	if [ -f "$SDCARD/.tmp_update/updater" ]; then
+		/bin/rm -rf "$SDCARD/miyoo355"
+		/bin/sync
+	fi
+fi
+
 # --- hand off ---------------------------------------------------------------
 uptime_now > /run/boot-frontend-exec
 

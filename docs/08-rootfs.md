@@ -197,10 +197,49 @@ slot because it is the only slot the SPL can boot from.
 | `system.json`, **byte-identical to the vendor heredoc** | decides volume, brightness, keymap on first launch |
 | `mount --bind` it onto `/userdata` | where `wpa_supplicant.conf`, `system.json` and BT pairings live; stock does this because the internal userdata partition corrupts |
 | `mount --bind /run/bluetooth_fix` over `/userdata/bluetooth` | BlueZ names pairing files by MAC, which FAT32 rejects |
+| stage `.tmp_update` from `miyoo355/app/`, then delete `miyoo355/` | what `my355.sh` does on stock; a card fresh out of the base zip has no `.tmp_update` yet |
 | `exec .tmp_update/updater` | **not** `launch.sh` — the updater installs `MinUI.zip`/`*.pakz`, so updates behave the same |
 
 Verified on hardware: both bind mounts appear in `/proc/mounts` on a booted
 BaseOS system, and the session idles correctly when no frontend is present.
+
+### Installing onto a fresh card
+
+`.tmp_update` is not at the top of the base zip. It sits inside `miyoo355/app/`,
+and on stock it is NextUI's own `my355.sh` that copies it up:
+
+```
+runmiyoo.sh   CUSTOMER_DIR=/media/sdcard{0,1}/miyoo355/   (sdcard1 wins if present)
+  -> $CUSTOMER_DIR/app/MainUI      shell shim; cases /proc/cpuinfo, 0xd05 -> my355.sh
+     -> app/my355.sh               init.sh ; cp -rf .tmp_update up ; rm -rf miyoo355 ; updater
+```
+
+`init.sh` there is the NAND hook — unsquash `/dev/mtd3ro`, swap
+`/usr/miyoo/bin/runmiyoo.sh` for NextUI's, `flashcp` it back — which is exactly
+what BaseOS replaces. The `cp` is not, and dropping it with the rest meant a
+card that had never booted on stock had no `updater` to hand off to.
+`nextui-session` now does that copy, and the `rm -rf miyoo355` after it, leaving
+the card in the state a stock install leaves it. Everything downstream is
+NextUI's, unmodified: `updater` re-derives the platform and runs
+`.tmp_update/my355.sh`, whose `show2.elf` splash works here because it needs only
+SDL2/`_image`/`_ttf` — harvested — and embeds its font.
+
+Two departures from the vendor script. `miyoo355/` is removed only after the
+staged `updater` is confirmed present, so a failed copy leaves the card still
+installable on stock. And if `miyoo355/` is gone but `MinUI.zip` is there, the
+same `.tmp_update` is unzipped out of the zip — a dead end on stock, and how the
+H700 port bootstraps, having no customer directory to copy from at all.
+
+**`miyoo355` or `miyoo`?** Stock reads **`miyoo355`**. Its `runmiyoo.sh` names a
+card directory in one place, the `CUSTOMER_DIR` lookup above, and both
+candidates are `miyoo355/`. `miyoo/` is the historic MinUI customer directory
+for the **Miyoo Mini and A30** — its `MainUI` shim still cases `SStar` and
+`sun8i` beside `0xd05` — so one base zip can serve every device by shipping each
+firmware's directory (`miyoo/`, `miyoo355/`, `trimui/`). On a Flip `miyoo/` is
+inert, and a near-duplicate: NextUI's `makefile` builds it and then does
+`cp -R build/BASE/miyoo build/BASE/miyoo355` before adding the Flip-only `my355/`
+payload to the copy. It is not in NextUI's `main` at all — it arrived with my355
+support, as the source of that copy.
 
 ### Init-script contracts
 

@@ -75,6 +75,7 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-08-23 | Bug: the installer did not reboot afterwards. `/media/sdcard0` is a symlink to `/mnt/sdcard`, which is the name `/proc/mounts` carries, so the device lookup found nothing. Only `sdcard0` is a symlink, so it bit the right-hand slot alone. Fixed with `pwd -P` |
 | 2026-08-23 | **Full chain proven from a fresh card**: stock booted, gate fired, `mtd5` `36d663ef…` → `620648c2…`, readback verified on attempt 1, rebooted itself into BaseOS. Four seconds, on battery, backup and log on the FAT ([SD boot](02-sd-boot.md)) |
 | 2026-08-23 | The card's FAT would not mount on macOS: `mkfs.vfat` chose 4 KiB clusters for a 63 MiB volume, giving **16092 clusters against the 65525 a FAT32 requires**. Linux mounts it regardless; macOS validates and refuses. Fixed with `-s 1` ([card image](06-card-image-build.md)) |
+| 2026-08-24 | BaseOS could only start a NextUI card **some stock install had already initialised**: `.tmp_update` is not at the top of the base zip but under `miyoo355/app/`, and it is the zip's own `my355.sh` — reached through stock's `CUSTOMER_DIR` — that copies it up. `nextui-session` now does that staging itself. Stock reads **`miyoo355` only**; the zip's `miyoo/` is the Mini/A30 directory, left untouched ([rootfs](08-rootfs.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 

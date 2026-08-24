@@ -76,6 +76,10 @@ If you already use NextUI on your Flip, use that exact card. Move it from the
 right-hand slot to the left-hand slot and you are done. Your settings, saves and ROMs
 all carry over untouched, and nothing needs to be reinstalled.
 
+A brand-new card works too: format it FAT32, unzip a NextUI `base` (or `all`) release
+onto it, and put it in the left-hand slot. BaseOS installs it on the next boot, NextUI's
+own progress screen and all. It does not need to have been started on stock first.
+
 A single-card setup is not supported yet, so BaseOS and NextUI need to be on two
 separate cards for now.
 
