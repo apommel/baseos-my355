@@ -26,7 +26,10 @@ uptime_now() {
 log() {
 	line="$(uptime_now) $*"
 	echo "$line" >> "$LOG" 2>/dev/null
-	[ -d "$SDCARD" ] && echo "$line" >> "$SDCARD/baseos-session.log" 2>/dev/null
+	# On the mount, not the directory: an unmount window would otherwise
+	# leave a stray file on the root filesystem.
+	grep -q " $SDCARD " /proc/mounts && \
+		echo "$line" >> "$SDCARD/baseos-session.log" 2>/dev/null
 }
 
 # The panel is this device's only output. Ordinary boots never call this — the
@@ -35,9 +38,29 @@ splash() {
 	[ -x /usr/bin/baseos-splash ] && /usr/bin/baseos-splash --important "$@" 2>/dev/null
 }
 
-# The card is mounted by rcS; give a late-enumerating one a bounded moment.
+# --- the frontend card ------------------------------------------------------
+# rcS is ::sysinit: and mounts once, so a card inserted later would never be
+# seen. Mount here too — same devices, options and order — since init respawns
+# this script. Same as the H700 port.
+
+# With the left slot empty at boot rcS mounted the fallback, so a card inserted
+# later has to displace it. Safe only here: no frontend is running.
+if grep -q "^/dev/mmcblk1p5 $SDCARD " /proc/mounts && [ -b /dev/mmcblk2p1 ]; then
+	log "left-slot card appeared, releasing the fallback mount"
+	/bin/sync
+	/bin/umount /userdata/bluetooth 2>/dev/null
+	/bin/umount /userdata 2>/dev/null
+	/bin/umount "$SDCARD" 2>/dev/null
+fi
+
 i=0
 while [ "$i" -lt 20 ]; do
+	grep -q " $SDCARD " /proc/mounts && break
+	for dev in /dev/mmcblk2p1 /dev/mmcblk1p5; do
+		[ -b "$dev" ] || continue
+		/bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed \
+			"$dev" "$SDCARD" 2>/dev/null && break
+	done
 	grep -q " $SDCARD " /proc/mounts && break
 	/bin/sleep 0.5
 	i=$((i + 1))
