@@ -4,12 +4,12 @@
     "size": 39845888
   },
   "harvest": {
-    "paths": 74,
-    "sha256": "b123a46fe1169820bd988d90e4bc9c248ef3a9860a0abbe09894765931ea0ccc",
-    "size": 48302080
+    "paths": 75,
+    "sha256": "bb5b2ade48a5f95daddc39bd4f88ef0cad0e9956df18402c01f605888f35b640",
+    "size": 48312320
   },
   "model": "Miyoo Flip",
-  "prepared_utc": "2026-08-24T20:24:57Z",
+  "prepared_utc": "2026-08-25T19:12:45Z",
   "provenance": "nand-backup",
   "schema": 1,
   "source": {
