@@ -1,4 +1,27 @@
 #!/bin/sh
-# Called by NextUI's etc/wifi/wifi_init.sh. The RTL8189FU driver is built into
-# this kernel, so there is nothing to load or unload.
+# Called by NextUI's etc/wifi/wifi_init.sh. No modules to load — the driver is
+# built into this kernel — but stock's S36 also seeds the supplicant config, and
+# wifi_init.sh starts `wpa_supplicant -c` on that path. Without the file
+# wpa_supplicant exits, and NextUI's scan finds nothing to talk to.
+#
+# The template is ours: stock's placeholder network={ ssid="SSID" } stanza would
+# show up in the frontend as a saved network the user never added.
+
+CONF=/userdata/cfg/wpa_supplicant.conf
+
+case "$1" in
+  start|"")
+	# Before nextui-session binds /userdata this would seed the root
+	# filesystem, shadowing the card's copy on every later boot.
+	grep -q ' /userdata ' /proc/mounts || exit 0
+	[ -f "$CONF" ] && exit 0
+	/bin/mkdir -p /userdata/cfg
+	/bin/cp /etc/wpa_supplicant.conf "$CONF" || exit 1
+	/bin/sync
+	;;
+  stop)
+	# wifi_init.sh blocks the radio itself, with its own rfkill.elf.
+	;;
+esac
+
 exit 0

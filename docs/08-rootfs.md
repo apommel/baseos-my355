@@ -261,13 +261,26 @@ BaseOS has to answer to the names; the contents are ours. Stock's `rcS` runs
 
 | script | BaseOS | at boot? |
 |---|---|---|
-| `S36load_wifi_modules` | nothing — the RTL8189FU driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs) | no |
+| `S36load_wifi_modules` | seeds `/userdata/cfg/wpa_supplicant.conf`; no modules, the driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs) | no — the frontend calls it when WiFi goes on |
 | `S41dhcpcd` | BusyBox `udhcpc`, not the vendor `dhcpcd` | no — the frontend calls it when WiFi goes on |
 | `S49ntp` | BusyBox `ntpd`, not stock's 757 KB one | yes — TLS depends on the clock |
 | `S40bluetooth` | `bluetoothd`, after bringing the system bus up | no — the frontend calls it when Bluetooth goes on |
 
 Only `S49ntp` runs at boot, and backgrounded. The others stay frontend-driven
 because `wifi_init.sh` and `bt_init.sh` call them anyway and boot must not grow.
+
+**The supplicant config.** `S36` looks like the one script with nothing to do,
+and was a bare `exit 0` until a user reported no WiFi networks at all on a fresh
+install. Stock's `S36` loads modules *and* copies `/etc/wpa_supplicant.conf` into
+`/userdata/cfg/` when absent; `wifi_init.sh` then starts `wpa_supplicant -c` on
+that path, and wpa_supplicant **exits 255** rather than starting when the file is
+missing. A card that had never booted stock therefore ran no supplicant, and
+`wpa_cli scan` had nothing to answer NextUI: an empty list with the chip
+enumerated, `wlan0` up and rfkill clear. It read as a radio fault and was a
+missing file — one the reporter fixed unknowingly by booting stock to test, which
+ran the real `S36`. BaseOS ships its own template and seeds it the same way,
+minus stock's placeholder `network={ ssid="SSID" }` stanza, which cannot
+associate and which NextUI would list as a saved network.
 
 **DHCP.** Stock's `dhcpcd` 9.4.1 would mean a 368 KB binary, its hook and share
 directories and a privsep user. BusyBox `udhcpc` is already in the image and needs
