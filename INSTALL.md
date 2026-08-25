@@ -51,7 +51,9 @@ The stock system will start as usual, and after a few seconds a **firmware updat
 progress bar will appear. This is the preloader patch. Please be patient and do not
 power the device off while it runs. It takes about four seconds.
 
-The Flip will then reboot by itself and come up in BaseOS.
+The Flip will then reboot by itself and come up in BaseOS. On that first boot it
+takes a second to expand the card's BASEOS volume to the full size of the card, and
+shows **EXPANDING STORAGE** while it does. Anything already on the volume is kept.
 
 This only happens once. From then on the Flip boots straight to BaseOS whenever the
 card is in the right-hand slot, and boots stock whenever it is not.
@@ -80,10 +82,21 @@ A brand-new card works too: format it FAT32, unzip a NextUI `base` (or `all`) re
 onto it, and put it in the left-hand slot. BaseOS installs it on the next boot, NextUI's
 own progress screen and all. It does not need to have been started on stock first.
 
-A single-card setup is not supported yet, so BaseOS and NextUI need to be on two
-separate cards for now.
-
 You're done, enjoy!
+
+### Advanced: one card for both
+
+BaseOS and NextUI can share one card, leaving the left-hand slot free. Two cards is
+still the recommended setup: your games and saves stay on a card you can pull out,
+reformat or replace without touching the one that boots the device.
+
+**After** the first boot — the volume is only 64 MB until then — put the card in your
+computer and unzip a NextUI `base` (or `all`) release onto the BASEOS volume, next to
+`README.txt`. Put the card back in the right-hand slot and power on; NextUI installs
+itself as it would on any other card.
+
+A card carrying a frontend in the left-hand slot is still used in preference, so an
+occasional second card works, and an empty one changes nothing.
 
 ## If something goes wrong
 
@@ -115,10 +128,11 @@ Read **baseos-preloader.log** on the card's BASEOS volume from your computer.
   patched or is GammaLoader's. In that case check that you wrote a full BaseOS image to
   the card rather than only copying files onto it.
 
-### BaseOS starts but stops at the logo
+### BaseOS shows INSERT SD CARD, or ADD FRONTEND TO SD CARD
 
-BaseOS is running and has no frontend to hand off to. Put NextUI on a card in the
-left-hand slot, as above.
+BaseOS is running and has no frontend to hand off to. The first message means the
+left-hand slot is empty, the second that the card in it carries no frontend. Put
+NextUI on a card in the left-hand slot, as above.
 
 ### The Flip does not start at all
 

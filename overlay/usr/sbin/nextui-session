@@ -44,9 +44,10 @@ splash() {
 # this script. Same as the H700 port.
 
 # With the left slot empty at boot rcS mounted the fallback, so a card inserted
-# later has to displace it. Safe only here: no frontend is running.
+# later has to displace it: drop the mount and let mount-frontend decide again.
+# Safe only here: no frontend is running.
 if grep -q "^/dev/mmcblk1p5 $SDCARD " /proc/mounts && [ -b /dev/mmcblk2p1 ]; then
-	log "left-slot card appeared, releasing the fallback mount"
+	log "left-slot card present, re-checking which one carries the frontend"
 	/bin/sync
 	/bin/umount /userdata/bluetooth 2>/dev/null
 	/bin/umount /userdata 2>/dev/null
@@ -55,12 +56,7 @@ fi
 
 i=0
 while [ "$i" -lt 20 ]; do
-	grep -q " $SDCARD " /proc/mounts && break
-	for dev in /dev/mmcblk2p1 /dev/mmcblk1p5; do
-		[ -b "$dev" ] || continue
-		/bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed \
-			"$dev" "$SDCARD" 2>/dev/null && break
-	done
+	/usr/sbin/mount-frontend
 	grep -q " $SDCARD " /proc/mounts && break
 	/bin/sleep 0.5
 	i=$((i + 1))
@@ -69,6 +65,44 @@ if ! grep -q " $SDCARD " /proc/mounts; then
 	log "no card mounted"
 	splash -1 "INSERT SD CARD"
 	# Sleep rather than spin: init respawns us, so pace the retry.
+	/bin/sleep 5
+	exit 0
+fi
+
+# --- first boot from a fresh card ------------------------------------------
+# .tmp_update sits inside the base zip's miyoo355/app/, not at the card root.
+# On stock it is my355.sh that copies it up — reached through runmiyoo.sh's
+# CUSTOMER_DIR and a /proc/cpuinfo shim — and then deletes miyoo355/ so stock
+# can never reach it again. Replacing that chain means inheriting the copy; the
+# rest of my355.sh is the NAND hook BaseOS exists to replace. miyoo355/ is the
+# only customer dir this device reads, so the zip's miyoo/ is left alone.
+if [ ! -f "$SDCARD/.tmp_update/updater" ]; then
+	if [ -d "$SDCARD/miyoo355/app/.tmp_update" ]; then
+		log "staging .tmp_update from miyoo355/app"
+		/bin/cp -rf "$SDCARD/miyoo355/app/.tmp_update" "$SDCARD/"
+	elif [ -f "$SDCARD/MinUI.zip" ]; then
+		# The zip carries the same .tmp_update. Stock has no such fallback.
+		log "staging .tmp_update from MinUI.zip"
+		/bin/unzip -o "$SDCARD/MinUI.zip" '.tmp_update/*' -d "$SDCARD" >> "$LOG" 2>&1
+	fi
+	# Only once staging is known good, so a failed copy can try again.
+	if [ -f "$SDCARD/.tmp_update/updater" ]; then
+		/bin/rm -rf "$SDCARD/miyoo355"
+		/bin/sync
+	fi
+fi
+
+UPDATER="$SDCARD/.tmp_update/updater"
+if [ ! -x "$UPDATER" ]; then
+	# Two cards is the recommended setup, so with the left slot empty the
+	# thing to ask for is the card, not a frontend on this one.
+	if [ -b /dev/mmcblk2p1 ]; then
+		log "no frontend on card"
+		splash -1 "ADD FRONTEND TO SD CARD"
+	else
+		log "no frontend, left slot empty"
+		splash -1 "INSERT SD CARD"
+	fi
 	/bin/sleep 5
 	exit 0
 fi
@@ -126,47 +160,15 @@ grep -q ' /userdata ' /proc/mounts || /bin/mount --bind "$USERDATA_DIR" /userdat
 grep -q ' /userdata/bluetooth ' /proc/mounts || \
 	/bin/mount --bind /run/bluetooth_fix /userdata/bluetooth
 
-# --- first boot from a fresh card ------------------------------------------
-# .tmp_update sits inside the base zip's miyoo355/app/, not at the card root.
-# On stock it is my355.sh that copies it up — reached through runmiyoo.sh's
-# CUSTOMER_DIR and a /proc/cpuinfo shim — and then deletes miyoo355/ so stock
-# can never reach it again. Replacing that chain means inheriting the copy; the
-# rest of my355.sh is the NAND hook BaseOS exists to replace. miyoo355/ is the
-# only customer dir this device reads, so the zip's miyoo/ is left alone.
-if [ ! -f "$SDCARD/.tmp_update/updater" ]; then
-	if [ -d "$SDCARD/miyoo355/app/.tmp_update" ]; then
-		log "staging .tmp_update from miyoo355/app"
-		/bin/cp -rf "$SDCARD/miyoo355/app/.tmp_update" "$SDCARD/"
-	elif [ -f "$SDCARD/MinUI.zip" ]; then
-		# The zip carries the same .tmp_update. Stock has no such fallback.
-		log "staging .tmp_update from MinUI.zip"
-		/bin/unzip -o "$SDCARD/MinUI.zip" '.tmp_update/*' -d "$SDCARD" >> "$LOG" 2>&1
-	fi
-	# Only once staging is known good, so a failed copy can try again.
-	if [ -f "$SDCARD/.tmp_update/updater" ]; then
-		/bin/rm -rf "$SDCARD/miyoo355"
-		/bin/sync
-	fi
-fi
-
 # --- hand off ---------------------------------------------------------------
+# Stock calls the updater, not launch.sh directly: it is what installs
+# MinUI.zip/*.pakz payloads before starting the frontend. Keeping that entry
+# point is what makes updates behave identically.
+#
+# The H700 port bypasses it and runs the platform script itself, because
+# NextUI's installer UI needs libSDL2/_image/_ttf which that rootfs does not
+# ship. This one does — they are in the measured harvest — so NextUI can draw
+# its own installer and the flow matches stock exactly.
 uptime_now > /run/boot-frontend-exec
-
-UPDATER="$SDCARD/.tmp_update/updater"
-if [ -x "$UPDATER" ]; then
-	# Stock calls the updater, not launch.sh directly: it is what installs
-	# MinUI.zip/*.pakz payloads before starting the frontend. Keeping that
-	# entry point is what makes updates behave identically.
-	#
-	# The H700 port bypasses it and runs the platform script itself, because
-	# NextUI's installer UI needs libSDL2/_image/_ttf which that rootfs does
-	# not ship. This one does — they are in the measured harvest — so NextUI
-	# can draw its own installer and the flow matches stock exactly.
-	log "exec $UPDATER"
-	exec "$UPDATER"
-fi
-
-log "no frontend on card"
-splash -1 "ADD FRONTEND TO SD CARD"
-/bin/sleep 5
-exit 0
+log "exec $UPDATER"
+exec "$UPDATER"

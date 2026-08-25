@@ -76,15 +76,18 @@ mark /run/boot-dbus-start
 [ -f /data/random-seed ] && /bin/cat /data/random-seed > /dev/urandom 2>/dev/null
 /bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null &
 
+# First boot only: grow this card's FAT partition to fill the card. Must run
+# before it is mounted, and after /data, which holds the staged contents. The
+# test is a builtin, so a normal boot does not even spawn the script.
+[ -e /data/expanded ] || /usr/sbin/expand-storage
+
 # The frontend card. The right slot holds BaseOS (it is the only slot the SPL
 # can boot from), so a NextUI card goes in the LEFT slot and appears as
 # mmcblk2p1. Falling back to this card's own FAT partition keeps a single-card
 # setup working. NextUI itself is slot-agnostic: nothing in its scripts names a
 # block device, only /mnt/SDCARD.
 # Mount point and the /mnt/sdcard alias are baked into the image.
-if ! /bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed /dev/mmcblk2p1 /mnt/SDCARD 2>/dev/null; then
-	/bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed /dev/mmcblk1p5 /mnt/SDCARD 2>/dev/null
-fi
+/usr/sbin/mount-frontend
 
 # adb over USB, backgrounded so it never serialises boot.
 [ -x /usr/sbin/usb-gadget-adb ] && /usr/sbin/usb-gadget-adb &

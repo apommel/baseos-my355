@@ -1,0 +1,70 @@
+#!/bin/sh
+# First boot: grow the card's FAT partition to fill the card and reformat it.
+#
+# Growing FAT32 in place would need fatresize; a reformat is what BusyBox can do,
+# and it replaces the shipped 512-byte clusters with a normal size (docs/06).
+#
+# Unlike the H700 port this partition is not empty — the preloader installer
+# leaves the user's original mtd5 on it — so its contents are staged on /data and
+# restored after. Staging counts only once the directory is renamed into place,
+# and /data/expanded is written last, so a power cut leaves work the next boot
+# redoes rather than files it has lost.
+
+DISK=/dev/mmcblk1
+PART=/dev/mmcblk1p5             # `primary`, GPT entry 5 (tools/mkgpt.py)
+MNT=/tmp/.primary
+STAGE=/data/expand-stage
+DONE=/data/expanded
+LOG=/data/expand.log
+README=/usr/share/baseos/card-readme.txt
+
+log() { echo "$(/bin/cut -d' ' -f1 /proc/uptime) expand: $*" >> "$LOG" 2>/dev/null; }
+mount_part() { /bin/mkdir -p "$MNT" && /bin/mount -t vfat -o rw "$PART" "$MNT" 2>/dev/null; }
+splash() { [ -x /usr/bin/baseos-splash ] && \
+	/usr/bin/baseos-splash --important "$1" "EXPANDING STORAGE" 2>/dev/null; }
+
+[ -e "$DONE" ] && exit 0
+[ -b "$PART" ] || exit 0
+
+# 0 = grown, 1 = already fills the card, 2 = error.
+/usr/sbin/gptgrow "$DISK" primary >> "$LOG" 2>&1
+case "$?" in
+	0) log "grown" ;;
+	1) # Already full with nothing staged: not a card we grew, leave it alone.
+	   [ -d "$STAGE" ] || { /bin/touch "$DONE"; exit 0; }
+	   log "resuming" ;;
+	*) log "gptgrow failed; partition untouched"; exit 1 ;;
+esac
+
+splash 45
+
+if [ ! -d "$STAGE" ]; then
+	/bin/rm -rf "$STAGE.part"; /bin/mkdir -p "$STAGE.part"
+	if mount_part; then
+		if ! /bin/cp -a "$MNT"/. "$STAGE.part"/ 2>> "$LOG"; then
+			/bin/umount "$MNT"; log "staging failed; partition untouched"; exit 1
+		fi
+		/bin/umount "$MNT"
+	fi
+	/bin/mv "$STAGE.part" "$STAGE"
+	/bin/sync
+fi
+splash 55
+
+# BusyBox mkfs.vfat is FAT32-only and chooses the cluster size itself.
+/sbin/mkfs.vfat -n BASEOS "$PART" >> "$LOG" 2>&1 || { log "mkfs.vfat failed"; exit 1; }
+splash 80
+
+mount_part || { log "cannot mount the new filesystem"; exit 1; }
+/bin/cp -a "$STAGE"/. "$MNT"/ 2>> "$LOG"
+[ -f "$MNT/miyoo355_fw.img" ] || /bin/cp /miyoo355_fw.img "$MNT/" 2>/dev/null
+[ -f "$README" ] && /bin/cp "$README" "$MNT/README.txt"
+/bin/sync
+/bin/umount "$MNT"
+splash 95
+
+/bin/rm -rf "$STAGE"
+/bin/touch "$DONE"
+/bin/sync
+splash 100
+log "expanded to fill the card"

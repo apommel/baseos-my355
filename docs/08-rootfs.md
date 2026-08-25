@@ -133,7 +133,8 @@ because this kernel does more for us:
 | mounts `debugfs` for sunxi `dispdbg` | plain DRM, no such dependency |
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed,
-**loopback**, the frontend card, and the USB gadget in the background.
+**loopback**, the first-boot card expansion ([06](06-card-image-build.md)), the
+frontend card, and the USB gadget in the background.
 
 ### Loopback is load-bearing
 
@@ -184,35 +185,47 @@ differing only in which slot the card is in. NextUI itself is slot-agnostic —
 nothing in `my355.sh` or `MinUI.pak/launch.sh` names a block device — so the whole
 burden is in reproducing what stock's `runmiyoo.sh` sets up.
 
-`rcS` mounts the frontend card at `/mnt/SDCARD`: the **left-slot** card
-(`mmcblk2p1`) if present, else this card's own FAT partition (`mmcblk1p5`), and
-symlinks `/mnt/sdcard` for the lowercase path stock uses. BaseOS takes the right
-slot because it is the only slot the SPL can boot from.
+`usr/sbin/mount-frontend` mounts the frontend card at `/mnt/SDCARD`, and
+`/mnt/sdcard` is a symlink for the lowercase path stock uses. BaseOS takes the
+right slot because it is the only slot the SPL can boot from, so the frontend card
+normally goes in the **left** slot (`mmcblk2p1`); this card's own FAT partition
+(`mmcblk1p5`) is the single-card fallback.
 
-`nextui-session` mounts it too, same devices and options: `rcS` is `::sysinit:`
-and runs once, the session is `::respawn:`, so only the session can pick up a
-card inserted after boot — as on H700. The kernel needs no help; neither `dwmmc`
-node sets `broken-cd`, and `/dev` is devtmpfs.
+The choice is by content, not by slot: each candidate is mounted in turn, left
+slot first, and kept only if it carries a frontend (`.tmp_update/updater`,
+`MinUI.zip`, or `miyoo355/app/.tmp_update`) — otherwise an empty or ROM-only card
+in the left slot would hide a frontend installed on the boot card. If neither
+qualifies the left slot still wins. It costs one extra `mount`/`umount` pair, ~10 ms.
+
+`rcS` and `nextui-session` both call it: `rcS` is `::sysinit:` and runs once, the
+session is `::respawn:`, so only the session can pick up a card inserted after boot
+— as on H700. The kernel needs no help; neither `dwmmc` node sets `broken-cd`, and
+`/dev` is devtmpfs.
 
 A retry alone is not enough. With the left slot empty at boot `rcS` mounts the
-fallback, leaving `/mnt/SDCARD` occupied and a later card nowhere to go, so the
-session releases it — `/userdata` binds included — when `mmcblk2p1` turns up.
-Safe only there: no frontend is running, before or after. A card already mounted
-from the left slot is never disturbed.
+fallback, leaving `/mnt/SDCARD` occupied and a later card nowhere to go, so when
+`mmcblk2p1` turns up the session releases it — `/userdata` binds included — and
+lets `mount-frontend` choose again. Safe only there: no frontend is running,
+before or after. A card already mounted from the left slot is never disturbed.
 
 `nextui-session` then reproduces, in order:
 
 | | why |
 |---|---|
+| stage `.tmp_update` from `miyoo355/app/`, then delete `miyoo355/` | what `my355.sh` does on stock; a card fresh out of the base zip has no `.tmp_update` yet |
 | `$SDCARD/.userdata/my355/userdata` skeleton | stock creates it on first run |
 | `system.json`, **byte-identical to the vendor heredoc** | decides volume, brightness, keymap on first launch |
 | `mount --bind` it onto `/userdata` | where `wpa_supplicant.conf`, `system.json` and BT pairings live; stock does this because the internal userdata partition corrupts |
 | `mount --bind /run/bluetooth_fix` over `/userdata/bluetooth` | BlueZ names pairing files by MAC, which FAT32 rejects |
-| stage `.tmp_update` from `miyoo355/app/`, then delete `miyoo355/` | what `my355.sh` does on stock; a card fresh out of the base zip has no `.tmp_update` yet |
 | `exec .tmp_update/updater` | **not** `launch.sh` — the updater installs `MinUI.zip`/`*.pakz`, so updates behave the same |
 
-Verified on hardware: both bind mounts appear in `/proc/mounts` on a booted
-BaseOS system, and the session idles correctly when no frontend is present.
+The `/userdata` work comes **after** the frontend check: nothing is written to a
+card BaseOS is not about to launch from, which matters now that the fallback card
+can be the boot card itself.
+
+Verified on hardware: with no frontend the card gains nothing and `/userdata` stays
+unbound; with one, the skeleton, `system.json` and both bind mounts appear and the
+session execs the updater.
 
 ### Installing onto a fresh card
 
@@ -402,8 +415,11 @@ It reads panel geometry from the framebuffer and rotation from
 upright). `usr/bin/baseos-splash` wraps it, and ordinary boots never call it:
 the bootloader logo stays untouched until the frontend draws its first frame.
 
-`nextui-session` shows `INSERT SD CARD` and `ADD FRONTEND TO SD CARD`, and logs
-to `/tmp/nextui-session.log`, mirrored to `baseos-session.log` on the card.
+`nextui-session` shows `INSERT SD CARD` when the left slot is empty and
+`ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards
+is the recommended setup, so an empty left slot asks for the card, not for a
+frontend on this one. It logs to `/tmp/nextui-session.log`, mirrored to
+`baseos-session.log` on the card.
 
 ## Not yet done
 

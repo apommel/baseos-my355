@@ -1,0 +1,28 @@
+#!/bin/sh
+# Mount the frontend card on /mnt/SDCARD.
+#
+# The left slot (mmcblk2p1) is the normal place for it; this card's own FAT
+# partition (mmcblk1p5) is the single-card fallback. A card that carries a
+# frontend wins, so an empty or ROM-only card in the left slot does not hide a
+# frontend installed on the boot card. Exits 0 once something is mounted.
+
+SDCARD=/mnt/SDCARD
+
+has_frontend() {
+	[ -f "$SDCARD/.tmp_update/updater" ] || [ -f "$SDCARD/MinUI.zip" ] ||
+		[ -d "$SDCARD/miyoo355/app/.tmp_update" ]
+}
+try() { /bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed "$1" "$SDCARD" 2>/dev/null; }
+
+grep -q " $SDCARD " /proc/mounts && exit 0
+
+fallback=""
+for dev in /dev/mmcblk2p1 /dev/mmcblk1p5; do
+	[ -b "$dev" ] || continue
+	try "$dev" || continue
+	has_frontend && exit 0
+	[ -n "$fallback" ] || fallback="$dev"
+	/bin/umount "$SDCARD"
+done
+
+[ -n "$fallback" ] && try "$fallback"

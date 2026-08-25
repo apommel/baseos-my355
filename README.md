@@ -76,10 +76,11 @@ cache-pack.sh       work/my355/prepared/ → a bundle to publish
 build-all.sh        rootfs → image → the release .img.zip
 build-rootfs.sh     harvest + overlay/ + BusyBox → rootfs.tar
 build-image.sh      prepared + rootfs → baseos-my355.img
+test-expand-storage.sh  offline tests for the first-boot card expansion
 overlay/            init, inittab, rcS, the frontend session — what makes it ours
 manifest/           the harvest allowlist, verified closed at prepare time
 tools/              GPT, Android boot image, preloader and bootlogo surgery
-src/fbsplash.c      the panel is this device's only output
+src/                fbsplash (the panel is this device's only output), gptgrow
 docs/               how it works and why — start at docs/README.md
 upstream-h700/      parked H700 code, not built here (see upstream-h700/PARKED.md)
 ```
@@ -92,4 +93,5 @@ userland, measure everything. The hardware does not overlap — different SoC ve
 different first stage, boot chain in SPI NAND rather than on the card, a Rockchip
 Android boot image rather than an inherited GPT. Boot chain, image format and build
 pipeline here are independent; `src/fbsplash.c`, the artwork and the
-container-platform helper are shared. See [NOTICE](NOTICE).
+container-platform helper are shared, and `src/gptgrow.c` is adapted. See
+[NOTICE](NOTICE).

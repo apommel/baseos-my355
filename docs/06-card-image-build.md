@@ -43,11 +43,11 @@ entry 4  data    2211840 .. 2473983   128 MiB   ext4, persistent state
 entry 5  primary 2473984 .. 2605055    64 MiB   FAT32, the only visible volume
 ```
 
-The FAT volume is made with `-s 1`. At 63 MiB dosfstools would otherwise choose 4 KiB
+`primary` ships at 64 MiB and is grown to fill the card on the first boot (below).
+Until then it is made with `-s 1`: at 63 MiB dosfstools would otherwise choose 4 KiB
 clusters and produce 16092 of them, under the **65525 minimum a FAT32 must have** —
 Linux's vfat driver mounts that anyway, but macOS validates the count and refuses, so
-the card reads as damaged on a desktop. If `primary` is ever grown to fill the card,
-reformat it rather than extending: 512-byte clusters do not scale to 58 GiB.
+a freshly flashed card would read as damaged on a desktop.
 
 All three filesystems carry `miyoo355_fw.img`, the preloader installer stock picks up
 off the card. All three, because which one stock's automounter mounts where is a lock
@@ -61,6 +61,44 @@ GPT attribute bits 62 and 63, so a desktop assigns one drive letter.
 **Reserving slot B now is free; adding it later is not** — it must sit between
 `rootfs` and `data`, so retrofitting shifts every later partition and destroys
 whatever is on the card.
+
+**Nothing may regenerate the GPT after the first boot.** `mkgpt.py` writes the
+64 MiB `primary` of the shipped image; running it against a card that has already
+been expanded would shrink the partition back and orphan everything on it. A future
+A/B update writes the rootfs slot, never the table.
+
+## First boot: expand to fill
+
+`rcS` runs `usr/sbin/expand-storage` once — after `/data` is mounted, before the
+card is. It grows `primary` to the end of the card, reformats it, and puts back
+what was on it.
+
+`usr/sbin/gptgrow` (from `src/gptgrow.c`, static, zero dependencies) does the table
+work: move the entry's ending LBA to the last usable sector of the real device,
+rewrite both GPT copies and the protective MBR with recomputed CRCs, then
+`BLKPG_RESIZE_PARTITION`. That ioctl is the point — a full partition-table reread
+is refused with `EBUSY` while the rootfs on the same disk is mounted. It takes the
+partition by **name** and refuses anything that is not MS basic data, so a wrong
+argument cannot land a `mkfs` on `rootfs`. Exit codes: 0 grew, 1 already full,
+2 error.
+
+Growing FAT32 in place would need `fatresize`; reformatting is what BusyBox can do,
+and it fixes the cluster size on the way. BusyBox's `mkfs.vfat` is FAT32-only and
+picks the cluster size itself — `-F`, `-s` and `-S` are accepted and ignored —
+landing on 4 KiB up to a few GiB and 16 KiB from 16 GiB up.
+
+Unlike the H700 port this partition is **not empty**: the preloader installer
+leaves `mtd5-original-<hash>.img`, the user's only copy of their original
+preloader, on it. So its contents are staged on `/data` first (95 MiB free against
+a 62 MiB volume) and restored after the `mkfs`. Staging counts as complete only
+once the directory is renamed into place, and `/data/expanded` is written last, so
+a power cut leaves work the next boot redoes rather than files it has lost. A card
+that already fills the disk with nothing staged is marked done and left alone — it
+is not a card we grew.
+
+Verified on hardware (64 GB card, 2026-08-25): 64 MiB → 57.0 GiB with **16 KiB
+clusters** (3 737 821 of them) in **1.1 s**, card files intact, nothing done on
+later boots. macOS mounts the result.
 
 ## Boot image surgery
 

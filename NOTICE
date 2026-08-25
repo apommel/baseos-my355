@@ -12,6 +12,9 @@ on every commit that carries it.
 Files that remain upstream's work, unmodified or nearly so:
 
     src/fbsplash.c              the framebuffer splash renderer
+    src/gptgrow.c               first-boot expand-to-fill; rewritten to read the
+                                GPT geometry from the header instead of hardcoding
+                                the H700 layout
     assets/bootlogo.bmp         the BaseOS wordmark
     tools/docker-platform.sh    container platform selection
     upstream-h700/**            the whole H700 port, parked and not built here

@@ -11,7 +11,7 @@
 # fbsplash is built from the shared src/fbsplash.c: this device has no console,
 # so a status message on the panel is the only way to say "insert a card" or
 # "installing frontend". It reads panel geometry from the framebuffer and
-# rotation from /etc/baseos-release.
+# rotation from /etc/baseos-release. src/gptgrow.c is built the same way.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -75,11 +75,17 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   strip "$R"/usr/bin/fbsplash
   mkdir -p "$R"/usr/share/baseos
   cp /assets/boot.ttf "$R"/usr/share/baseos/boot.ttf
+  cp /assets/card-readme.txt "$R"/usr/share/baseos/card-readme.txt
+
+  # gptgrow: first-boot expand-to-fill (overlay/usr/sbin/expand-storage).
+  gcc -static -O2 -o "$R"/usr/sbin/gptgrow /src/gptgrow.c
+  strip "$R"/usr/sbin/gptgrow
 
   # 3. The overlay wins over everything.
   cp -a /overlay/. "$R"/
   chmod +x "$R"/init "$R"/etc/init.d/* \
            "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb \
+           "$R"/usr/sbin/expand-storage "$R"/usr/sbin/mount-frontend \
            "$R"/usr/bin/baseos-splash "$R"/usr/share/udhcpc/default.script
 
   # All three from VERSION so they cannot drift. NextUI reads

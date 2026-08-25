@@ -156,8 +156,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   mke2fs -q -F -t ext4 -O "$EXT4_OPTS" -b 4096 -L data -d "$D" \
     -E offset=$((DATA_START * 512)) "$OUT" $((DATA_SECTORS / 8))
 
-  # -s 1: the default 4 KiB clusters give 16092 here, under the 65525 a FAT32 needs.
-  # Linux mounts that anyway; macOS refuses (docs/06-card-image-build.md).
+  # Pre-expansion geometry only: first boot reformats this partition at full
+  # size with a normal cluster size. -s 1 because the default 4 KiB clusters
+  # give 16092 here, under the 65525 a FAT32 needs -- Linux mounts that anyway,
+  # macOS refuses (docs/06-card-image-build.md).
   mkfs.vfat -F 32 -s 1 -n BASEOS -S 512 --offset "$PRIMARY_START" \
     "$OUT" $(((PRIMARY_SECTORS - 2048) / 2)) >/dev/null 2>&1
   mcopy -i "$OUT@@$((PRIMARY_START * 512))" /work/miyoo355_fw.img ::
