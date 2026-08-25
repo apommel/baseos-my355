@@ -45,6 +45,9 @@ glibc is LGPL; the Mali userspace is ARM proprietary).
 LICENSE
 -------
 
-Upstream BaseOS ships no license file, so the terms under which this derivative may
-be used are currently unsettled. Do not treat this repository as licensed for reuse
-until that is resolved.
+My own work in this repository — everything listed as new above — is MIT licensed;
+see LICENSE. Use it freely.
+
+The files listed above as upstream's work carry no license, since upstream BaseOS
+ships none; MIT cannot be granted over them. The font is OFL, and the vendor
+artifacts are the vendor's.
