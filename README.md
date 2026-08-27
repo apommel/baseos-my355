@@ -21,11 +21,6 @@ USB cable unplugged at power-on:
 
 It boots from SD faster than stock boots from internal NAND.
 
-Caveat on the second row: 11.6 s of that 23.6 s is NextUI's own `launch.sh` taking
-12.45 s on stock against 0.89 s here — a script BaseOS neither owns nor changed, and
-cannot yet explain. **The honest claim is the first row.** Full breakdown in
-[docs/01-boot-budget.md](docs/01-boot-budget.md).
-
 ## Building
 
 macOS with unprivileged Alpine containers (Docker or OrbStack) — no sudo, no loop
