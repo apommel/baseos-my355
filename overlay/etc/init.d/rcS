@@ -46,6 +46,11 @@ if ! /bin/mount -t ext4 -o rw,noatime /dev/mmcblk1p4 /data 2>/dev/null; then
 fi
 mark /run/boot-data-mounted
 
+# A freshly updated set of slots is on trial until a frontend session starts.
+# Count the boots that never get that far and restore the previous ones if this
+# set cannot. No-op unless an update is in its trial window.
+[ -x /usr/sbin/baseos-update ] && /usr/sbin/baseos-update boot-check
+
 # Stable across boots, generated once. /etc/machine-id is a baked symlink, so
 # nothing here writes to the root filesystem.
 if [ -s /data/machine-id ]; then
@@ -88,6 +93,11 @@ mark /run/boot-dbus-start
 # block device, only /mnt/SDCARD.
 # Mount point and the /mnt/sdcard alias are baked into the image.
 /usr/sbin/mount-frontend
+
+# A *.bosupd on either card writes the reserved half of each region, verifies it
+# and flips the GPT. An ordinary boot costs a failed glob, plus one read-only
+# mount of this card's own volume when it is not the one already mounted.
+[ -x /usr/sbin/baseos-update ] && /usr/sbin/baseos-update apply
 
 # adb over USB, backgrounded so it never serialises boot.
 [ -x /usr/sbin/usb-gadget-adb ] && /usr/sbin/usb-gadget-adb &

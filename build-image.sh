@@ -109,24 +109,24 @@ python3 "$HERE/tools/rkbootimg.py" setargs "$BOOT_SRC" "$WORK/boot-sd.img" \
   --sd-uhs "$SD_UHS" \
   --compress-kernel "$COMPRESS"
 
-# The boot image is written at BOOT_START and the rootfs begins at ROOTFS_START.
-# Nothing enforced that before, because the boot image only ever shrank — but an
-# uncompressed kernel (MY355_COMPRESS_KERNEL=none) is 37.1 MB into 40 MiB of room,
-# so the margin is thinner than it looks and silent corruption of the rootfs is a
-# poor way to find out.
-BOOT_ROOM=$(( (MY355_ROOTFS_START - MY355_BOOT_START) * 512 ))
-BOOT_BYTES=$(wc -c < "$WORK/boot-sd.img")
-[ "$BOOT_BYTES" -le "$BOOT_ROOM" ] || {
-  echo "boot image is $BOOT_BYTES bytes; the boot partition holds $BOOT_ROOM" >&2
-  exit 1
-}
+# Both go in an A/B slot, and an update writes a whole slot, so overflowing one
+# would corrupt the reserved half rather than just this partition.
+for pair in "uboot:$UBOOT_SRC:$MY355_UBOOT_SLOT_SECTORS" \
+            "boot:$WORK/boot-sd.img:$MY355_BOOT_SLOT_SECTORS"; do
+  name="${pair%%:*}"; rest="${pair#*:}"; file="${rest%:*}"; room=$(( ${rest##*:} * 512 ))
+  bytes=$(wc -c < "$file")
+  [ "$bytes" -le "$room" ] || {
+    echo "$name image is $bytes bytes; the slot holds $room" >&2
+    exit 1
+  }
+done
 
 echo "== composing $OUT =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$WORK":/work -v "$HERE/tools":/tools:ro \
   -e OUT_NAME="$(basename "$OUT")" \
   -e UBOOT_START="$MY355_UBOOT_START" -e BOOT_START="$MY355_BOOT_START" \
-  -e ROOTFS_START="$MY355_ROOTFS_START" -e SLOT_SECTORS="$MY355_SLOT_SECTORS" \
+  -e ROOTFS_START="$MY355_ROOTFS_START" -e SLOT_SECTORS="$MY355_ROOTFS_SLOT_SECTORS" \
   -e DATA_START="$MY355_DATA_START" -e DATA_SECTORS="$MY355_DATA_SECTORS" \
   -e PRIMARY_START="$MY355_PRIMARY_START" -e PRIMARY_SECTORS="$MY355_PRIMARY_SECTORS" \
   alpine:3.20 sh -euc '
@@ -150,7 +150,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   mke2fs -q -F -t ext4 -O "$EXT4_OPTS" -b 4096 -L rootfs -d "$R" \
     -E offset=$((ROOTFS_START * 512)) "$OUT" $((SLOT_SECTORS / 8))
 
-  # Slot B stays zeroed and unallocated: the first system update writes it.
+  # The reserved half of each region stays zeroed: the first update writes it.
 
   D=/tmp/d; rm -rf "$D"; mkdir "$D"; cp /work/miyoo355_fw.img "$D/"
   mke2fs -q -F -t ext4 -O "$EXT4_OPTS" -b 4096 -L data -d "$D" \
@@ -167,7 +167,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   echo "-- verification --"
   sgdisk -v "$OUT" | tail -3
   dd if="$OUT" of=/tmp/rootfs.img bs=512 skip="$ROOTFS_START" count="$SLOT_SECTORS" status=none
-  e2fsck -fn /tmp/rootfs.img >/dev/null && echo "  rootfs (slot A) ext4 OK"
+  e2fsck -fn /tmp/rootfs.img >/dev/null && echo "  rootfs ext4 OK"
   dd if="$OUT" of=/tmp/data.img bs=512 skip="$DATA_START" count="$DATA_SECTORS" status=none
   e2fsck -fn /tmp/data.img >/dev/null && echo "  data ext4 OK"
   n=0

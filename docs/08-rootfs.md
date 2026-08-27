@@ -133,8 +133,10 @@ because this kernel does more for us:
 | mounts `debugfs` for sunxi `dispdbg` | plain DRM, no such dependency |
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed,
-**loopback**, the first-boot card expansion ([06](06-card-image-build.md)), the
-frontend card, and the USB gadget in the background.
+**loopback**, the first-boot card expansion, the frontend card, any pending system
+update, and the USB gadget in the background. The two update hooks — `baseos-update
+boot-check` after `/data`, `apply` after the card mount — cost a file test and a
+failed glob on an ordinary boot ([06](06-card-image-build.md)).
 
 ### Loopback is load-bearing
 
@@ -208,7 +210,9 @@ fallback, leaving `/mnt/SDCARD` occupied and a later card nowhere to go, so when
 lets `mount-frontend` choose again. Safe only there: no frontend is running,
 before or after. A card already mounted from the left slot is never disturbed.
 
-`nextui-session` then reproduces, in order:
+`nextui-session` starts by ending any open update trial — a session starting is
+what confirms a new slot ([06](06-card-image-build.md)) — and then reproduces, in
+order:
 
 | | why |
 |---|---|

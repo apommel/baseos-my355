@@ -77,15 +77,19 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   cp /assets/boot.ttf "$R"/usr/share/baseos/boot.ttf
   cp /assets/card-readme.txt "$R"/usr/share/baseos/card-readme.txt
 
-  # gptgrow: first-boot expand-to-fill (overlay/usr/sbin/expand-storage).
-  gcc -static -O2 -o "$R"/usr/sbin/gptgrow /src/gptgrow.c
-  strip "$R"/usr/sbin/gptgrow
+  # The GPT tools: gptgrow for first-boot expand-to-fill, gptslot for A/B
+  # updates (overlay/usr/sbin/expand-storage, overlay/usr/sbin/baseos-update).
+  for t in gptgrow gptslot; do
+    gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c
+    strip "$R"/usr/sbin/"$t"
+  done
 
   # 3. The overlay wins over everything.
   cp -a /overlay/. "$R"/
   chmod +x "$R"/init "$R"/etc/init.d/* \
            "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb \
            "$R"/usr/sbin/expand-storage "$R"/usr/sbin/mount-frontend \
+           "$R"/usr/sbin/baseos-update \
            "$R"/usr/bin/baseos-splash "$R"/usr/share/udhcpc/default.script
 
   # All three from VERSION so they cannot drift. NextUI reads

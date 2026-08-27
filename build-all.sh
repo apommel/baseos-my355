@@ -1,8 +1,9 @@
 #!/bin/sh
-# Build the release artifact from prepared inputs.
+# Build the release artifacts from prepared inputs.
 # Usage: ./build-all.sh
 #
-# Produces work/my355/baseos-my355-<version>.img.zip. Inputs come from
+# Produces work/my355/baseos-my355-<version>.img.zip, for a new card, and
+# .bosupd, which updates one that is already running. Inputs come from
 # fetch-prepared.sh or prepare-stock.sh; each step below runs standalone.
 set -eu
 
@@ -23,19 +24,25 @@ done
 
 "$HERE/build-rootfs.sh"
 "$HERE/build-image.sh"
+"$HERE/build-update.sh"
 
 archive="$WORK/baseos-my355-$VERSION.img.zip"
 rm -f "$archive"
 # -j: bare baseos-my355.img inside. -X: no host metadata in a published file.
 zip -q -j -X "$archive" "$WORK/baseos-my355.img"
 
-if command -v sha256sum >/dev/null 2>&1; then
-  sum="$(sha256sum "$archive" | cut -d' ' -f1)"
-else
-  sum="$(shasum -a 256 "$archive" | cut -d' ' -f1)"
-fi
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
 
 echo
-echo "=== release artifact for $VERSION ==="
-printf "  %-40s %s\n" "$(basename "$archive")" "$(du -h "$archive" | cut -f1)"
-printf "  %s\n" "$sum"
+echo "=== release artifacts for $VERSION ==="
+# The image is for a new card; the payload updates one that is already running.
+for f in "$archive" "$WORK/baseos-my355-$VERSION.bosupd"; do
+  printf "  %-40s %s\n" "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+  printf "  %s\n" "$(sha256 "$f")"
+done

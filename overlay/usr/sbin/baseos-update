@@ -1,0 +1,401 @@
+#!/bin/sh
+# BaseOS system update — A/B slot updates that leave the card's files alone.
+#
+# `uboot`, `boot` and `rootfs` each have twice their size reserved on the card,
+# and only one half of each is a partition at a time; the other is unallocated
+# space reached by raw offset. An update writes all three inactive halves,
+# verifies them by reading them back, and only then flips the GPT — so the flip
+# is the single commit point, and power loss before it leaves the card
+# byte-identical. `data` and `primary` are never touched, which is the point:
+# ROMs, saves and settings survive what would otherwise be a reflash.
+#
+#   apply       find and apply a *.bosupd payload (rcS)
+#   boot-check  restore the previous slots if this one never reaches a session (rcS)
+#   confirm     end the trial (nextui-session)
+#   status      what is installed, and what each payload on the card would do
+#
+# Payload: an uncompressed tar named *.bosupd holding `manifest` and one
+# `<region>.img.gz` per region, each a whole slot. Integrity is the SHA-256 in
+# the manifest, checked by reading back what was written. There is deliberately
+# no signing key: it would be a single point of failure for every update, and
+# these images carry no secrets.
+#
+# All three regions are written every time, even when a release changes only the
+# rootfs. Comparing first would save about 48 MiB of writes and cost a special
+# case for the rootfs, which is mounted rw and so never matches its own image.
+
+FORMAT=baseos-update/2
+REGIONS="uboot boot rootfs"
+DISK=/dev/mmcblk1
+OWN_FAT=/dev/mmcblk1p5
+OWN_MNT=/tmp/.baseos-own
+CARD=/mnt/SDCARD
+STATE_DIR=/data/update
+STATE="$STATE_DIR/state"
+# Every payload this card has committed to: "<sha> <version> <build>", appended
+# at commit time rather than on success, so one that turns out broken and rolls
+# back is never retried — that would oscillate forever.
+HISTORY="$STATE_DIR/history"
+MANIFEST=/tmp/.bosupd-manifest
+LOG="$STATE_DIR/log"
+# Boots allowed after an update before the previous slots are restored. The
+# trial ends as soon as a frontend session starts, so this only ever counts
+# boots that never got that far.
+MAX_TRIAL_BOOTS=3
+# The update owns the whole track: it is not "half a boot", it is a minute of
+# work that dwarfs the boot around it. The split is time-proportional, since
+# writing to SD takes appreciably longer than reading back.
+WRITE_FROM=0
+WRITE_TO=60
+VERIFY_FROM=60
+VERIFY_TO=95
+COMMIT_STAGE=98
+CHUNK_MB=32
+
+log() {
+	mkdir -p "$STATE_DIR" 2>/dev/null
+	echo "$(cut -d' ' -f1 /proc/uptime 2>/dev/null) update: $*" >> "$LOG" 2>/dev/null
+	return 0
+}
+
+splash() {
+	[ -x /usr/bin/baseos-splash ] && /usr/bin/baseos-splash --important "$@" 2>/dev/null
+	return 0
+}
+
+field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
+cleanup() { umount "$OWN_MNT" 2>/dev/null; return 0; }
+
+# One geometry variable: slot uboot _INACTIVE -> $SLOT_UBOOT_INACTIVE.
+slot() { eval "printf '%s' \"\${SLOT_$(echo "$1" | tr a-z A-Z)$2}\""; }
+
+# Slot geometry comes from the GPT itself; gptslot refuses any layout that is
+# not a BaseOS A/B layout, which is what stops this touching an older card.
+load_geometry() {
+	[ -x /usr/sbin/gptslot ] || return 1
+	geometry="$(/usr/sbin/gptslot "$DISK" geometry 2>/dev/null)" || return 1
+	eval "$geometry"
+	[ -n "${SLOT_ROOTFS_SECTORS:-}" ]
+}
+
+# Where payloads may sit: the mounted frontend card, then this card's own FAT
+# volume when that is not already it. Sets $DIRS.
+scan_dirs() {
+	DIRS="$CARD"
+	if ! grep -q "^$OWN_FAT $CARD " /proc/mounts 2>/dev/null && [ -b "$OWN_FAT" ]; then
+		mkdir -p "$OWN_MNT"
+		mount -t vfat -o ro "$OWN_FAT" "$OWN_MNT" 2>/dev/null && DIRS="$DIRS $OWN_MNT"
+	fi
+	return 0
+}
+
+# Is $1 a strictly newer dotted version than $2? Missing fields count as zero,
+# so 1.1 beats 1.0.9.
+version_newer() {
+	i=1
+	while [ "$i" -le 4 ]; do
+		fa="$(printf "%s" "$1" | cut -d. -f"$i" | tr -cd '0-9')"
+		fb="$(printf "%s" "$2" | cut -d. -f"$i" | tr -cd '0-9')"
+		[ -n "$fa" ] || fa=0
+		[ -n "$fb" ] || fb=0
+		[ "$fa" -gt "$fb" ] && return 0
+		[ "$fa" -lt "$fb" ] && return 1
+		i=$((i + 1))
+	done
+	return 1
+}
+
+# Judge one payload: 0 = apply it, 1 = nothing to do, 2 = rejected outright.
+# Sets EV_VERSION / EV_BUILD / EV_SHA, and EV_REASON for humans.
+evaluate() {
+	EV_VERSION=""; EV_BUILD=""; EV_SHA=""; EV_REASON=""
+	if ! tar -xOf "$1" manifest > "$MANIFEST" 2>/dev/null || [ ! -s "$MANIFEST" ]; then
+		EV_REASON="not a BaseOS update payload"; return 2
+	fi
+	EV_VERSION="$(field "$MANIFEST" version)"
+	EV_BUILD="$(field "$MANIFEST" build)"
+	EV_SHA="$(field "$MANIFEST" rootfs-sha256)"
+
+	if [ "$(field "$MANIFEST" format)" != "$FORMAT" ]; then
+		EV_REASON="unsupported payload format"; return 2
+	fi
+	if [ "$(field "$MANIFEST" target)" != "$BASEOS_TARGET" ]; then
+		EV_REASON="built for $(field "$MANIFEST" target), this is $BASEOS_TARGET"; return 2
+	fi
+	for r in $REGIONS; do
+		if [ "$(field "$MANIFEST" "$r-sectors")" != "$(slot "$r" _SECTORS)" ]; then
+			EV_REASON="its $r slot does not fit this card"; return 2
+		fi
+		case "$(field "$MANIFEST" "$r-sha256")" in
+			[0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
+			*) EV_REASON="no usable $r-sha256"; return 2 ;;
+		esac
+	done
+
+	# Only ever move forward. Without this an old payload left on the card
+	# becomes applicable again the moment you update past it, so the device
+	# would downgrade, re-apply the newer one, and ping-pong. A rebuild of the
+	# running version is still allowed, which is what makes iteration work.
+	if version_newer "$EV_VERSION" "${BASEOS_VERSION:-0}"; then
+		:
+	elif [ "$EV_VERSION" = "${BASEOS_VERSION:-}" ] && [ "$EV_BUILD" != "${BASEOS_BUILD:-}" ]; then
+		:
+	else
+		EV_REASON="not newer than the running ${BASEOS_VERSION:-?}"; return 1
+	fi
+	if grep -q "^$EV_SHA " "$HISTORY" 2>/dev/null; then
+		EV_REASON="already applied to this card"; return 1
+	fi
+
+	EV_REASON="ready"
+	return 0
+}
+
+# Pick the first applicable payload across every directory. Considering all of
+# them matters: a stale payload must not mask the new one beside it.
+select_payload() {
+	CHOSEN=""; REJECTED=0
+	for dir in $DIRS; do
+		[ -z "$CHOSEN" ] || break
+		for candidate in "$dir"/*.bosupd; do
+			[ -f "$candidate" ] || continue
+			evaluate "$candidate"; verdict=$?
+			if [ "$verdict" -eq 0 ]; then CHOSEN="$candidate"; break; fi
+			if [ "$verdict" -eq 2 ]; then
+				log "$candidate rejected: $EV_REASON"
+				REJECTED=1
+			fi
+		done
+	done
+	[ -n "$CHOSEN" ]
+}
+
+paint() { splash $(( $1 + ($2 - $1) * $3 / total_mb )) "UPDATING SYSTEM"; }
+
+# Write one region's member into its inactive half, in chunks so the track can
+# move. iflag=fullblock is load-bearing: a short read from the pipe would leave
+# every later chunk misaligned. conv=fsync per chunk spreads the flush across
+# the bar, so what it shows is data actually committed.
+write_slot() {
+	seek=$(( $(slot "$1" _INACTIVE) / 2048 ))
+	count=$(( $(slot "$1" _SECTORS) / 2048 ))
+	tar -xOf "$payload" "$1.img.gz" 2>>"$LOG" | gunzip 2>>"$LOG" | {
+		w=0
+		while [ "$w" -lt "$count" ]; do
+			n="$CHUNK_MB"
+			[ $((w + n)) -le "$count" ] || n=$((count - w))
+			dd of="$DISK" bs=1M seek=$((seek + w)) count="$n" \
+				iflag=fullblock conv=notrunc,fsync 2>>"$LOG" || exit 1
+			w=$((w + n))
+			paint "$WRITE_FROM" "$WRITE_TO" $((done_mb + w))
+		done
+	}
+}
+
+# Hash an inactive half back off the card. The pill calls inside the group must
+# not write to stdout — that stream is the hash input.
+verify_slot() {
+	skip=$(( $(slot "$1" _INACTIVE) / 2048 ))
+	count=$(( $(slot "$1" _SECTORS) / 2048 ))
+	{
+		c=0
+		while [ "$c" -lt "$count" ]; do
+			n="$CHUNK_MB"
+			[ $((c + n)) -le "$count" ] || n=$((count - c))
+			dd if="$DISK" bs=1M skip=$((skip + c)) count="$n" 2>/dev/null
+			c=$((c + n))
+			paint "$VERIFY_FROM" "$VERIFY_TO" $((done_mb + c)) >/dev/null 2>&1
+		done
+	} | sha256sum | cut -d' ' -f1
+}
+
+fail() {
+	log "$1 — GPT untouched"
+	splash -1 "UPDATE FAILED"
+	cleanup
+	return 1
+}
+
+apply() {
+	scan_dirs
+	# Ordinary boot: no payload anywhere. One failed glob and we are done.
+	any=0
+	for dir in $DIRS; do
+		for candidate in "$dir"/*.bosupd; do
+			[ -f "$candidate" ] && { any=1; break; }
+		done
+		[ "$any" -eq 1 ] && break
+	done
+	[ "$any" -eq 1 ] || { cleanup; return 0; }
+
+	if ! load_geometry; then
+		log "payload present but this card has no A/B layout — ignoring"
+		cleanup
+		return 0
+	fi
+	. /etc/baseos-release
+
+	if ! select_payload; then
+		[ "$REJECTED" -eq 1 ] && splash -1 "UPDATE FAILED"
+		cleanup
+		return "$REJECTED"
+	fi
+	payload="$CHOSEN"
+	version="$EV_VERSION"
+	build="$EV_BUILD"
+	want_sha="$EV_SHA"
+	tar -xOf "$payload" manifest > "$MANIFEST" 2>/dev/null
+
+	mkdir -p "$STATE_DIR"
+	log "applying $version ($build) from $payload"
+	splash "$WRITE_FROM" "UPDATING SYSTEM"
+
+	total_mb=0
+	for r in $REGIONS; do total_mb=$((total_mb + $(slot "$r" _SECTORS) / 2048)); done
+
+	done_mb=0
+	for r in $REGIONS; do
+		write_slot "$r" || { fail "writing the $r slot failed"; return 1; }
+		done_mb=$((done_mb + $(slot "$r" _SECTORS) / 2048))
+	done
+	sync
+	# Drop the page cache first, so the read-back verifies what actually landed
+	# on the card rather than the pages we just wrote. (subshell: a failed
+	# redirection is reported by the shell itself, so redirecting the command's
+	# stderr alone would not silence it)
+	( echo 3 > /proc/sys/vm/drop_caches ) 2>/dev/null || true
+
+	done_mb=0
+	for r in $REGIONS; do
+		if [ "$(verify_slot "$r")" != "$(field "$MANIFEST" "$r-sha256")" ]; then
+			fail "the $r slot failed verification"
+			return 1
+		fi
+		done_mb=$((done_mb + $(slot "$r" _SECTORS) / 2048))
+	done
+	log "all slots verified"
+
+	# The commit. Everything above is reversible by doing nothing.
+	if ! /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$LOG" 2>&1; then
+		log "slot flip failed — still running the old slots"
+		splash -1 "UPDATE FAILED"
+		cleanup
+		return 1
+	fi
+
+	# Record the commit before rebooting. This is the idempotency key for every
+	# later boot: whatever happens to these slots now, the same payload sitting
+	# on the card is never applied a second time.
+	printf "%s %s %s\n" "$want_sha" "$version" "$build" >> "$HISTORY"
+	{
+		printf "trial=%s\n" "$version"
+		printf "build=%s\n" "$build"
+		printf "attempts=0\n"
+		printf "sha=%s\n" "$want_sha"
+	} > "$STATE"
+	log "flipped to $version; rebooting"
+	sync
+	# Paint the last value only once every write is on the card: the flip, the
+	# history append and this sync take a few seconds between them.
+	splash "$COMMIT_STAGE" "UPDATING SYSTEM"
+	cleanup
+	reboot
+	# init takes over from here; hold rcS briefly so it does not race ahead into
+	# a frontend session on a system that is already shutting down.
+	sleep 10
+	return 0
+}
+
+boot_check() {
+	[ -f "$STATE" ] || return 0
+	attempts="$(field "$STATE" attempts)"
+	[ -n "$attempts" ] || attempts=0
+	attempts=$((attempts + 1))
+	if [ "$attempts" -ge "$MAX_TRIAL_BOOTS" ]; then
+		log "no session in $attempts boots — restoring the previous slots;"
+		log "the payload that produced them stays on the card but is not retried"
+		splash -1 "RESTORING SYSTEM"
+		if /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$LOG" 2>&1; then
+			rm -f "$STATE"
+			sync
+			reboot
+			sleep 10
+			return 0
+		fi
+		log "restore flip failed; continuing on the current slots"
+		rm -f "$STATE"
+		return 1
+	fi
+	sed "s/^attempts=.*/attempts=$attempts/" "$STATE" > "$STATE.new" \
+		&& mv "$STATE.new" "$STATE"
+	log "update trial boot $attempts of $MAX_TRIAL_BOOTS"
+	return 0
+}
+
+confirm() {
+	[ -f "$STATE" ] || return 0
+	version="$(field "$STATE" trial)"
+	rm -f "$STATE"
+	log "update to $version confirmed"
+	# Cheap here (measured at 0 on device) and worth it: if an unclean shutdown
+	# resurrected the trial, three more boots would roll back a working update.
+	sync
+	return 0
+}
+
+# The apply path is deliberately silent about the payloads it skips — it runs on
+# every boot — so this is where "I copied the file and nothing happened" gets
+# answered, for every payload on the card rather than just the chosen one.
+status() {
+	. /etc/baseos-release
+	printf "version: %s (%s)\n" "${BASEOS_VERSION:-unknown}" "${BASEOS_BUILD:-unknown}"
+	if load_geometry; then
+		have_geometry=1
+		for r in $REGIONS; do
+			printf "slot:    %-6s %s (active LBA %s, spare %s, %s sectors)\n" \
+				"$r" "$(slot "$r" "")" "$(slot "$r" _ACTIVE)" \
+				"$(slot "$r" _INACTIVE)" "$(slot "$r" _SECTORS)"
+		done
+	else
+		have_geometry=0
+		printf "slot:    no A/B layout on this card\n"
+	fi
+	if [ -f "$STATE" ]; then
+		printf "trial:   %s, boot %s of %s\n" "$(field "$STATE" trial)" \
+			"$(field "$STATE" attempts)" "$MAX_TRIAL_BOOTS"
+	else
+		printf "trial:   none (committed)\n"
+	fi
+
+	scan_dirs
+	any=0
+	for dir in $DIRS; do
+		for candidate in "$dir"/*.bosupd; do
+			[ -f "$candidate" ] || continue
+			any=1
+			printf "payload: %s\n" "$candidate"
+			if [ "$have_geometry" -eq 0 ]; then
+				printf "         cannot apply: this card has no A/B layout\n"
+				continue
+			fi
+			evaluate "$candidate"; verdict=$?
+			printf "         %s %s (%s)\n" "$BASEOS_TARGET" "${EV_VERSION:-?}" "${EV_BUILD:-?}"
+			case "$verdict" in
+				0) printf "         WILL APPLY on the next boot\n" ;;
+				1) printf "         skipped: %s\n" "$EV_REASON" ;;
+				*) printf "         rejected: %s\n" "$EV_REASON" ;;
+			esac
+		done
+	done
+	[ "$any" -eq 1 ] || printf "payload: none on the card\n"
+	cleanup
+	return 0
+}
+
+case "${1:-apply}" in
+	apply) apply ;;
+	boot-check) boot_check ;;
+	confirm) confirm ;;
+	status) status ;;
+	*) echo "usage: baseos-update [apply|boot-check|confirm|status]" >&2; exit 2 ;;
+esac

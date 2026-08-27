@@ -65,6 +65,8 @@ splash 95
 
 /bin/rm -rf "$STAGE"
 /bin/touch "$DONE"
+# Before the sync, not after: this device is powered off with the button, and a
+# line written after the last flush is the one an unclean shutdown loses.
+log "expanded to fill the card"
 /bin/sync
 splash 100
-log "expanded to fill the card"

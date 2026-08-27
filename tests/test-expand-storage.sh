@@ -9,10 +9,10 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "== gptgrow =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
-  -v "$HERE/src/gptgrow.c":/test/gptgrow.c:ro -v "$HERE/tools":/tools:ro \
+  -v "$HERE/src":/src:ro -v "$HERE/tools":/tools:ro \
   alpine:3.20 sh -euc '
   apk add -q build-base linux-headers python3 sgdisk
-  gcc -O2 -o /usr/bin/gptgrow /test/gptgrow.c
+  gcc -O2 -o /usr/bin/gptgrow /src/gptgrow.c
 
   expect() {
     want=$1; shift

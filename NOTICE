@@ -15,6 +15,12 @@ Files that remain upstream's work, unmodified or nearly so:
     src/gptgrow.c               first-boot expand-to-fill; rewritten to read the
                                 GPT geometry from the header instead of hardcoding
                                 the H700 layout
+    src/gptslot.c               A/B slot arithmetic; rewritten around this card's
+                                three slotted regions and header-derived geometry
+    src/gpt.h                   the CRC and entry helpers both of them share
+    tools/mkupdate.py           update payload builder; extended to three regions
+    overlay/usr/sbin/baseos-update
+                                the update engine, adapted to this layout
     assets/bootlogo.bmp         the BaseOS wordmark
     tools/docker-platform.sh    container platform selection
     upstream-h700/**            the whole H700 port, parked and not built here

@@ -14,18 +14,20 @@ whole table. Three names are load-bearing:
              `root=/dev/mmcblk1p3` is baked into rk-kernel.dtb at build time
              (tools/rkbootimg.py), so rootfs must stay entry 3.
 
-Layout, mirroring the H700 A/B scheme (upstream-h700/docs/07-partition-layout-and-updates.md):
+Layout:
 
-    1 uboot    8 MiB   @ sector 16384
-    2 boot    40 MiB
-    3 rootfs 512 MiB   slot A
-      (gap)  512 MiB   slot B — the update target, deliberately NOT a partition
+    1 uboot    8 MiB   @ sector 16384   + 8 MiB reserved
+    2 boot    40 MiB                    + 40 MiB reserved
+    3 rootfs 512 MiB                    + 512 MiB reserved
     4 data   128 MiB   ext4, persistent state, survives a slot flip
     5 primary  rest    FAT32, the only desktop-visible volume
 
-Slot B is unallocated on purpose: it costs no visible partition and no desktop
-OS offers to format it. Every entry except `primary` carries GPT attribute bits
-62 and 63, so a desktop assigns exactly one drive letter for the whole card.
+Each of the three updatable regions reserves twice what it needs and only ever
+has one half as a partition; `usr/sbin/baseos-update` writes the other half and
+flips the entry. The spare halves are unallocated on purpose: they cost no
+visible partition and no desktop OS offers to format them. Every entry except
+`primary` carries GPT attribute bits 62 and 63, so a desktop assigns exactly one
+drive letter for the whole card.
 
 Unique GUIDs are derived deterministically from the partition name, so two
 builds of the same layout produce byte-identical tables.
@@ -56,11 +58,11 @@ DISK_NS = uuid.UUID("6b1f2a2c-0d7e-5a3b-9c11-ba5e0feed001")
 MIB = 1024 * 1024 // SECTOR                                  # sectors per MiB
 
 UBOOT_START = 16384                                          # load-bearing
-UBOOT_SECTORS = 8 * MIB
-BOOT_SECTORS = 40 * MIB
-SLOT_SECTORS = 512 * MIB
 DATA_SECTORS = 128 * MIB
 PRIMARY_SECTORS_DEFAULT = 64 * MIB                           # grown on first boot
+
+# Name and slot size of each A/B region, in card order from UBOOT_START.
+SLOTS = (("uboot", 8 * MIB), ("boot", 40 * MIB), ("rootfs", 512 * MIB))
 
 
 def guid_for(name: str) -> uuid.UUID:
@@ -68,23 +70,19 @@ def guid_for(name: str) -> uuid.UUID:
 
 
 def layout(primary_sectors: int):
-    """Return [(name, type_guid, first_lba, last_lba, attrs), ...] and the total."""
-    boot_start = UBOOT_START + UBOOT_SECTORS
-    rootfs_start = boot_start + BOOT_SECTORS
-    slot_b_start = rootfs_start + SLOT_SECTORS                # unallocated
-    data_start = slot_b_start + SLOT_SECTORS
-    primary_start = data_start + DATA_SECTORS
-    primary_end = primary_start + primary_sectors - 1
-    total = primary_end + 1 + ENTRY_SECTORS + 1               # backup entries + header
-
-    parts = [
-        ("uboot",   LINUX_FS, UBOOT_START,   UBOOT_START + UBOOT_SECTORS - 1, HIDDEN_ATTRIBUTES),
-        ("boot",    LINUX_FS, boot_start,    boot_start + BOOT_SECTORS - 1,   HIDDEN_ATTRIBUTES),
-        ("rootfs",  LINUX_FS, rootfs_start,  rootfs_start + SLOT_SECTORS - 1, HIDDEN_ATTRIBUTES),
-        ("data",    LINUX_FS, data_start,    data_start + DATA_SECTORS - 1,   HIDDEN_ATTRIBUTES),
-        ("primary", MS_BASIC, primary_start, primary_end,                     0),
-    ]
-    return parts, total, slot_b_start
+    """Return [(name, type_guid, first_lba, last_lba, attrs), ...], the total,
+    and the reserved half of each A/B region as [(name, first, last), ...]."""
+    parts, reserved = [], []
+    at = UBOOT_START
+    for name, slot in SLOTS:
+        parts.append((name, LINUX_FS, at, at + slot - 1, HIDDEN_ATTRIBUTES))
+        reserved.append((name, at + slot, at + 2 * slot - 1))
+        at += 2 * slot
+    parts.append(("data", LINUX_FS, at, at + DATA_SECTORS - 1, HIDDEN_ATTRIBUTES))
+    at += DATA_SECTORS
+    parts.append(("primary", MS_BASIC, at, at + primary_sectors - 1, 0))
+    total = at + primary_sectors + ENTRY_SECTORS + 1          # backup entries + header
+    return parts, total, reserved
 
 
 def build_entries(parts) -> bytes:
@@ -128,15 +126,13 @@ def main() -> int:
                          "source of truth for build-image.sh")
     a = ap.parse_args()
 
-    parts, total, slot_b = layout(a.primary_sectors)
+    parts, total, reserved = layout(a.primary_sectors)
 
     if a.shell:
         by_name = {name: (first, last) for name, _t, first, last, _a in parts}
-        print(f"MY355_UBOOT_START={by_name['uboot'][0]}")
-        print(f"MY355_BOOT_START={by_name['boot'][0]}")
-        print(f"MY355_ROOTFS_START={by_name['rootfs'][0]}")
-        print(f"MY355_SLOT_SECTORS={SLOT_SECTORS}")
-        print(f"MY355_SLOT_B_START={slot_b}")
+        for name, slot in SLOTS:
+            print(f"MY355_{name.upper()}_START={by_name[name][0]}")
+            print(f"MY355_{name.upper()}_SLOT_SECTORS={slot}")
         print(f"MY355_DATA_START={by_name['data'][0]}")
         print(f"MY355_DATA_SECTORS={DATA_SECTORS}")
         print(f"MY355_PRIMARY_START={by_name['primary'][0]}")
@@ -158,12 +154,14 @@ def main() -> int:
     if parts[-1][3] > last_usable:
         sys.exit("mkgpt: primary extends past the last usable LBA")
 
+    spare = {name: (first, last) for name, first, last in reserved}
     print(f"  {'partition':10s} {'start':>10s} {'end':>10s} {'size':>10s}")
     for name, _t, first, last, _a in parts:
         print(f"  {name:10s} {first:>10d} {last:>10d} {(last-first+1)//MIB:>7d} MiB")
-        if name == "rootfs":
-            print(f"  {'(slot B)':10s} {slot_b:>10d} {slot_b+SLOT_SECTORS-1:>10d} "
-                  f"{SLOT_SECTORS//MIB:>7d} MiB   unallocated — update target")
+        if name in spare:
+            first, last = spare[name]
+            print(f"  {'(spare)':10s} {first:>10d} {last:>10d} {(last-first+1)//MIB:>7d} MiB"
+                  f"   unallocated — update target")
     print(f"  total {total} sectors ({total*SECTOR/1024/1024:.1f} MiB)")
     if a.print_only:
         return 0

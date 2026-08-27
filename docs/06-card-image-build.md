@@ -36,11 +36,13 @@ via `--shell` rather than duplicating constants.
 
 ```
 entry 1  uboot     16384 ..   32767     8 MiB   stock U-Boot FIT, verbatim
-entry 2  boot      32768 ..  114687    40 MiB   Android boot image
-entry 3  rootfs   114688 .. 1163263   512 MiB   slot A   <- root=/dev/mmcblk1p3
-  —      (gap)   1163264 .. 2211839   512 MiB   slot B — update target, unallocated
-entry 4  data    2211840 .. 2473983   128 MiB   ext4, persistent state
-entry 5  primary 2473984 .. 2605055    64 MiB   FAT32, the only visible volume
+  —      (spare)   32768 ..   49151     8 MiB
+entry 2  boot      49152 ..  131071    40 MiB   Android boot image
+  —      (spare)  131072 ..  212991    40 MiB
+entry 3  rootfs   212992 .. 1261567   512 MiB            <- root=/dev/mmcblk1p3
+  —      (spare) 1261568 .. 2310143   512 MiB
+entry 4  data    2310144 .. 2572287   128 MiB   ext4, persistent state
+entry 5  primary 2572288 .. 2703359    64 MiB   FAT32, the only visible volume
 ```
 
 `primary` ships at 64 MiB and is grown to fill the card on the first boot (below).
@@ -53,19 +55,21 @@ All three filesystems carry `miyoo355_fw.img`, the preloader installer stock pic
 off the card. All three, because which one stock's automounter mounts where is a lock
 race with no reliable winner ([SD boot](02-sd-boot.md)).
 
-Slot B is unallocated on purpose, mirroring the H700 A/B scheme
-([docs/07](../upstream-h700/docs/07-partition-layout-and-updates.md)): it costs no visible
-partition and no desktop offers to format it. Every entry but `primary` carries
-GPT attribute bits 62 and 63, so a desktop assigns one drive letter.
+Each of the three updatable regions reserves twice what it needs, and only one
+half is ever a partition; the spare is where an update writes (below). Leaving it
+unallocated is what makes A/B free: it costs no visible partition and no desktop
+offers to format it. Every entry but `primary` carries GPT attribute bits 62 and
+63, so a desktop assigns one drive letter.
 
-**Reserving slot B now is free; adding it later is not** — it must sit between
-`rootfs` and `data`, so retrofitting shifts every later partition and destroys
-whatever is on the card.
+**Reserving the spare halves now is free; adding them later is not** — each must
+sit immediately behind its partition, so retrofitting shifts everything after it
+and destroys whatever is on the card. 0.2.x cards, which reserved only the rootfs
+half, need one last reflash for that reason.
 
 **Nothing may regenerate the GPT after the first boot.** `mkgpt.py` writes the
 64 MiB `primary` of the shipped image; running it against a card that has already
-been expanded would shrink the partition back and orphan everything on it. A future
-A/B update writes the rootfs slot, never the table.
+been expanded would shrink the partition back and orphan everything on it. An
+update rewrites three entries of the existing table; it never rebuilds it.
 
 ## First boot: expand to fill
 
@@ -99,6 +103,72 @@ is not a card we grew.
 Verified on hardware (64 GB card, 2026-08-25): 64 MiB → 57.0 GiB with **16 KiB
 clusters** (3 737 821 of them) in **1.1 s**, card files intact, nothing done on
 later boots. macOS mounts the result.
+
+## Updates
+
+`./build-update.sh` turns a composed image into `baseos-my355-<version>.bosupd`:
+an uncompressed tar of a manifest and one gzipped slot image per region, ~34 MB.
+Users copy it to the root of either card and power on.
+
+`usr/sbin/baseos-update apply` runs from `rcS` just after the card mount:
+
+```
+1  read every *.bosupd's manifest — on the frontend card, then on this card's own
+   `primary` if that is not already it (a read-only mount, on every boot)
+2  it must be built for my355, fit these slots, be newer than the running version
+   (or a rebuild of it), and not already be in /data/update/history
+3  write all three slot images into the spare halves, 32 MiB at a time
+4  read each half back and hash it                        -> mismatch: stop here
+5  gptslot flip uboot boot rootfs                             <- the commit point
+6  record the commit, then reboot
+```
+
+Step 5 is the only irreversible action and every check precedes it, so power loss
+at any earlier moment leaves the card byte-identical to before. `data` and
+`primary` are never written, which is the whole point: an update keeps ROMs,
+saves and settings that a reflash would destroy.
+
+All three regions are written every time, even when only the rootfs changed.
+Comparing first would save 48 MiB of writes and cost a special case, because the
+running rootfs is mounted `rw` and so never matches its own image.
+
+`usr/sbin/gptslot` (from `src/gptslot.c`) does the arithmetic and derives the
+geometry from the table alone: the regions tile forward from LBA 16384 — the one
+address the SPL fixes — each twice its entry's size, and `data` must start exactly
+where the last one ends. A card without the spare halves fails that check and
+cannot be flipped, which is what stops this touching a 0.2.x card.
+
+Nothing in the boot chain references an address, which is what makes a GPT write
+enough to select all three: the SPL finds `uboot` by name, `boot_android` finds
+`boot` by name, and `root=/dev/mmcblk1p3` names an entry number.
+
+**Rollback.** `rcS` runs `baseos-update boot-check`, which counts boots while a
+trial is open and restores the previous halves on the third; `nextui-session` runs
+`baseos-update confirm` as it starts, which ends the trial. Confirming on session
+start rather than on frontend hand-off is deliberate — a card with no frontend is
+a healthy OS, and keying the trial later would make that look like a failed update
+and roll back forever. This cannot cover a rootfs so broken that `/init` never
+runs; that stays a reflash.
+
+There is deliberately no signing key: it would be a single point of failure for
+every update, and these images carry no secrets. Integrity is the SHA-256 per
+region, verified by reading back what was written.
+
+`baseos-update status` prints what is installed and the verdict for every payload
+it can see — the apply path is silent about the ones it skips, since it runs on
+every boot.
+
+The preloader in NAND and the layout itself stay out of reach; changing either
+still means reflashing.
+
+Verified on hardware (2026-08-27, 0.3.0): a 34 MB payload wrote and verified all
+three regions — 560 MiB — in **49.6 s**, flipped, and rebooted running `uboot`,
+`boot` and `rootfs` from their second halves, with `data` and the card's files
+untouched; the trial closed on the next session start. That run settled the
+design's last assumption: the SPL really does find `uboot` by name at LBA 32768
+and `boot_android` finds `boot` at 131072, so neither is pinned to the address it
+shipped at. An ordinary boot costs ~15 ms for the check, ~85 ms when a payload is
+left on the card and has to be weighed up again.
 
 ## Boot image surgery
 

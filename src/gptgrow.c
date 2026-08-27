@@ -11,14 +11,11 @@
 // geometry (8 entries, first usable LBA 4). Here everything is read from the
 // header, so it also works on the 128-entry table tools/mkgpt.py writes.
 #include <fcntl.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/blkpg.h>
 
-#define SECTOR 512
+#include "gpt.h"
 
 // EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, mixed-endian as stored in an entry.
 static const uint8_t MS_BASIC[16] = {
@@ -26,51 +23,9 @@ static const uint8_t MS_BASIC[16] = {
 	0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7
 };
 
-static uint32_t crc32_tab[256];
-static void crc32_init(void) {
-	for (uint32_t i = 0; i < 256; i++) {
-		uint32_t c = i;
-		for (int k = 0; k < 8; k++)
-			c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-		crc32_tab[i] = c;
-	}
-}
-static uint32_t crc32(const uint8_t *p, size_t n) {
-	uint32_t c = 0xFFFFFFFFu;
-	for (size_t i = 0; i < n; i++)
-		c = crc32_tab[(c ^ p[i]) & 0xff] ^ (c >> 8);
-	return c ^ 0xFFFFFFFFu;
-}
-
-static uint64_t rd64(const uint8_t *p) {
-	uint64_t v = 0;
-	for (int i = 7; i >= 0; i--) v = (v << 8) | p[i];
-	return v;
-}
-static void wr64(uint8_t *p, uint64_t v) {
-	for (int i = 0; i < 8; i++) { p[i] = v & 0xff; v >>= 8; }
-}
-static uint32_t rd32(const uint8_t *p) {
-	return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24);
-}
-static void wr32(uint8_t *p, uint32_t v) {
-	for (int i = 0; i < 4; i++) { p[i] = v & 0xff; v >>= 8; }
-}
-
-// Entry names are UTF-16LE; ours are ASCII.
-static int name_is(const uint8_t *e, const char *want) {
-	for (int i = 0; i < 36; i++) {
-		uint16_t c = e[56 + i * 2] | ((uint16_t)e[56 + i * 2 + 1] << 8);
-		if (c != (uint8_t)want[i]) return 0;
-		if (!want[i]) return 1;
-	}
-	return 1;
-}
-
 int main(int argc, char **argv) {
 	if (argc < 3) { fprintf(stderr, "usage: gptgrow /dev/blk NAME\n"); return 2; }
 	const char *want = argv[2];
-	crc32_init();
 
 	int fd = open(argv[1], O_RDWR);
 	if (fd < 0) { perror("open"); return 2; }
@@ -79,35 +34,14 @@ int main(int argc, char **argv) {
 	if (bytes <= 0) { fprintf(stderr, "cannot size device\n"); return 2; }
 	uint64_t total = (uint64_t)bytes / SECTOR;
 
-	uint8_t hdr[SECTOR];
-	if (pread(fd, hdr, SECTOR, 1 * SECTOR) != SECTOR) { perror("read gpt"); return 2; }
-	if (memcmp(hdr, "EFI PART", 8) != 0) { fprintf(stderr, "no primary GPT\n"); return 2; }
+	struct gpt g;
+	const char *err = gpt_read(fd, &g);
+	if (err) { fprintf(stderr, "%s\n", err); return 2; }
 
-	uint64_t entries_lba = rd64(hdr + 72);
-	uint32_t n_entries = rd32(hdr + 80), esz = rd32(hdr + 84);
-	if (n_entries == 0 || esz < 128) {
-		fprintf(stderr, "unexpected GPT shape %u x %u\n", n_entries, esz);
-		return 2;
-	}
-	size_t table_bytes = (size_t)n_entries * esz;
-	uint64_t entry_sectors = (table_bytes + SECTOR - 1) / SECTOR;
-
-	uint8_t table[128 * 128];   // the largest table mkgpt.py writes
-	if (table_bytes > sizeof(table)) { fprintf(stderr, "GPT table too large\n"); return 2; }
-	if (pread(fd, table, table_bytes, entries_lba * SECTOR) != (ssize_t)table_bytes) {
-		perror("read entries"); return 2;
-	}
-
-	uint8_t *e = NULL;
-	int pno = 0;
-	for (uint32_t i = 0; i < n_entries; i++) {
-		if (name_is(table + (size_t)i * esz, want)) {
-			e = table + (size_t)i * esz;
-			pno = (int)i + 1;
-			break;
-		}
-	}
-	if (!e) { fprintf(stderr, "no partition named %s\n", want); return 2; }
+	int idx = gpt_find(&g, want);
+	if (idx < 0) { fprintf(stderr, "no partition named %s\n", want); return 2; }
+	uint8_t *e = gpt_entry(&g, idx);
+	int pno = idx + 1;
 	// Refuse anything but a data partition: this tool exists to be followed
 	// by a mkfs, and growing the wrong entry would be unrecoverable.
 	if (memcmp(e, MS_BASIC, 16) != 0) {
@@ -116,9 +50,9 @@ int main(int argc, char **argv) {
 	}
 
 	uint64_t backup_hdr_lba = total - 1;
-	uint64_t backup_entries_lba = backup_hdr_lba - entry_sectors;
+	uint64_t backup_entries_lba = backup_hdr_lba - g.entry_sectors;
 	uint64_t last_usable = backup_entries_lba - 1;
-	uint64_t start = rd64(e + 32), cur_end = rd64(e + 40);
+	uint64_t start = gpt_rd64(e + GPT_START), cur_end = gpt_rd64(e + GPT_END);
 
 	if (cur_end >= last_usable) {
 		printf("p%d already fills the device (end=%llu, last_usable=%llu)\n",
@@ -127,36 +61,40 @@ int main(int argc, char **argv) {
 	}
 	if (start >= last_usable) { fprintf(stderr, "partition start past device end\n"); return 2; }
 
-	wr64(e + 40, last_usable);
-	uint32_t table_crc = crc32(table, table_bytes);
+	gpt_wr64(e + GPT_END, last_usable);
+	uint32_t table_crc = gpt_crc32(g.table, g.table_bytes);
 
 	uint8_t out[SECTOR];
 	for (int copy = 0; copy < 2; copy++) {
 		memset(out, 0, SECTOR);
-		memcpy(out, hdr, 92);
-		wr32(out + 16, 0);  // header CRC placeholder
+		memcpy(out, g.hdr, 92);
+		gpt_wr32(out + 16, 0);  // header CRC placeholder
 		if (copy == 0) {
-			wr64(out + 24, 1); wr64(out + 32, backup_hdr_lba); wr64(out + 72, entries_lba);
+			gpt_wr64(out + 24, 1);
+			gpt_wr64(out + 32, backup_hdr_lba);
+			gpt_wr64(out + 72, g.entries_lba);
 		} else {
-			wr64(out + 24, backup_hdr_lba); wr64(out + 32, 1); wr64(out + 72, backup_entries_lba);
+			gpt_wr64(out + 24, backup_hdr_lba);
+			gpt_wr64(out + 32, 1);
+			gpt_wr64(out + 72, backup_entries_lba);
 		}
-		wr64(out + 48, last_usable);
-		wr32(out + 88, table_crc);
-		wr32(out + 16, crc32(out, 92));
+		gpt_wr64(out + 48, last_usable);
+		gpt_wr32(out + 88, table_crc);
+		gpt_wr32(out + 16, gpt_crc32(out, 92));
 		uint64_t at = (copy == 0) ? 1 : backup_hdr_lba;
 		if (pwrite(fd, out, SECTOR, at * SECTOR) != SECTOR) { perror("write hdr"); return 2; }
 	}
-	if (pwrite(fd, table, table_bytes, entries_lba * SECTOR) != (ssize_t)table_bytes) {
+	if (pwrite(fd, g.table, g.table_bytes, g.entries_lba * SECTOR) != (ssize_t)g.table_bytes) {
 		perror("write pri entries"); return 2;
 	}
-	if (pwrite(fd, table, table_bytes, backup_entries_lba * SECTOR) != (ssize_t)table_bytes) {
+	if (pwrite(fd, g.table, g.table_bytes, backup_entries_lba * SECTOR) != (ssize_t)g.table_bytes) {
 		perror("write bak entries"); return 2;
 	}
 
 	uint8_t mbr[SECTOR];
 	if (pread(fd, mbr, SECTOR, 0) == SECTOR) {
 		uint32_t sz = total - 1 > 0xFFFFFFFFu ? 0xFFFFFFFFu : (uint32_t)(total - 1);
-		wr32(mbr + 446 + 12, sz);
+		gpt_wr32(mbr + 446 + 12, sz);
 		pwrite(fd, mbr, SECTOR, 0);
 	}
 	fsync(fd);

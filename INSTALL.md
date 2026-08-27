@@ -98,6 +98,23 @@ itself as it would on any other card.
 A card carrying a frontend in the left-hand slot is still used in preference, so an
 occasional second card works, and an empty one changes nothing.
 
+## How to update BaseOS?
+
+To update BaseOS, you can simply re-flash the SD card. If you are using a one-card
+setup and do not want to overwrite your front-end data, the `.bosupd` file can be
+used to update only the OS without re-flashing the card.
+
+Download `baseos-my355-<version>.bosupd` and copy it to the root of either card,
+then power on. The screen shows **UPDATING SYSTEM** with a progress bar for about a
+minute and the Flip reboots into the new version.
+
+Your ROMs, saves and settings are untouched: the card reserves spare space for this,
+and the update writes there rather than over the volume your files are on. If the new
+version does not start, the Flip restores the previous one by itself after three
+tries.
+
+You can leave the file on the card — it is applied once and then ignored.
+
 ## If something goes wrong
 
 Most problems are bounded by design. The stock system, its kernel and its bootloader
@@ -133,6 +150,13 @@ Read **baseos-preloader.log** on the card's BASEOS volume from your computer.
 BaseOS is running and has no frontend to hand off to. The first message means the
 left-hand slot is empty, the second that the card in it carries no frontend. Put
 NextUI on a card in the left-hand slot, as above.
+
+### You copied a .bosupd and nothing happened
+
+Updates are skipped in silence, because the check runs on every boot. To see why, run
+`baseos-update status` over adb: it lists every payload it can find with the verdict
+for each — most often the file is older than what is already installed, or it has been
+applied before.
 
 ### The Flip does not start at all
 
