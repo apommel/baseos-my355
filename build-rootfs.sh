@@ -67,6 +67,13 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   #    both provide a name.
   tar -xf /work/prepared/stock-harvest.tar -C "$R"
 
+  # SSH: dropbear is multicall, so recreate the names it dispatches on by
+  # argv[0], and put gesftpserver at its compiled SFTPSERVER_PATH.
+  ln -sf dropbear         "$R"/usr/sbin/dropbearkey
+  ln -sf ../sbin/dropbear "$R"/usr/bin/scp
+  mkdir -p "$R"/usr/libexec
+  ln -sf gesftpserver     "$R"/usr/libexec/sftp-server
+
   # fbsplash: the panel is the only output device this hardware has.
   apk add -q build-base linux-headers pkgconf \
     freetype-dev freetype-static zlib-static libpng-static bzip2-static brotli-static

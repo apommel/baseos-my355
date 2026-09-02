@@ -99,8 +99,8 @@ mark /run/boot-dbus-start
 # mount of this card's own volume when it is not the one already mounted.
 [ -x /usr/sbin/baseos-update ] && /usr/sbin/baseos-update apply
 
-# adb over USB, backgrounded so it never serialises boot.
-[ -x /usr/sbin/usb-gadget-adb ] && /usr/sbin/usb-gadget-adb &
+# Dev extras (SSH + adb over USB), backgrounded so they never serialise boot.
+[ -x /etc/init.d/dev ] && /etc/init.d/dev &
 
 mark /run/boot-rcS-done
 
