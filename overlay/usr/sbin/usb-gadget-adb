@@ -22,9 +22,9 @@
 # descriptors into functionfs BEFORE the UDC is bound, or the host sees a
 # gadget with no endpoints and enumeration fails.
 
-# Stock runs adbd with these; ADB_TCP_PORT in particular decides which port the
-# daemon's TCP listener uses (5037 is the host-server port and is the wrong one).
-export ADB_TCP_PORT="${ADB_TCP_PORT:-5555}"
+# Never set: adbd would bind 0.0.0.0:$ADB_TCP_PORT as an open root shell (stock
+# ships 5555). USB only. The loopback 5037 smartsocket is separate.
+unset ADB_TCP_PORT
 export ADBD_SHELL="${ADBD_SHELL:-/bin/sh}"
 export USB_FUNCS="${USB_FUNCS:-adb}"
 export HOME=/
@@ -83,7 +83,7 @@ step "functionfs mounted: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
 
 # adbd writes the descriptors into functionfs; give it a bounded moment to do so.
 "$ADBD" >>"$LOG" 2>&1 &
-step "adbd started (pid $!) ADB_TCP_PORT=$ADB_TCP_PORT lo=$(/sbin/ifconfig lo 2>/dev/null | grep -c 'inet addr')"
+step "adbd started (pid $!) usb-only lo=$(/sbin/ifconfig lo 2>/dev/null | grep -c 'inet addr')"
 i=0
 while [ "$i" -lt 100 ]; do
 	[ -e "$FFS/ep1" ] && break

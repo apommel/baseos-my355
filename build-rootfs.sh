@@ -67,8 +67,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   #    both provide a name.
   tar -xf /work/prepared/stock-harvest.tar -C "$R"
 
-  # SSH: dropbear is multicall, so recreate the names it dispatches on by
-  # argv[0], and put gesftpserver at its compiled SFTPSERVER_PATH.
+  # dropbear is multicall (dispatches on argv[0]); sftp-server is the path it
+  # was compiled to exec.
   ln -sf dropbear         "$R"/usr/sbin/dropbearkey
   ln -sf ../sbin/dropbear "$R"/usr/bin/scp
   mkdir -p "$R"/usr/libexec

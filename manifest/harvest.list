@@ -58,8 +58,7 @@
 /usr/lib/libcrypto.so.1.1
 /usr/lib/libssl.so.1.1
 
-## dev access over SSH — stock's own dropbear, multicall (build-rootfs.sh makes
-## the applet links) plus the sftp child it execs. No new libraries.
+## dev access over SSH — stock's dropbear + the sftp child it execs. No new libs.
 /usr/sbin/dropbear
 /usr/libexec/gesftpserver
 

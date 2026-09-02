@@ -140,10 +140,11 @@ failed glob on an ordinary boot ([06](06-card-image-build.md)).
 
 ### Loopback is load-bearing
 
-`adbd` binds a TCP listener during start-up and treats failure as fatal — it never
-reaches `usb_ffs_init`, so no endpoints appear and the UDC bind silently does
-nothing. Without `lo` there is no adb. Stock has `lo` up; nothing else in BaseOS
-needs it.
+`adbd` binds its smartsocket on `127.0.0.1:5037` during start-up and treats failure
+as fatal — it never reaches `usb_ffs_init`, so no endpoints appear and the UDC bind
+silently does nothing. Without `lo` there is no adb. This is loopback-only and
+unrelated to the network listener disabled above. Stock has `lo` up; nothing else
+in BaseOS needs it.
 
 ## adb over USB
 
@@ -156,8 +157,13 @@ gadget    rockchip      idVendor 0x2207  idProduct 0x0006  bcdDevice 0x0310
 function  ffs.adb       functionfs at /dev/usb-ffs/adb, -o uid=2000,gid=2000
 config    b.1 "adb"
 UDC       fcc00000.dwc3
-env       ADB_TCP_PORT=5555   (5037 is the host-server port — the wrong one)
+env       ADB_TCP_PORT unset  (see below — adb is USB-only)
 ```
+
+**No network adb.** `adbd` binds `0.0.0.0:$ADB_TCP_PORT` as an unauthenticated
+root shell whenever that parses as a positive int — stock exposes 5555 once WiFi
+is up. The compiled default is the empty string, so leaving it unset is enough.
+The H700 port patches `adb.c` for the same result.
 
 **Ordering is load-bearing**: `adbd` must be running and have written its
 descriptors before the UDC is bound, or the host sees a gadget with no endpoints.

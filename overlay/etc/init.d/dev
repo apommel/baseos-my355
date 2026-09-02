@@ -1,20 +1,18 @@
 #!/bin/sh
-# Dev conveniences (SSH, SFTP, ADB), backgrounded by rcS so nothing here
-# serialises boot.
+# Dev conveniences (SSH, SFTP, ADB). rcS backgrounds this.
 
-# Host keys on /data, generated once. Stock keeps them on tmpfs and runs
-# `dropbear -R`, so its fingerprint changes every boot; these survive.
+# Host keys on /data: stock regenerates them onto tmpfs every boot, so its
+# fingerprint keeps changing.
 /bin/mkdir -p /data/dropbear
 for t in rsa ed25519; do
 	k=/data/dropbear/dropbear_${t}_host_key
 	[ -f "$k" ] || /usr/sbin/dropbearkey -t "$t" -f "$k" >/dev/null 2>&1
 done
 
-# Password login as stock; root's hash is in /etc/shadow.
 /usr/sbin/dropbear -r /data/dropbear/dropbear_rsa_host_key \
                    -r /data/dropbear/dropbear_ed25519_host_key 2>/dev/null
 
-# Backgrounded: it waits internally for functionfs ep1.
+# Backgrounded: it waits for functionfs ep1.
 [ -x /usr/sbin/usb-gadget-adb ] && /usr/sbin/usb-gadget-adb &
 
 read -r _up _rest < /proc/uptime
