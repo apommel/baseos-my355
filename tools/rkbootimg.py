@@ -95,7 +95,8 @@ def compress_kernel(raw: bytes, how: str) -> bytes:
     if how == "gzip":
         return gzip.compress(raw, 9, mtime=0)
     if shutil.which("lz4") is None:
-        sys.exit("rkbootimg: --compress-kernel lz4 needs the `lz4` CLI (brew install lz4)")
+        sys.exit("rkbootimg: --compress-kernel lz4 needs the `lz4` CLI "
+                 "(brew install lz4, or apt install lz4)")
     with tempfile.TemporaryDirectory() as td:
         src, dst = f"{td}/k", f"{td}/k.lz4"
         with open(src, "wb") as fh:

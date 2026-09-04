@@ -23,8 +23,12 @@ It boots from SD faster than stock boots from internal NAND.
 
 ## Building
 
-macOS with unprivileged Alpine containers (Docker or OrbStack) — no sudo, no loop
-mounts. Steps running AArch64 binaries pin `linux/arm64`, the rest the host arch.
+macOS or Linux, x86_64 or ARM, with unprivileged Alpine containers (Docker or
+OrbStack) — no sudo, no loop mounts. Steps running AArch64 binaries pin
+`linux/arm64`, the rest the host arch. On an x86_64 host the AArch64 steps run
+under QEMU: Docker Desktop and OrbStack register the binfmt handlers themselves,
+a plain Docker Engine needs them installed once —
+`docker run --privileged --rm tonistiigi/binfmt --install arm64`.
 
 A card needs three vendor files: U-Boot, the Android boot image, and the harvested
 subset of the stock rootfs BaseOS links against. Restore them from the bundle:

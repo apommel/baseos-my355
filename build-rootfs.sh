@@ -34,6 +34,8 @@ for artifact in source.json stock-harvest.tar; do
 done
 python3 "$HERE/tools/source_manifest.py" verify "$PREPARED/source.json" "$PREPARED" --quiet
 
+baseos_require_aarch64
+
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
@@ -58,10 +60,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # 1. BusyBox and its applet links (mount, sh, init, getty, ... — rcS calls
   #    them by path, so the links must exist).
   cp /bin/busybox.static "$R"/usr/bin/busybox
-  chroot "$R" /usr/bin/busybox --install -s 2>/dev/null || \
-    for a in $(chroot "$R" /usr/bin/busybox --list); do
-      ln -sf /usr/bin/busybox "$R"/usr/bin/"$a" 2>/dev/null || true
-    done
+  chroot "$R" /usr/bin/busybox --install -s
+  # -L, not -e: the links --install writes are absolute, so they resolve only
+  # on the device.
+  [ -L "$R"/sbin/init ] || { echo "busybox --install left no /sbin/init" >&2; exit 1; }
 
   # 2. The stock harvest. Applied after BusyBox so vendor binaries win where
   #    both provide a name.

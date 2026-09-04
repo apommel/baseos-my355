@@ -2,10 +2,20 @@
 
 ## Development environment
 
-macOS with Docker or OrbStack. Anything touching a filesystem image or running
-AArch64 code goes in an unprivileged Alpine container, so the host needs no sudo and
-no loop mounts. `tools/docker-platform.sh` picks the platform per step: `linux/arm64`
-for device binaries, host arch otherwise.
+macOS or Linux, x86_64 or ARM, with Docker or OrbStack. Anything touching a
+filesystem image or running AArch64 code goes in an unprivileged Alpine container, so
+the host needs no sudo and no loop mounts. `tools/docker-platform.sh` picks the
+platform per step: `linux/arm64` for device binaries, host arch otherwise. Set
+`BASEOS_DOCKER_PLATFORM_HOST` to override the latter.
+
+On an x86_64 host the `linux/arm64` steps (`build-rootfs.sh`) run under QEMU, which
+needs binfmt handlers registered. Docker Desktop and OrbStack ship them; a plain
+Docker Engine does not, and `build-rootfs.sh` says so rather than letting the
+container die with `exec format error`:
+
+```sh
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+```
 
 Take a NAND backup even if you build from the bundle. Making one, and recovering from
 a bad preloader write, are in
