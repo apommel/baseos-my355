@@ -29,6 +29,13 @@ mark() {
 }
 mark /run/boot-rcS-start
 
+# The vendor kernel restores rails from RK817 POWER_EN_SAVE1 on shutdown; if it
+# reads 0 that cuts vcc_1v8/vcc3v3_pmu and the device hangs. Nothing else sets it.
+if [ -w /sys/rk8xx/rk8xx_dbg ]; then
+	echo "r a4" > /sys/rk8xx/rk8xx_dbg
+	echo "w a4 07" > /sys/rk8xx/rk8xx_dbg
+fi
+
 /bin/mount -t tmpfs -o mode=755,size=64m   tmpfs /var
 /bin/mkdir -p /var/lib /var/log /var/tmp /var/empty /var/lib/dbus /run/dbus
 /bin/ln -s /run /var/run
@@ -62,7 +69,7 @@ else
 fi
 
 # dbus and BlueZ state. /var is tmpfs, so both are links: stock keeps the
-# pairing store on /userdata, which nextui-session shadows with a tmpfs because
+# pairing store on /userdata, which the frontend shadows with a tmpfs because
 # FAT32 rejects BlueZ's MAC-named directories.
 /bin/ln -sf /run/machine-id /var/lib/dbus/machine-id
 /bin/ln -sf /userdata/bluetooth /var/lib/bluetooth
