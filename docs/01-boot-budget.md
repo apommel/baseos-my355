@@ -69,7 +69,7 @@ unplugged.
 | ├ **`dbus-daemon --system`** | **0.14 s** | 4.92 | `dbus-daemon` starttime |
 | └ frontend card mount, background tasks | 0.01 s | 4.93 | `/run/boot-rcS-done` |
 | **`rcS`** | **0.20 s** | 4.93 | |
-| init spawns `nextui-session` | 0.02 s | 4.95 | `/proc/<pid>/stat` |
+| init spawns `frontend-session` | 0.02 s | 4.95 | `/proc/<pid>/stat` |
 | **frontend hand-off — `exec updater`** | 0.03 s | **4.98** | `/run/boot-frontend-exec` |
 | `updater` → `my355.sh` → `launch.sh` | 0.08 s | 5.06 | |
 | NextUI `launch.sh` prologue | 0.89 s | 5.95 | `nextui.elf` starttime |

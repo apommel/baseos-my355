@@ -143,7 +143,7 @@ enough to select all three: the SPL finds `uboot` by name, `boot_android` finds
 `boot` by name, and `root=/dev/mmcblk1p3` names an entry number.
 
 **Rollback.** `rcS` runs `baseos-update boot-check`, which counts boots while a
-trial is open and restores the previous halves on the third; `nextui-session` runs
+trial is open and restores the previous halves on the third; `frontend-session` runs
 `baseos-update confirm` as it starts, which ends the trial. Confirming on session
 start rather than on frontend hand-off is deliberate — a card with no frontend is
 a healthy OS, and keying the trial later would make that look like a failed update

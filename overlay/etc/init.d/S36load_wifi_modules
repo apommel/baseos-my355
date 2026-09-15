@@ -11,7 +11,7 @@ CONF=/userdata/cfg/wpa_supplicant.conf
 
 case "$1" in
   start|"")
-	# Before nextui-session binds /userdata this would seed the root
+	# Before the frontend binds /userdata this would seed the root
 	# filesystem, shadowing the card's copy on every later boot.
 	grep -q ' /userdata ' /proc/mounts || exit 0
 	[ -f "$CONF" ] && exit 0

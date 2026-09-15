@@ -11,7 +11,7 @@
 #
 #   apply       find and apply a *.bosupd payload (rcS)
 #   boot-check  restore the previous slots if this one never reaches a session (rcS)
-#   confirm     end the trial (nextui-session)
+#   confirm     end the trial (frontend-session)
 #   status      what is installed, and what each payload on the card would do
 #
 # Payload: an uncompressed tar named *.bosupd holding `manifest` and one

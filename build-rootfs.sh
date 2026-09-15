@@ -52,7 +52,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   ln -sf lib      "$R"/lib64
 
   mkdir -p "$R"/proc "$R"/sys "$R"/dev "$R"/tmp "$R"/run "$R"/var \
-           "$R"/data "$R"/mnt/SDCARD "$R"/root "$R"/etc
+           "$R"/data "$R"/mnt/SDCARD "$R"/root "$R"/etc \
+           "$R"/userdata  # the frontend bind-mounts its card copy here, as on stock
 
   # Stock uses the lowercase path, NextUI the uppercase one.
   ln -sfn /mnt/SDCARD "$R"/mnt/sdcard
@@ -96,7 +97,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # 3. The overlay wins over everything.
   cp -a /overlay/. "$R"/
   chmod +x "$R"/init "$R"/etc/init.d/* \
-           "$R"/usr/sbin/nextui-session "$R"/usr/sbin/usb-gadget-adb \
+           "$R"/usr/sbin/frontend-session "$R"/usr/sbin/usb-gadget-adb \
            "$R"/usr/sbin/expand-storage "$R"/usr/sbin/mount-frontend \
            "$R"/usr/sbin/baseos-update \
            "$R"/usr/bin/baseos-splash "$R"/usr/share/udhcpc/default.script
@@ -117,7 +118,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   printf "BaseOS %s\n" "$BASEOS_VERSION" > "$R"/usr/miyoo/version
 
   # Same target as stock: NextUI copies the chosen zone into /userdata/localtime,
-  # which nextui-session bind-mounts onto the frontend card.
+  # which the frontend bind-mounts onto its card.
   ln -sf /userdata/localtime "$R"/etc/localtime
 
   # resolv.conf is written by the udhcpc event script into /run.

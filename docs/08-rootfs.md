@@ -78,7 +78,7 @@ the list grows as more of the stack is exercised:
 Two layout notes. Zone files live in `posix/` and the top-level names symlink
 into it, so only `right/` can be dropped. `/etc/localtime` is a symlink to
 `/userdata/localtime` — stock's target, which `PLAT_setCurrentTimezone()` copies
-into and `nextui-session` bind-mounts onto the frontend card.
+into and NextUI's `my355.sh` bind-mounts onto the frontend card.
 
 ### TLS needs two things
 
@@ -116,7 +116,7 @@ renders, and what `settings.cpp` logs at start-up. That is the garbage in the
 
 ```
 kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init.d/rcS
-                                                         --respawn-->  /sbin/nextui-session
+                                                         --respawn-->  /sbin/frontend-session
 ```
 
 `init=/init` is not optional; see [06](06-card-image-build.md).
@@ -205,37 +205,43 @@ slot first, and kept only if it carries a frontend (`.tmp_update/updater`,
 in the left slot would hide a frontend installed on the boot card. If neither
 qualifies the left slot still wins. It costs one extra `mount`/`umount` pair, ~10 ms.
 
-`rcS` and `nextui-session` both call it: `rcS` is `::sysinit:` and runs once, the
+`rcS` and `frontend-session` both call it: `rcS` is `::sysinit:` and runs once, the
 session is `::respawn:`, so only the session can pick up a card inserted after boot
 — as on H700. The kernel needs no help; neither `dwmmc` node sets `broken-cd`, and
 `/dev` is devtmpfs.
 
 A retry alone is not enough. With the left slot empty at boot `rcS` mounts the
 fallback, leaving `/mnt/SDCARD` occupied and a later card nowhere to go, so when
-`mmcblk2p1` turns up the session releases it — `/userdata` binds included — and
-lets `mount-frontend` choose again. Safe only there: no frontend is running,
+`mmcblk2p1` turns up the session releases it — including the `/userdata` binds a
+frontend that ran from it left behind — and lets `mount-frontend` choose again. Safe only there: no frontend is running,
 before or after. A card already mounted from the left slot is never disturbed.
 
-`nextui-session` starts by ending any open update trial — a session starting is
-what confirms a new slot ([06](06-card-image-build.md)) — and then reproduces, in
-order:
+`frontend-session` starts by ending any open update trial — a session starting is
+what confirms a new slot ([06](06-card-image-build.md)) — then stages
+`.tmp_update` on a fresh card (below) and execs `.tmp_update/updater`. **Not**
+`launch.sh`: the updater installs `MinUI.zip`/`*.pakz`, so updates behave the same.
 
-| | why |
-|---|---|
-| stage `.tmp_update` from `miyoo355/app/`, then delete `miyoo355/` | what `my355.sh` does on stock; a card fresh out of the base zip has no `.tmp_update` yet |
-| `$SDCARD/.userdata/my355/userdata` skeleton | stock creates it on first run |
-| `system.json`, **byte-identical to the vendor heredoc** | decides volume, brightness, keymap on first launch |
-| `mount --bind` it onto `/userdata` | where `wpa_supplicant.conf`, `system.json` and BT pairings live; stock does this because the internal userdata partition corrupts |
-| `mount --bind /run/bluetooth_fix` over `/userdata/bluetooth` | BlueZ names pairing files by MAC, which FAT32 rejects |
-| `exec .tmp_update/updater` | **not** `launch.sh` — the updater installs `MinUI.zip`/`*.pakz`, so updates behave the same |
+### The shared stock hook
 
-The `/userdata` work comes **after** the frontend check: nothing is written to a
-card BaseOS is not about to launch from, which matters now that the fallback card
-can be the boot card itself.
+That hand-off is the whole contract. Since NextUI `da3165de` (2026-09-15) its
+stock hook is aligned with spruceOS's: `runmiyoo.sh` only waits for the card,
+swaps a left-slot card carrying `.tmp_update/updater` onto `/mnt/sdcard`, and runs
+that `updater`. Everything else lives on the card, in `.tmp_update/my355.sh`:
 
-Verified on hardware: with no frontend the card gains nothing and `/userdata` stays
-unbound; with one, the skeleton, `system.json` and both bind mounts appear and the
-session execs the updater.
+| in NextUI's `my355.sh` | why | on BaseOS |
+|---|---|---|
+| `$SDCARD/.userdata/my355/userdata` skeleton and first-run `system.json` | decides volume, brightness, keymap on first launch | runs as on stock; the image ships an empty `/userdata` to bind onto |
+| `mount --bind` it onto `/userdata` | `wpa_supplicant.conf`, `system.json` and BT pairings live there; the internal userdata partition corrupts | same |
+| `mount --bind /run/bluetooth_fix` over `/userdata/bluetooth` | BlueZ names pairing files by MAC, which FAT32 rejects | same |
+| "Please use the right SD slot" when `/mnt/sdcard` is `mmcblk2*` | a stock limitation | not triggered, but only because `/proc/mounts` lists `/mnt/SDCARD`; `/mnt/sdcard` is a symlink here. A fix scoped to the stock hook is proposed upstream |
+
+So BaseOS writes nothing to the card beyond staging `.tmp_update`, and anything
+before the hand-off that touches `/userdata` sees the empty root directory —
+`S36load_wifi_modules` refuses to seed it for that reason.
+
+Starting is not running: a spruceOS card would be mounted and its `updater`
+executed, but whether spruceOS finds the stock userland it expects in the harvest
+has not been checked.
 
 ### Installing onto a fresh card
 
@@ -244,15 +250,16 @@ and on stock it is NextUI's own `my355.sh` that copies it up:
 
 ```
 runmiyoo.sh   CUSTOMER_DIR=/media/sdcard{0,1}/miyoo355/   (sdcard1 wins if present)
-  -> $CUSTOMER_DIR/app/MainUI      shell shim; cases /proc/cpuinfo, 0xd05 -> my355.sh
+  -> $CUSTOMER_DIR/app/MainUI      shell shim -> my355.sh
      -> app/my355.sh               init.sh ; cp -rf .tmp_update up ; rm -rf miyoo355 ; updater
 ```
 
 `init.sh` there is the NAND hook — unsquash `/dev/mtd3ro`, swap
 `/usr/miyoo/bin/runmiyoo.sh` for NextUI's, `flashcp` it back — which is exactly
-what BaseOS replaces. The `cp` is not, and dropping it with the rest meant a
+what BaseOS replaces. It runs every time and replaces an installed hook only
+when its `PAYLOAD_VERSION` is newer, since the hook is shared with spruceOS. The `cp` is not, and dropping it with the rest meant a
 card that had never booted on stock had no `updater` to hand off to.
-`nextui-session` now does that copy, and the `rm -rf miyoo355` after it, leaving
+`frontend-session` now does that copy, and the `rm -rf miyoo355` after it, leaving
 the card in the state a stock install leaves it. Everything downstream is
 NextUI's, unmodified: `updater` re-derives the platform and runs
 `.tmp_update/my355.sh`, whose `show2.elf` splash works here because it needs only
@@ -264,16 +271,11 @@ installable on stock. And if `miyoo355/` is gone but `MinUI.zip` is there, the
 same `.tmp_update` is unzipped out of the zip — a dead end on stock, and how the
 H700 port bootstraps, having no customer directory to copy from at all.
 
-**`miyoo355` or `miyoo`?** Stock reads **`miyoo355`**. Its `runmiyoo.sh` names a
-card directory in one place, the `CUSTOMER_DIR` lookup above, and both
-candidates are `miyoo355/`. `miyoo/` is the historic MinUI customer directory
-for the **Miyoo Mini and A30** — its `MainUI` shim still cases `SStar` and
-`sun8i` beside `0xd05` — so one base zip can serve every device by shipping each
-firmware's directory (`miyoo/`, `miyoo355/`, `trimui/`). On a Flip `miyoo/` is
-inert, and a near-duplicate: NextUI's `makefile` builds it and then does
-`cp -R build/BASE/miyoo build/BASE/miyoo355` before adding the Flip-only `my355/`
-payload to the copy. It is not in NextUI's `main` at all — it arrived with my355
-support, as the source of that copy.
+**`miyoo355` only.** Stock's `runmiyoo.sh` names a card directory in one place,
+the `CUSTOMER_DIR` lookup above, and both candidates are `miyoo355/`. The base zip
+used to also carry `miyoo/`, the historic MinUI directory for the Miyoo Mini and
+A30, as the source NextUI's `makefile` copied `miyoo355/` from; since `da3165de`
+it ships `miyoo355/` and `trimui/` only.
 
 ### Init-script contracts
 
@@ -349,7 +351,7 @@ ship `audiomon` at all.
 
 `rcS` also adds two links: `/var/lib/dbus/machine-id` → `/run`, and
 `/var/lib/bluetooth` → `/userdata/bluetooth`, which is stock's arrangement.
-`nextui-session` already shadows that directory with a tmpfs because FAT32
+NextUI's `my355.sh` shadows that directory with a tmpfs because FAT32
 rejects BlueZ's MAC-named files — so as on stock, pairings do not survive a
 reboot.
 
@@ -425,10 +427,10 @@ It reads panel geometry from the framebuffer and rotation from
 upright). `usr/bin/baseos-splash` wraps it, and ordinary boots never call it:
 the bootloader logo stays untouched until the frontend draws its first frame.
 
-`nextui-session` shows `INSERT SD CARD` when the left slot is empty and
+`frontend-session` shows `INSERT SD CARD` when the left slot is empty and
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards
 is the recommended setup, so an empty left slot asks for the card, not for a
-frontend on this one. It logs to `/tmp/nextui-session.log`, mirrored to
+frontend on this one. It logs to `/tmp/frontend-session.log`, mirrored to
 `baseos-session.log` on the card.
 
 ## Not yet done
