@@ -19,9 +19,8 @@ This tool rewrites it in place and repacks, so the kernel Image and every other
 resource entry stay byte-for-byte vendor — the same doctrine the H700 port
 applies to its boot chain (docs/00).
 
-The device tree is patched without relayout — the replacement bootargs is padded
-with spaces to the original length, so the FDT keeps its size and no offsets
-move. That caps how long the new command line can be; `info` reports the budget.
+The replacement bootargs is space-padded in place when it fits the vendor's
+100 bytes, so the FDT keeps its layout; a longer one grows the FDT.
 
 The resource image around it is rebuilt rather than patched, which frees the
 logo from having to match the vendor's exact byte count and lets the whole
@@ -491,17 +490,41 @@ def fdt_find_bootargs(dtb: bytes) -> tuple[int, int]:
 
 
 def set_bootargs(dtb: bytes, new_args: str) -> bytes:
-    """Rewrite /chosen/bootargs, space-padding to preserve the FDT layout."""
+    """Rewrite /chosen/bootargs: in place, space-padded, when it fits; grown otherwise.
+
+    The vendor value holds 100 bytes. Growing relays out the struct block the way
+    fdt_add_props does, which the SDR104 flags already prove this U-Boot accepts.
+    """
     off, length = fdt_find_bootargs(dtb)
     budget = length - 1                               # value includes its NUL
-    if len(new_args) > budget:
-        raise ValueError(
-            f"bootargs too long: {len(new_args)} > {budget} chars. In-place "
-            "patching cannot grow the FDT; shorten the command line.")
-    padded = new_args.ljust(budget).encode() + b"\0"
-    b = bytearray(dtb)
-    b[off:off + length] = padded
-    return bytes(b)
+    if len(new_args) <= budget:
+        padded = new_args.ljust(budget).encode() + b"\0"
+        b = bytearray(dtb)
+        b[off:off + length] = padded
+        return bytes(b)
+
+    off_struct, off_strings = struct.unpack(">II", dtb[8:16])
+    size_strings, size_struct = struct.unpack(">II", dtb[32:40])
+    if off_strings < off_struct + size_struct:
+        raise ValueError("FDT strings block does not follow the struct block; "
+                         "this rewriter assumes dtc's layout")
+    value = new_args.encode() + b"\0"
+    old_end = off + length + ((-length) % 4)
+    body = (dtb[off_struct:off - 8]
+            + struct.pack(">I", len(value)) + dtb[off - 4:off]   # len, nameoff
+            + value + b"\0" * ((-len(value)) % 4)
+            + dtb[old_end:off_struct + size_struct])
+    strings = dtb[off_strings:off_strings + size_strings]
+    out = bytearray(dtb[:off_struct] + body + strings)
+    struct.pack_into(">I", out, 4, len(out))                 # totalsize
+    struct.pack_into(">I", out, 12, off_struct + len(body))  # off_dt_strings
+    struct.pack_into(">I", out, 36, len(body))               # size_dt_struct
+
+    # Read it back: a mislaid offset is a card that hangs with nothing to debug.
+    noff, nlen = fdt_find_bootargs(bytes(out))
+    if bytes(out[noff:noff + nlen]) != value:
+        raise ValueError("bootargs not readable after growing the FDT")
+    return bytes(out)
 
 
 def rewrite_root(args_str: str, root: str, rootfstype: str | None,

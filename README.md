@@ -11,13 +11,13 @@ first — stock still boots when no BaseOS card is present.
 
 ## Where the time goes
 
-Both systems measured on hardware over adb, 2026-08-23, one cold boot each with the
-USB cable unplugged at power-on:
+Measured on hardware over adb, one cold boot each with the USB cable unplugged at
+power-on: stock on 2026-08-23, BaseOS on 2026-09-16.
 
 | | stock | BaseOS | |
 |---|---|---|---|
-| power-on → frontend hand-off | 15.79 s | **4.98 s** | −10.81 s |
-| power-on → NextUI's first frame | 31.50 s | **6.87 s** | −24.63 s |
+| power-on → frontend hand-off | 15.79 s | **3.95 s** | −11.84 s |
+| power-on → NextUI's first frame | 31.50 s | **5.99 s** | −25.51 s |
 
 It boots from SD faster than stock boots from internal NAND.
 

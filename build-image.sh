@@ -57,9 +57,9 @@ eval "$(python3 "$HERE/tools/mkgpt.py" --shell)"
 FWIMG="$WORK/miyoo355_fw.img"
 python3 "$HERE/tools/preloader-installer/mkfwimg.py" "$FWIMG" >/dev/null
 
-# The vendor command line uses all 100 available bytes and in-place FDT patching
-# cannot grow it (tools/rkbootimg.py). `earlycon=` is dead weight on a unit with
-# no UART attached, and dropping it makes room for what we do need:
+# The vendor command line fills its 100-byte slot; rkbootimg.py grows the FDT
+# when ours does not fit. `earlycon=` is dead weight on a unit with no UART
+# attached, so it goes. What we add:
 #
 #   init=/init   REQUIRED. For a disk root the kernel only tries /sbin/init,
 #                /etc/init, /bin/init and /bin/sh — `/init` is the initramfs
@@ -89,8 +89,14 @@ case "$SD_UHS" in
   *) echo "MY355_SD_UHS must be off, sdr50 or sdr104 (got '$SD_UHS')" >&2; exit 1 ;;
 esac
 
+# Built-in initcalls skipped by name, so the kernel stays the vendor's
+# byte-for-byte: tracefs is never mounted (0.38 s), OHCI only serves the
+# high-speed WiFi/BT chip (0.12 s), alpu is the anti-clone chip (0.11 s).
+# MY355_INITCALL_BLACKLIST="" restores the vendor set. See docs/01-boot-budget.md.
+INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,ohci_platform_init,alpu_init}"
+
 DROP="earlycon="
-APPEND="rw init=$MY355_INIT"
+APPEND="rw init=$MY355_INIT${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
 LED_TRIGGER=""
 
 # The BaseOS wordmark, cropped from the shared artwork so branding matches the

@@ -5,7 +5,8 @@ reclaims, and what is left.
 
 > **Provenance.** Measured on hardware over adb. The end-to-end stock and BaseOS
 > figures below are from **2026-08-23**, one cold boot each, USB unplugged at
-> power-on. Earlier structural findings are from 2026-08-19/22 and are dated where
+> power-on; the current BaseOS figures are from **2026-09-16**, measured the same way.
+> Earlier structural findings are from 2026-08-19/22 and are dated where
 > they matter. Claims are *verified* (observed on hardware) or *inferred* (from
 > binaries); retracted ones are kept in the
 > [investigation log](05-investigation-log.md).
@@ -117,6 +118,7 @@ in Bluetooth audio.
 | `nextui.elf` init → first frame | 3.11 s | 1.98 s | −1.13 s |
 | **total to first frame** | **31.50 s** | **7.93 s** | **−23.57 s** |
 | total to first frame, with SDR104 | 31.50 s | **6.87 s** | **−24.63 s** |
+| total to first frame, 2026-09-16 | 31.50 s | **5.99 s** | **−25.51 s** |
 
 Essentially the entire vendor userland — `mount -a` over SPI NAND,
 `udevadm settle --timeout=30`, then eight serialised `S*` scripts — is gone, and
@@ -301,7 +303,7 @@ Two consequences, and they reorder the plan:
 > way**: pad a zstd payload to the raw size and compare. Worth one boot before
 > attributing any zstd win.
 
-### The kernel phase is close to its floor
+### The kernel phase: three initcalls skipped from the command line (2026-09-16)
 
 `initcall_debug` (added in the same boot: padding only changes what happens *before*
 the first printk, `initcall_debug` only what happens *after*, so neither pollutes the
@@ -309,20 +311,45 @@ other) attributes the 1.57 s. 793 initcalls, 1.14 s of accounted time:
 
 | initcall | cost | can we remove it? |
 |---|---|---|
-| `tracer_init_tracefs` | **0.383 s** | no — ftrace/tracefs, a kernel *config* choice |
+| `tracer_init_tracefs` | **0.383 s** | **skipped** — tracefs is never mounted and nothing reads it |
 | `rk3x_i2c_driver_init` | 0.146 s | no — only the PMIC and muic buses are enabled already |
-| `ohci_platform_init` | 0.118 s | no — the USB host is how the RTL8733BU WiFi/BT chip attaches |
-| `alpu_init` | 0.112 s | no DT node exists; it is a driver-side i2c scan |
+| `ohci_platform_init` | 0.118 s | **skipped** — see below |
+| `alpu_init` | 0.112 s | **skipped** — the anti-clone chip; nothing on BaseOS or NextUI uses it |
 | `deferred_probe_initcall` | 0.063 s | — |
-| `ehci_platform_init` | 0.033 s | no — same USB path |
+| `ehci_platform_init` | 0.033 s | no — the RTL8733BU WiFi/BT chip attaches here |
 
-`tracer_init_tracefs` is the 0.40 s silent gap seen in every earlier trace, between
-`clocksource: Switched to arch_sys_counter` and `NET: Registered protocol family 2`.
-It is now identified and it is **not reachable from the device tree** — the DTB is
-ours to edit but this is `CONFIG_TRACING` building the tracefs event tree, so
-removing it means rebuilding the kernel and giving up "the kernel is the vendor's,
-byte-for-byte". The rest of the list is either load-bearing or already minimal, so
-there is no cheap win left in the kernel phase.
+**Retracted (2026-09-16):** that `tracer_init_tracefs` "is not reachable" and
+removing it "means rebuilding the kernel". The vendor kernel has `CONFIG_KALLSYMS=y`,
+which makes the stock `initcall_blacklist=` parameter work: a built-in initcall
+named on the command line is never called. The kernel stays the vendor's
+byte-for-byte. The same goes for the OHCI line, whose "no" was also wrong. The
+RTL8733BU is a 480 Mbit/s device on EHCI (`usb 2-1`), and the USB-C port is on
+xHCI, so the two OHCI companions serve nothing.
+
+The command line is now
+`… init=/init initcall_blacklist=tracer_init_tracefs,ohci_platform_init,alpu_init`
+(`MY355_INITCALL_BLACKLIST` in `build-image.sh`). That no longer fits the vendor's
+100-byte `bootargs`, so `rkbootimg.py` grows the FDT property when it has to. The
+SDR104 flags had already shown this U-Boot accepts a grown tree, and `dtc` reads
+both variants back with `bootargs` as the only change.
+
+Measured on one cold boot, USB unplugged:
+
+| | 2026-08-24 | 2026-09-16 | Δ |
+|---|---|---|---|
+| first printk → dw-mmc probe | 1.21 s | **0.58 s** | −0.63 |
+| boot card detected → root mounted | 0.14 s | 0.05 s | −0.09 |
+| **first printk → `Run /init`** | **1.52 s** | **0.81 s** | **−0.71** |
+
+The three initcalls account for 0.61 s. The other 0.09 s is in mounting the root
+filesystem, which this change does not touch; read it as variance until it repeats.
+dmesg logs `initcall … blacklisted` for all three and no warning that the previous
+boot lacked. WiFi and Bluetooth both work, and no issue has shown up in use so far.
+`alpu_init` is the one that could still surprise someone: what the stock userland
+does with the chip is unknown. Take it out of the list first if anything odd shows
+up.
+
+Still load-bearing: the i2c and EHCI initcalls.
 
 ## Compared with H700
 
@@ -376,7 +403,8 @@ Remaining levers, now that the pre-kernel budget is decomposed:
    blocker is not only that the vendor U-Boot lacks zstd, it is that the Android
    boot image path *sniffs* the format. A FIT declares `compression = "zstd"`, so
    nothing is sniffed. Shelved with (2).
-4. **The kernel phase — nothing cheap left.** See the initcall table above.
+4. **The kernel phase — taken, measured at 0.71 s.** Three initcalls skipped with
+   `initcall_blacklist=`; the kernel is unchanged. See the initcall table above.
 5. **Shrink what U-Boot reads further.** The resource image is already rebuilt at
    442 880 bytes rather than the stock 943 616. Dropping the charge artwork would
    save another 176 KB, worth ~16 ms.
@@ -395,6 +423,31 @@ Projected with (2) and (3): pre-kernel **1.3–1.8 s**, power-on to input **5.8�
 Lever (1) claims part of the same ground more cheaply, so they do not add.
 Not currently being pursued.
 
+
+## Where a BaseOS boot stands (2026-09-16)
+
+One cold boot, USB unplugged, with the kernel initcalls skipped. `uptime + 3.06 = power-on`, from the `jbd2/mmcblk1p4` anchor.
+
+| phase | at power-on | 2026-08-24 |
+|---|---|---|
+| first printk | 2.90 s | 3.13 s |
+| `Run /init` | 3.71 s | 4.65 s |
+| `rcS` | 3.76–3.92 s (0.16 s) | 0.12 s |
+| **frontend hand-off** | **3.95 s** | — |
+| `nextui.elf` start | 4.47 s | |
+| **first NextUI frame** | **5.99 s** | **6.87 s** |
+
+Hand-off to first frame is 2.04 s, the same as on 2026-08-24. Two things here are
+**not explained by the initcall change**:
+
+* **Pre-kernel is 0.24 s shorter** (2.90 s against 3.13 s), also on a cold boot.
+  Skipping initcalls only affects what runs after the first printk. The only
+  pre-kernel change is 45 more bytes of device tree. Unattributed.
+* **`rcS` is 0.16 s** against 0.12 s. Already so on 0.4.0 before this change; the
+  update check added since then (`baseos-update`) is the likely cause, unmeasured.
+
+Both ext4 volumes still replay their journals at every boot: `rcK` never remounts
+`/` read-only, and BusyBox init unmounts nothing.
 
 ## The SD bus was capped in the device tree (2026-08-24)
 
