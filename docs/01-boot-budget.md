@@ -273,8 +273,9 @@ Two consequences, and they reorder the plan:
 
 1. **U-Boot's own init is the single largest item — larger than the read.** 1.21 s
    before it fetches a byte, spent on AVB/trusty probing, GPT repair, the
-   charge-animation path, a full DRM bring-up and a SHA1 over the whole boot image.
-   None of that is ours to keep.
+   charge-animation path, a full DRM bring-up and a SHA1 over the whole boot image
+   (moving that hash to the crypto block gained nothing, 2026-09-16). None of
+   that is ours to keep.
 2. **Compression is the *smaller* half.** zstd-19 is 10.82 MB against gzip's 12.99,
    so it is worth ~0.2 s of read plus whatever the inflate is worth — see the error
    bar below, which argues that second part is small. Real, but a fraction of what

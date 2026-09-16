@@ -20,7 +20,7 @@ Three knobs were implemented and measured on 2026-08-22, then **removed**:
 |---|---|
 | delete `sd-uhs-sdr12`/`sdr25` from `dwmmc@fe2b0000` | no effect |
 | `rockchip,uboot-charge-on` → 0, and drop the 171 KB of battery artwork it makes dead | ~22 ms, costs the low-battery boot guard |
-| enable `crypto@fe380000` (the binary logs `Can't find crypto device for SHA1`) | untested |
+| enable `crypto@fe380000` (the binary contains `Can't find crypto device for SHA1`) | **no effect** — tried 2026-09-16, see below |
 
 Pre-kernel went 3.14 s → **3.118 s**. Not worth carrying.
 
@@ -31,6 +31,16 @@ tree (the kernel's own mode changed from `sd uhs SDR25` to `new high speed SDXC
 card`, both 50 MHz) and the budget did not move. **So the slow read is not a UHS
 fallback**; the cause is inside the binary — transfer sizes, no DMA, or the SHA1 —
 and unreachable from a device tree. Halving that 1.19 s needs Part 2.
+
+**The crypto block, 2026-09-16.** The vendor U-Boot has a
+`rockchip,rk3568-crypto` driver, and the node ships `disabled`, so the SHA1 over
+the boot image was assumed to run in software. With `status = "okay"`, two cold
+boots put the first printk at 2.858 s and 2.856 s, against 2.856 s without it.
+**No measurable gain.** Either the software hash was already cheap, or this path
+never uses the device; without a console, the two cannot be told apart. The
+kernel side was harmless: `rk-crypto` bound, its algorithms registered at
+priority 0 below the CPU's own (250–300), and the kernel phase did not move. It
+added one `rk-crypto fe380000.crypto: invalid resource` line. Reverted.
 
 Two things were found along the way and kept.
 

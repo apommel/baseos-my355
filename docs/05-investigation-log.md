@@ -83,6 +83,7 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-09-16 | `bootargs` outgrew the vendor's 100 bytes; `rkbootimg.py` now grows the FDT property instead of refusing |
 | 2026-09-16 | SDR104 on the left slot tried and **reverted**: the card hung during init and the session fell back to the boot card's frontend. **Retracted:** that slot 1 "shares `vccio_sd`". Its `vqmmc-supply` says so, but its pins are in I/O domain `vccio4`, a fixed 3.3 V ([boot budget](01-boot-budget.md)) |
 | 2026-09-16 | Kernel gzip now encoded with **libdeflate -12**: 12 991 358 → 12 504 834 bytes, same format. One cold boot each put the first printk at 2.897 s before and 2.856 s after (−41 ms, prediction −45 ms) — consistent, but within single-boot noise ([boot budget](01-boot-budget.md)) |
+| 2026-09-16 | `crypto@fe380000` enabled so U-Boot could hash the boot image in hardware: first printk 2.858 / 2.856 s on two cold boots against 2.856 s without — **no gain, reverted**. Kernel side harmless ([U-Boot](09-uboot.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
