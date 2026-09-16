@@ -90,20 +90,21 @@ def compress_kernel(raw: bytes, how: str) -> bytes:
 
     The SD read dominates the pre-kernel budget, so this is the big lever:
     4.96 s raw -> 3.14 s gzip -> 3.31 s lz4. gzip wins because it is smaller.
+    gzip comes from libdeflate -12: still a plain gzip stream, 486 KB smaller
+    than zlib -9. build-image.sh runs this in Alpine, which pins the encoder.
     """
     if how == "gzip":
-        return gzip.compress(raw, 9, mtime=0)
-    if shutil.which("lz4") is None:
-        sys.exit("rkbootimg: --compress-kernel lz4 needs the `lz4` CLI "
-                 "(brew install lz4, or apt install lz4)")
-    with tempfile.TemporaryDirectory() as td:
-        src, dst = f"{td}/k", f"{td}/k.lz4"
-        with open(src, "wb") as fh:
-            fh.write(raw)
+        # -n: no name or mtime, so the bytes reproduce.
+        cmd, brew, apk = ["libdeflate-gzip", "-12", "-n", "-c"], "libdeflate", "libdeflate-utils"
+    else:
         # Frame format, and -BI because `ulz4fn` refuses linked blocks.
-        subprocess.run(["lz4", "-12", "-f", "-q", "-BI", "--no-frame-crc", src, dst],
-                       check=True)
-        blob = open(dst, "rb").read()
+        cmd, brew, apk = ["lz4", "-12", "-BI", "--no-frame-crc", "-c"], "lz4", "lz4"
+    if shutil.which(cmd[0]) is None:
+        sys.exit(f"rkbootimg: --compress-kernel {how} needs the `{cmd[0]}` CLI "
+                 f"(brew install {brew}, or apk add {apk})")
+    blob = subprocess.run(cmd, input=raw, stdout=subprocess.PIPE, check=True).stdout
+    if how == "gzip":
+        return blob
     why = uboot_accepts_lz4(blob)
     if why:
         sys.exit("rkbootimg: this lz4 frame would not boot — " + "; ".join(why))

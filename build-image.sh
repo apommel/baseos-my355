@@ -107,9 +107,16 @@ MY355_LOGO_ASSET="${MY355_LOGO_ASSET:-$HERE/assets/bootlogo.bmp}"
 python3 "$HERE/tools/mkbootlogo.py" "$MY355_LOGO_ASSET" \
   "$WORK/baseos-logo.bmp" --size "$MY355_LOGO_SIZE" --preview
 
+# In Alpine so the kernel compressors (libdeflate, lz4) come pinned with the
+# release rather than from whatever the host has installed.
 echo "== repointing the vendor boot image at the card =="
-python3 "$HERE/tools/rkbootimg.py" setargs "$BOOT_SRC" "$WORK/boot-sd.img" \
-  --root "$MY355_ROOT_DEV" --rootfstype ext4 --logo "$WORK/baseos-logo.bmp" \
+docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
+  -v "$WORK":/work -v "$HERE/tools":/tools:ro \
+  alpine:3.20 sh -euc '
+  apk add -q python3 libdeflate-utils lz4
+  python3 /tools/rkbootimg.py setargs "$@"' sh \
+  "/work/prepared/$(basename "$BOOT_SRC")" /work/boot-sd.img \
+  --root "$MY355_ROOT_DEV" --rootfstype ext4 --logo /work/baseos-logo.bmp \
   --drop "$DROP" --append "$APPEND" \
   ${LED_TRIGGER:+--led-trigger "$LED_TRIGGER"} \
   --sd-uhs "$SD_UHS" \

@@ -258,6 +258,11 @@ boot; gzip is the default because it is smaller and measured faster (3.14 s vs
 3.31 s). LZ4 must be frame-framed with independent blocks, which `rkbootimg.py`
 enforces — the 2026-08-20 "LZ4 does not boot" card was legacy-framed.
 
+gzip is encoded with `libdeflate-gzip -12` rather than zlib: the same format,
+486 KB smaller. `rkbootimg.py setargs` runs in `alpine:3.20` so both encoders
+come pinned from the release. Run by hand, it needs `libdeflate-gzip` or `lz4`
+on the host.
+
 The build asserts `decompress(stored) == vendor kernel` before writing, so the
 "vendor kernel byte-for-byte" property is preserved — only its storage changes.
 

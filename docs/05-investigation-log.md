@@ -82,6 +82,7 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-09-16 | **Retracted:** "`tracer_init_tracefs` is not reachable without rebuilding the kernel". The vendor kernel honours `initcall_blacklist=`. Skipping it, `ohci_platform_init` (OHCI serves no device; the WiFi/BT chip is high-speed on EHCI) and `alpu_init` takes the kernel phase **1.52 s → 0.81 s** with the kernel unchanged. First frame **5.99 s**, hand-off **3.95 s**. WiFi and Bluetooth verified ([boot budget](01-boot-budget.md)) |
 | 2026-09-16 | `bootargs` outgrew the vendor's 100 bytes; `rkbootimg.py` now grows the FDT property instead of refusing |
 | 2026-09-16 | SDR104 on the left slot tried and **reverted**: the card hung during init and the session fell back to the boot card's frontend. **Retracted:** that slot 1 "shares `vccio_sd`". Its `vqmmc-supply` says so, but its pins are in I/O domain `vccio4`, a fixed 3.3 V ([boot budget](01-boot-budget.md)) |
+| 2026-09-16 | Kernel gzip now encoded with **libdeflate -12**: 12 991 358 → 12 504 834 bytes, same format. One cold boot each put the first printk at 2.897 s before and 2.856 s after (−41 ms, prediction −45 ms) — consistent, but within single-boot noise ([boot budget](01-boot-budget.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 

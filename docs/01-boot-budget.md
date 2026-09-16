@@ -176,13 +176,24 @@ image, and U-Boot reads every byte off the card on each boot.
 | stored as | size | share | pre-kernel |
 |---|---|---|---|
 | raw `Image` | 36 647 424 | 100% | 4.96 s |
-| **gzip -9** | **12 991 358** | **35%** | **3.14 s** |
+| gzip -9 (zlib) | 12 991 358 | 35% | 3.14 s |
+| **gzip, libdeflate -12** | **12 504 834** | **34%** | **2.86 s**¹ |
 | lz4 -12 frame | 15 519 501 | 42% | 3.31 s |
 | lz4 -9 legacy | 15 568 013 | 42% | does not boot — wrong framing |
 
 **gzip saves 1.82 s** — over a third of the pre-kernel budget. The build asserts
 `decompress(stored) == vendor kernel`, so the kernel is still the vendor's
 byte-for-byte; only its storage changes. Default (`MY355_COMPRESS_KERNEL=gzip`).
+
+¹ **libdeflate -12 since 2026-09-16.** It is the same deflate format, so U-Boot's
+inflater takes it unchanged, and it is 486 KB smaller than zlib's `-9`. At U-Boot's
+10.9 MB/s that predicts −45 ms. One cold boot each measured the first printk at
+2.897 s on zlib and 2.856 s on libdeflate, so −41 ms: it agrees with the
+prediction, but one boot per build cannot separate that from noise. The 2.86 s
+is not comparable with the 3.14 s row: pre-kernel has also moved 0.24 s for a
+reason still unknown (see [where a BaseOS boot
+stands](#where-a-baseos-boot-stands-2026-09-16)). `rkbootimg.py setargs` runs in
+Alpine 3.20, which pins libdeflate 1.20; two runs gave byte-identical output.
 
 ### LZ4 boots, and loses
 
