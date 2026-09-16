@@ -29,8 +29,8 @@ No preloader binary is redistributed. See [SD boot](02-sd-boot.md).
 `storagemedia=sd`.
 
 NextUI has been launched from it successfully. With the kernel stored gzipped,
-BaseOS reaches frontend hand-off in **3.87 s** against stock's **15.79 s**, and a
-first NextUI frame in **5.89 s** against stock's **31.50 s** (BaseOS measured
+BaseOS reaches frontend hand-off in **3.73 s** against stock's **15.79 s**, and a
+first NextUI frame in **5.74 s** against stock's **31.50 s** (BaseOS measured
 2026-09-16, stock 2026-08-23) — and boots from SD faster than stock does from internal NAND. See the
 [boot budget](01-boot-budget.md) and the [port plan](04-port-plan.md).
 

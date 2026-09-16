@@ -104,7 +104,9 @@ nothing) was right, but worth a hundredth of a second, not a tenth.
 **The remaining lever:** background `dbus-daemon`. Its only deadline is
 `audiomon.elf`, which connects ~0.9 s later and exits if it cannot — 6x the margin
 needed. Not done here: it trades a measured 0.14 s for a race that fails silently
-in Bluetooth audio.
+in Bluetooth audio. **Done 2026-09-16**, with `frontend-session` waiting for the
+socket before handing off, which removes the race; see [where a BaseOS boot
+stands](#where-a-baseos-boot-stands-2026-09-16).
 
 ## The comparison
 
@@ -118,7 +120,7 @@ in Bluetooth audio.
 | `nextui.elf` init → first frame | 3.11 s | 1.98 s | −1.13 s |
 | **total to first frame** | **31.50 s** | **7.93 s** | **−23.57 s** |
 | total to first frame, with SDR104 | 31.50 s | **6.87 s** | **−24.63 s** |
-| total to first frame, 2026-09-16 | 31.50 s | **5.89 s** | **−25.61 s** |
+| total to first frame, 2026-09-16 | 31.50 s | **5.74 s** | **−25.76 s** |
 
 Essentially the entire vendor userland — `mount -a` over SPI NAND,
 `udevadm settle --timeout=30`, then eight serialised `S*` scripts — is gone, and
@@ -433,7 +435,9 @@ Remaining levers, now that the pre-kernel budget is decomposed:
    page cache, not load time.
 8. **Hardware SHA1 in U-Boot — tried, no gain.** See [U-Boot](09-uboot.md).
 9. **`quiet` and a `performance` boot governor — taken, about 0.1 s** to the first
-   frame. See [where a BaseOS boot
+   frame.
+10. **`rcS` trimming and clean shutdown — taken.** About 30 ms from `rcS`, and up to
+    0.2 s of journal replay that no longer happens. See [where a BaseOS boot
    stands](#where-a-baseos-boot-stands-2026-09-16).
 
 Projected with (2) and (3): pre-kernel **1.3–1.8 s**, power-on to input **5.8–6.3 s**.
@@ -445,17 +449,21 @@ Not currently being pursued.
 
 Cold boots, USB unplugged, one change added per column. Times are from power-on.
 The `rcS`, hand-off and `nextui.elf` rows are on the uptime clock, converted per
-boot with the `jbd2/mmcblk1p4` anchor (offset 3.03–3.06 s on these boots).
+boot with the `jbd2/mmcblk1p4` anchor (offset 3.01–3.06 s on these boots).
 
-| | 2026-08-24 | + initcalls | + libdeflate | + `quiet`, governor |
-|---|---|---|---|---|
-| boots | 1 | 1 | 2 | 2 |
-| first printk | 3.13 s | 2.90 s | 2.86 s | 2.86 s |
-| `Run /init` | 4.65 s | 3.71 s | 3.67–3.68 s | 3.66 s |
-| `rcS` | 0.12 s | 0.16 s | 0.16–0.17 s | 0.14–0.15 s |
-| **frontend hand-off** | — | 3.95 s | 3.91–3.93 s | **3.87–3.88 s** |
-| `nextui.elf` start | — | 4.47 s | 4.43–4.44 s | 4.35–4.36 s |
-| **first NextUI frame** | 6.87 s | 5.99 s | 5.99–6.02 s | **5.89 s** |
+| | 2026-08-24 | + initcalls | + libdeflate | + `quiet`, governor | + `rcS`, clean shutdown¹ |
+|---|---|---|---|---|---|
+| boots | 1 | 1 | 2 | 2 | 2 |
+| first printk | 3.13 s | 2.90 s | 2.86 s | 2.86 s | 2.85 s |
+| `Run /init` | 4.65 s | 3.71 s | 3.67–3.68 s | 3.66 s | 3.58 s |
+| `rcS` | 0.12 s | 0.16 s | 0.16–0.17 s | 0.14–0.15 s | **0.06 s** |
+| **frontend hand-off** | — | 3.95 s | 3.91–3.93 s | 3.87–3.88 s | **3.72–3.74 s** |
+| `nextui.elf` start | — | 4.47 s | 4.43–4.44 s | 4.35–4.36 s | 4.19–4.23 s |
+| **first NextUI frame** | 6.87 s | 5.99 s | 5.99–6.02 s | 5.89 s | **5.72–5.75 s** |
+
+¹ On a different boot card: the original one was replaced after it started
+failing. The new one reads 59 MB/s against the old one's 63 MB/s, so the
+columns are comparable, but it detects 85 ms sooner at SDR104.
 
 **`quiet` and `cpufreq.default_governor=performance`** went in together.
 Hand-off moved about 50 ms and the first frame about 0.1 s. Both boots agree:
@@ -466,6 +474,50 @@ runs. `performance` holds from cpufreq's probe, about 0.58 s into the kernel,
 until that switch. `frontend-session` drops back to `ondemand` when there is no
 frontend to start. The two were not measured separately.
 
+**`rcS`.** Four changes, all on the critical path:
+
+* `baseos-update boot-check` (in `rcS`) and `confirm` (in `frontend-session`)
+  only run when `/data/update/state` exists. Otherwise each is a no-op that still
+  costs 8 ms to start, most of it the shell parsing the script.
+* `dbus-daemon --system` starts in the background. Its 70 ms of start-up overlaps
+  the rest of `rcS`, and `frontend-session` waits for the socket before handing
+  off, which closes the race with `audiomon.elf`. The wait was 20–30 ms on every
+  boot so far.
+* The random seed is restored and saved in the background: the kernel's crng is
+  initialised before init runs.
+* The machine-id is copied with shell builtins rather than `cp`.
+
+Together, dbus start to hand-off went from 0.13 s to 0.10 s on two boots of the
+old card. That is less than the 45–55 ms estimated, because dbus takes about
+100 ms under contention. `baseos-update apply` is now the largest item left in
+`rcS`, at about 20–30 ms: it mounts this card's own FAT partition read-only on
+every boot to look for a payload.
+
+**Clean shutdown.** busybox init runs `rcK` before it signals anything, and it
+unmounts nothing itself. The old `rcK` tried to unmount `/data` and the card
+while everything was still running. Both failed: `adbd` holds a log on `/data`,
+and the frontend binds `/userdata` over the card. So every boot replayed both
+ext4 journals. On the old card, the root mount took 96–137 ms from card
+detection and `/data` 80–100 ms after such shutdowns, against 16 ms and 30 ms
+when clean. The cost depended on what the previous session wrote.
+
+`rcK` now sends SIGTERM to everything outside its own session (`killall5`),
+waits at most 1 s, then sends SIGKILL. It then unmounts the frontend's binds,
+the card and `/data`, in reverse mount order, and remounts `/` read-only. That
+also stops NextUI's updater before its sysrq power-off can race the script.
+Some of NextUI's helpers catch SIGTERM, hence the bound. Shutdown takes 0.13 s
+when everything exits on SIGTERM, and 1.4 s when something does not (`ntpd`
+once). `/data/shutdown.log` records each run. Since then no boot has replayed a
+journal.
+
+`rcS` also remounts `/` with `noatime`. The kernel mounts it `relatime`, which
+writes an access time for every file read on the first boot of a new slot, and
+daily after that.
+
+A FAT card that was once powered off uncleanly keeps mounting as "not properly
+unmounted". Linux never clears a dirty flag that was already set at mount, even
+on a clean unmount; only `fsck.fat` does, and BaseOS ships none.
+
 Two things are **not explained** by any of these changes:
 
 * **Pre-kernel is 0.24 s shorter** than on 2026-08-24 (2.90 s against 3.13 s,
@@ -473,12 +525,8 @@ Two things are **not explained** by any of these changes:
   printk, and the only pre-kernel change in that step is 45 more bytes of device
   tree. Unattributed. It is stable since: the four boots after it read
   2.856–2.858 s.
-* **`rcS` is 0.16 s** against 0.12 s. Already so on 0.4.0 before these changes;
-  the update check added since then (`baseos-update`) is the likely cause,
-  unmeasured.
-
-Both ext4 volumes still replay their journals at every boot: `rcK` never remounts
-`/` read-only, and BusyBox init unmounts nothing.
+* **`rcS` was 0.16 s** against 0.12 s, already on 0.4.0. The update scripts added
+  since then are the likely cause; the `rcS` changes above took it to 0.06 s.
 
 ## The SD bus was capped in the device tree (2026-08-24)
 

@@ -103,7 +103,10 @@ hook writes the result back to the RTC so the next boot starts sane.
 ### Version identity
 
 `/etc/baseos-release` is generated at build time from `VERSION`, as on H700, and
-carries `BASEOS_VERSION` plus a `git describe` `BASEOS_BUILD`.
+carries `BASEOS_VERSION` plus a `git describe` `BASEOS_BUILD`. An uncommitted
+tree's `-dirty` id gets a UTC timestamp appended, so two such builds never share
+an id: a card skips a same-version payload whose id matches its own. The id goes
+to `work/my355/build-id`, which `build-update.sh` puts in the manifest.
 
 `/usr/miyoo/version` is written from the same variable and reads `BaseOS 1.1.0`.
 It exists because `PLAT_getOsVersionInfo()` reads that path for the About screen
@@ -121,9 +124,9 @@ kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init
 
 `init=/init` is not optional; see [06](06-card-image-build.md).
 
-`rcS` is short — **0.20 s**, of which `dbus-daemon --system` is 0.14 s and
-everything else 0.06 s (2026-08-23; it was 60 ms before Bluetooth added the bus —
-see the [boot budget](01-boot-budget.md)) — and shorter than the H700 equivalent
+`rcS` is short — **0.06 s** since 2026-09-16, with `dbus-daemon --system`
+started in the background (it was 0.20 s with the bus on the critical path; see
+the [boot budget](01-boot-budget.md)) — and shorter than the H700 equivalent
 because this kernel does more for us:
 
 | H700 does | my355 does not need to |
@@ -134,9 +137,16 @@ because this kernel does more for us:
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed,
 **loopback**, the first-boot card expansion, the frontend card, any pending system
-update, and the USB gadget in the background. The two update hooks — `baseos-update
-boot-check` after `/data`, `apply` after the card mount — cost a file test and a
-failed glob on an ordinary boot ([06](06-card-image-build.md)).
+update, and the USB gadget in the background. Of the two update hooks,
+`baseos-update boot-check` after `/data` only runs when a trial is pending (a
+builtin file test). `apply` after the card mount costs a failed glob plus a
+read-only mount of this card's FAT partition, about 20–30 ms
+([06](06-card-image-build.md)).
+
+`rcK` does the shutdown work busybox init leaves out. It stops every other
+process (SIGTERM, at most 1 s, SIGKILL), unmounts the frontend's binds, the card
+and `/data`, and remounts `/` read-only, logging to `/data/shutdown.log`. Without
+that, both ext4 journals replay on every boot.
 
 ### Loopback is load-bearing
 
@@ -344,8 +354,9 @@ parts that script expects to find in the OS:
 `rcS` starts the system bus, as stock's `S30dbus` does. This is not for BlueZ's
 benefit — NextUI's `audiomon.elf` connects to it at frontend start whether or not
 Bluetooth is ever used, and **exits** if it cannot, which leaves nothing to write
-`.asoundrc` and so no route to bluealsa. `system.conf` has `<fork/>`, so the call
-returns once the socket is listening and there is no race with the frontend.
+`.asoundrc` and so no route to bluealsa. `rcS` starts it in the background, and
+`frontend-session` waits for `/run/dbus/system_bus_socket` (at most 1 s) before
+handing off, so there is no race with the frontend.
 H700 starts dbus lazily instead, which is fine there: its NextUI build does not
 ship `audiomon` at all.
 

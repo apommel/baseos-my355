@@ -16,8 +16,8 @@ power-on: stock once on 2026-08-23, BaseOS twice on 2026-09-16.
 
 | | stock | BaseOS | |
 |---|---|---|---|
-| power-on → frontend hand-off | 15.79 s | **3.87 s** | −11.92 s |
-| power-on → NextUI's first frame | 31.50 s | **5.89 s** | −25.61 s |
+| power-on → frontend hand-off | 15.79 s | **3.73 s** | −12.06 s |
+| power-on → NextUI's first frame | 31.50 s | **5.74 s** | −25.76 s |
 
 It boots from SD faster than stock boots from internal NAND.
 

@@ -85,6 +85,9 @@ otherwise retry. For the working result, see [SD boot](02-sd-boot.md).
 | 2026-09-16 | Kernel gzip now encoded with **libdeflate -12**: 12 991 358 → 12 504 834 bytes, same format. One cold boot each put the first printk at 2.897 s before and 2.856 s after (−41 ms, prediction −45 ms); four libdeflate boots agree to 2 ms ([boot budget](01-boot-budget.md)) |
 | 2026-09-16 | `crypto@fe380000` enabled so U-Boot could hash the boot image in hardware: first printk 2.858 / 2.856 s on two cold boots against 2.856 s without — **no gain, reverted**. Kernel side harmless ([U-Boot](09-uboot.md)) |
 | 2026-09-16 | `quiet` and `cpufreq.default_governor=performance` on the command line; `frontend-session` drops to `ondemand` with no frontend. Two cold boots: hand-off **3.87 s** (was 3.91–3.93), first frame **5.89 s** (was 5.99–6.02) ([boot budget](01-boot-budget.md)) |
+| 2026-09-16 | `rcS` trimmed: update scripts only run during a trial, dbus and the random seed in the background, `frontend-session` waits for the bus. About 30 ms ([boot budget](01-boot-budget.md)) |
+| 2026-09-16 | **Every boot replayed both ext4 journals**: busybox init unmounts nothing, and `rcK` tried to unmount while `adbd` and the frontend still held the volumes. `rcK` now stops everything first (SIGTERM, 1 s, SIGKILL), unmounts in reverse order and remounts `/` read-only; `rcS` remounts `/` `noatime`. Replays cost up to 0.2 s per boot and are gone ([boot budget](01-boot-budget.md)) |
+| 2026-09-16 | Boot card replaced (the original was failing). Hand-off **3.72–3.74 s**, first frame **5.72–5.75 s** on two cold boots ([boot budget](01-boot-budget.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 

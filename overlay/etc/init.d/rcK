@@ -1,6 +1,49 @@
 #!/bin/sh
-# Shutdown. Persist what must survive, then let busybox init unmount the rest.
+# Shutdown. busybox init runs this before signalling anything and unmounts
+# nothing itself, so stop the other processes and unmount here. Otherwise the
+# ext4 journals replay on the next boot.
+
 /bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null
+
+LOG=/data/shutdown.log
+up() { read -r _up _rest < /proc/uptime; }
+
+# init gives this script its own session, which killall5 spares.
+read -r _l < /proc/$$/stat
+set -- ${_l##*) }
+SID=$4
+
+# Is any process left besides init, kernel threads, zombies and this session?
+# Sets $LEFT to its name.
+others() {
+	for _p in /proc/[0-9]*; do
+		[ "$_p" = /proc/1 ] && continue
+		read -r _l < "$_p/stat" 2>/dev/null || continue
+		LEFT=${_l#*(}
+		LEFT=${LEFT%%)*}
+		set -- ${_l##*) }
+		case "$1:$4" in Z:*|*:0|*:"$SID") continue ;; esac
+		return 0
+	done
+	return 1
+}
+
+up; echo "$_up shutdown" > "$LOG"
+/sbin/killall5 -15
+i=0
+while others && [ "$i" -lt 10 ]; do /bin/usleep 100000; i=$((i + 1)); done
+up; [ "$i" -lt 10 ] && echo "$_up all exited" >> "$LOG" || echo "$_up killing, $LEFT still running" >> "$LOG"
+/sbin/killall5 -9
+i=0
+while others && [ "$i" -lt 10 ]; do /bin/usleep 50000; i=$((i + 1)); done
+
+# Everything but / and the system's own mounts, newest first so nested mounts go
+# before their parents.
 /bin/sync
-/bin/umount /mnt/SDCARD 2>/dev/null
-/bin/umount /data 2>/dev/null
+for m in $(/usr/bin/awk '$2 != "/" && $2 !~ /^\/(proc|sys|dev)(\/|$)/ && $2 !~ /^\/(run|tmp|var)$/ { print $2 }' /proc/mounts | /usr/bin/tac); do
+	[ "$m" = /data ] && { up; echo "$_up unmounting /data" >> "$LOG"; }
+	/bin/umount "$m" 2>/dev/null && continue
+	/bin/mount -o remount,ro "$m" 2>/dev/null && r="read-only" || r="still writable"
+	[ "$m" = /data ] || echo "umount $m failed, left $r" >> "$LOG"
+done
+/bin/mount -o remount,ro / 2>/dev/null

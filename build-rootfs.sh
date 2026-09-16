@@ -23,6 +23,10 @@ mkdir -p "$WORK"
 BASEOS_VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
 [ -n "$BASEOS_VERSION" ] || { echo "VERSION is empty" >&2; exit 1; }
 BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
+# Two builds of the same uncommitted tree would otherwise share an id, and a card
+# skips a same-version payload whose id matches its own. build-update.sh reads it.
+case "$BASEOS_BUILD" in *-dirty) BASEOS_BUILD="$BASEOS_BUILD-$(date -u +%Y%m%d%H%M%S)" ;; esac
+printf '%s\n' "$BASEOS_BUILD" > "$WORK/build-id"
 
 
 for artifact in source.json stock-harvest.tar; do
