@@ -106,7 +106,8 @@ used to update only the OS without re-flashing the card.
 
 Download `baseos-my355-<version>.bosupd` and copy it to the root of either card,
 then power on. The screen shows **UPDATING SYSTEM** with a progress bar for about a
-minute and the Flip reboots into the new version.
+minute and the Flip reboots into the new version. Once it has started, the `.bosupd`
+file is deleted.
 
 Your ROMs, saves and settings are untouched: the card reserves spare space for this,
 and the update writes there rather than over the volume your files are on. If the new

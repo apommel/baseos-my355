@@ -292,6 +292,7 @@ apply() {
 		printf "build=%s\n" "$build"
 		printf "attempts=0\n"
 		printf "sha=%s\n" "$want_sha"
+		printf "payload=%s\n" "$payload"
 	} > "$STATE"
 	log "flipped to $version; rebooting"
 	sync
@@ -332,9 +333,25 @@ boot_check() {
 	return 0
 }
 
+# Only once confirmed: a payload that rolled back stays for status to explain.
+# The own FAT is scanned read-only, so a payload there needs a rw mount.
+remove_payload() {
+	case "$1" in
+		"") return 0 ;;
+		"$OWN_MNT"/*)
+			mkdir -p "$OWN_MNT"
+			mount -t vfat "$OWN_FAT" "$OWN_MNT" 2>/dev/null || return 0
+			rm -f "$1" && log "removed $1"
+			cleanup ;;
+		*) rm -f "$1" && log "removed $1" ;;
+	esac
+	return 0
+}
+
 confirm() {
 	[ -f "$STATE" ] || return 0
 	version="$(field "$STATE" trial)"
+	remove_payload "$(field "$STATE" payload)"
 	rm -f "$STATE"
 	log "update to $version confirmed"
 	# Cheap here (measured at 0 on device) and worth it: if an unclean shutdown

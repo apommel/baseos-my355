@@ -151,9 +151,11 @@ PY
   # A session starting ends the trial instead.
   reset
   mkdir -p /data/update
-  printf "trial=0.4.0\nattempts=1\nsha=x\n" > /data/update/state
+  touch /mnt/SDCARD/done.bosupd
+  printf "trial=0.4.0\nattempts=1\nsha=x\npayload=/mnt/SDCARD/done.bosupd\n" > /data/update/state
   sh /test/baseos-update confirm
   [ ! -f /data/update/state ]
+  [ ! -f /mnt/SDCARD/done.bosupd ]
 
   echo "  PASS commits only what verifies, never twice, and rolls back"
 '
