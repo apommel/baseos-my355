@@ -94,6 +94,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
     strip "$R"/usr/sbin/"$t"
   done
 
+  # Ships with debug_info: 2.3 MB on disk, 131 KB stripped. insmod reads the
+  # whole file when bt_init.sh loads it.
+  strip --strip-debug "$R"/usr/lib/modules/rtk_btusb.ko
+
   # 3. The overlay wins over everything.
   cp -a /overlay/. "$R"/
   chmod +x "$R"/init "$R"/etc/init.d/* \

@@ -371,9 +371,9 @@ widest set (gio, gobject, gmodule, mount, blkid, ffi, mpg123, sbc, bluetooth),
 `/var/lib/bluetooth` link on first power-on.
 
 `rtk_btusb.ko` is 2.3 MB on disk but 72 KB once loaded: it ships `with
-debug_info`, and `strip --strip-debug` takes it to 131 KB. Not done — the
-harvest is verbatim, and the saving is not worth confusing the first hardware
-test of the rest of this.
+debug_info`, and `strip --strip-debug` takes it to 131 KB. `build-rootfs.sh`
+does that: insmod reads the whole file, so it shortens Bluetooth power-on. Boot
+is unaffected, since nothing loads it until Bluetooth is turned on.
 
 `hciattach` is not harvested. `bt_init.sh` only reaches it if `hci0` never
 appears, and the call it makes there (`hciattach -n ttyS1 xradio`) is for a
