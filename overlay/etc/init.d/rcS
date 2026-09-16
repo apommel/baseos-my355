@@ -55,13 +55,16 @@ mark /run/boot-data-mounted
 
 # A freshly updated set of slots is on trial until a frontend session starts.
 # Count the boots that never get that far and restore the previous ones if this
-# set cannot. No-op unless an update is in its trial window.
-[ -x /usr/sbin/baseos-update ] && /usr/sbin/baseos-update boot-check
+# set cannot. The builtin test is baseos-update's $STATE: without it the script
+# is a no-op that still costs 8 ms to start.
+[ -f /data/update/state ] && [ -x /usr/sbin/baseos-update ] && \
+	/usr/sbin/baseos-update boot-check
 
 # Stable across boots, generated once. /etc/machine-id is a baked symlink, so
 # nothing here writes to the root filesystem.
 if [ -s /data/machine-id ]; then
-	/bin/cp /data/machine-id /run/machine-id
+	read -r _mid < /data/machine-id
+	echo "$_mid" > /run/machine-id
 else
 	/bin/dd if=/dev/urandom bs=16 count=1 2>/dev/null | /usr/bin/md5sum | \
 		/bin/cut -c1-32 > /run/machine-id
@@ -76,17 +79,21 @@ fi
 mark /run/boot-dbus-start
 # The system bus, as stock's S30dbus does: NextUI's audiomon.elf connects to it
 # at frontend start whether or not Bluetooth is ever used, and exits if it
-# cannot. It has <fork/>, so this returns once the socket is listening.
-/usr/bin/dbus-daemon --system 2>/dev/null
+# cannot. Its 70 ms of start-up runs beside the rest of rcS; frontend-session
+# waits for the socket before handing off.
+/usr/bin/dbus-daemon --system 2>/dev/null &
 
 # Clock, from the RTC (-u: it holds UTC) then NTP. Backgrounded; TLS validates
 # certificates against it, so every HTTPS request depends on this.
 /sbin/hwclock -u -s 2>/dev/null &
 [ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp start &
 
-# Restore last boot's entropy seed before anything wants randomness.
-[ -f /data/random-seed ] && /bin/cat /data/random-seed > /dev/urandom 2>/dev/null
-/bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null &
+# Carry entropy across boots. Off the critical path: the kernel's crng is
+# initialised before init runs, so nothing here waits for it.
+{
+	[ -f /data/random-seed ] && /bin/cat /data/random-seed > /dev/urandom
+	/bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1
+} 2>/dev/null &
 
 # First boot only: grow this card's FAT partition to fill the card. Must run
 # before it is mounted, and after /data, which holds the staged contents. The
@@ -101,6 +108,7 @@ mark /run/boot-dbus-start
 # Mount point and the /mnt/sdcard alias are baked into the image.
 /usr/sbin/mount-frontend
 
+mark /run/boot-update-start
 # A *.bosupd on either card writes the reserved half of each region, verifies it
 # and flips the GPT. An ordinary boot costs a failed glob, plus one read-only
 # mount of this card's own volume when it is not the one already mounted.
@@ -121,6 +129,7 @@ mark /run/boot-rcS-done
 		echo "  rcS-start $(/bin/cat /run/boot-rcS-start 2>/dev/null)"
 		echo "  data-mnt  $(/bin/cat /run/boot-data-mounted 2>/dev/null)"
 		echo "  dbus      $(/bin/cat /run/boot-dbus-start 2>/dev/null)"
+		echo "  update    $(/bin/cat /run/boot-update-start 2>/dev/null)"
 		echo "  rcS-done  $(/bin/cat /run/boot-rcS-done 2>/dev/null)"
 		echo "  cmdline   $(/bin/cat /proc/cmdline)"
 		echo "  mounts    $(/bin/grep -c . /proc/mounts) entries"

@@ -13,7 +13,9 @@ LOG=/tmp/frontend-session.log
 # enough to hand off. Keyed here rather than on the frontend exec because a card
 # with no frontend is a healthy OS, and keying it later would make that state
 # look like a failed update and roll back forever.
-[ -x /usr/sbin/baseos-update ] && /usr/sbin/baseos-update confirm 2>/dev/null
+# The builtin test is baseos-update's $STATE, sparing the 8 ms no-op.
+[ -f /data/update/state ] && [ -x /usr/sbin/baseos-update ] && \
+	/usr/sbin/baseos-update confirm 2>/dev/null
 
 # Builtins only: no fork.
 uptime_now() {
@@ -115,6 +117,15 @@ if [ ! -x "$UPDATER" ]; then
 fi
 
 # --- hand off ---------------------------------------------------------------
+# rcS starts the system bus in the background, and audiomon.elf exits without
+# it. It is normally listening by now, so this rarely loops. Bounded at 1 s.
+n=0
+while [ ! -S /run/dbus/system_bus_socket ] && [ "$n" -lt 100 ]; do
+	/bin/usleep 10000
+	n=$((n + 1))
+done
+[ "$n" -eq 0 ] || log "waited $((n * 10)) ms for the system bus"
+
 # Stock calls the updater, not launch.sh directly: it is what installs
 # MinUI.zip/*.pakz payloads before starting the frontend. Keeping that entry
 # point is what makes updates behave identically.
