@@ -53,8 +53,8 @@ RESOURCE_SAFE_BYTES = 465408
 # IH_COMP_NONE. Read out of the vendor binary (FIT /images/uboot, load 0xa00000),
 # not assumed — see docs/01-boot-budget.md.
 # SD slot 0 — the boot card, `mmcblk1` in Linux, the right-hand slot next to the
-# power button. Slot 1 is dwmmc@fe2c0000 and shares vccio_sd with it, so the two
-# cannot sit at different I/O voltages; we raise only this one.
+# power button. Slot 1 (dwmmc@fe2c0000) names the same vqmmc-supply, but its pins
+# are on vccio4 = fixed 3.3 V, so UHS there hangs the card (tried 2026-09-16).
 SD_SLOT0_NODE = "dwmmc@fe2b0000"
 LZ4_FRAME_MAGIC = b"\x04\x22\x4d\x18"
 LZ4_LEGACY_MAGIC = b"\x02\x21\x4c\x18"

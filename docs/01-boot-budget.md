@@ -475,9 +475,18 @@ SDR50/SDR104 is a **clock change, not a voltage change**, and the warm-reboot
 hazard that comes with leaving a card at 1.8 V is already the status quo — warm
 reboots work.
 
-Slot 1 (`dwmmc@fe2c0000`) is left alone. It shares `vccio_sd` with slot 0, so the
-two cannot sit at different I/O voltages, and it currently declares no UHS modes
-at all.
+Slot 1 (`dwmmc@fe2c0000`), the left game-card slot, **cannot do UHS on this
+board**. Tried and reverted on 2026-09-16.
+
+**Retracted:** that slot 1 "shares `vccio_sd`" and so already signals at 1.8 V. It
+names `vccio_sd` as its `vqmmc-supply`, but that is only a label. The `sdmmc1` pins
+are GPIO2_A3–B0, in I/O domain `vccio4`, and `rockchip-iodomain` reports that
+domain on `vcc_3v3`, a fixed 3.3 V. The slot 0 pins are GPIO1_D5–GPIO2_A1, in
+`vccio3` on `vccio_sd`. With `sd-uhs-sdr12/25/50/104` added to slot 1, the card
+accepted the 1.8 V switch and the host could not follow. The card then hung
+(`Busy; trying anyway`, command timeouts, `mmc2: error -5 whilst initialising SD
+card`), `mmcblk2` never appeared, and the session fell back to the boot card's
+frontend. The left card stays at 50 MHz high speed, about 22 MB/s.
 
 Corroboration from outside this project: the Miyoo Flip mainline port runs
 `sd-uhs-sdr12/25/50/104` with `max-frequency = <150000000>` on this slot, and

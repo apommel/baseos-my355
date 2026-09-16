@@ -77,7 +77,7 @@ COMPRESS="${MY355_COMPRESS_KERNEL:-gzip}"     # none | gzip | lz4
 # ceiling, so the controller is the limit and not the media. The RK3566 sdmmc
 # does SDR104, max-frequency is already 150 MHz, and vccio_sd already sits at
 # 1.8 V because the card negotiates SDR25 today — so this is a clock change, not
-# a voltage change, and slot 1's shared rail does not move. The Miyoo Flip
+# a voltage change. Slot 1 cannot follow: its pins are on a fixed 3.3 V domain. The Miyoo Flip
 # mainline port runs sdr12/25/50/104 here, and Miyoo themselves shipped SDR104
 # in the 2024-11 firmware before capping it in 2025-05.
 # Modes negotiate down, so a card that cannot do SDR104 lands on SDR50 or SDR25
