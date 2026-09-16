@@ -216,15 +216,20 @@ This produces a deeply misleading failure: U-Boot reads the resource image
 appears normally — and then nothing boots. `rkbootimg.py` now recomputes the id
 on every repack and asserts it before writing; `info` reports `valid`/`STALE`.
 
-### The command line budget is exactly zero
+### The command line outgrows its slot
 
-The vendor line uses **100 of 100** available bytes, and in-place FDT patching
-cannot grow it. Dropping `earlycon=` (dead weight with no UART attached) buys
-the room for what is actually needed:
+The vendor line uses **100 of 100** available bytes. `earlycon=` is dropped as
+dead weight with no UART attached. Ours no longer fits, so `rkbootimg.py` grows
+the FDT property instead of padding it in place:
 
 ```
-console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait rw init=/init
+console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait rw init=/init quiet
+cpufreq.default_governor=performance
+initcall_blacklist=tracer_init_tracefs,ohci_platform_init,alpu_init
 ```
+
+(one line on the device). `quiet`, the governor and the initcall list are boot
+time; see [docs/01](01-boot-budget.md).
 
 **`init=/init` is required.** For a *disk* root the kernel only tries
 `/sbin/init`, `/etc/init`, `/bin/init`, `/bin/sh` — `/init` is the initramfs
@@ -232,7 +237,7 @@ convention. Without it the kernel execs `/bin/sh`, which then waits forever on a
 console that does not exist: LED alive, root mounted, nothing happening, no
 panic. The H700 port sets `init=/init` too ([docs/01](../upstream-h700/docs/01-rootfs-and-init.md) §3).
 
-`rkbootimg.py info` reports the budget, so this cannot be discovered the hard way.
+`rkbootimg.py info` reports the length in each device tree.
 
 The logo is the project wordmark, cropped from `assets/bootlogo.bmp` and scaled
 to `--size` (default `240x48`). The artwork's near-black gradient backdrop is

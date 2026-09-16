@@ -36,6 +36,12 @@ splash() {
 	[ -x /usr/bin/baseos-splash ] && /usr/bin/baseos-splash --important "$@" 2>/dev/null
 }
 
+# The kernel boots on `performance`; a frontend sets its own governor. Without
+# one, go back to the kernel's default instead of idling at full speed.
+idle_cpu() {
+	echo ondemand > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
+}
+
 # --- the frontend card ------------------------------------------------------
 # rcS is ::sysinit: and mounts once, so a card inserted later would never be
 # seen. Mount here too — same devices, options and order — since init respawns
@@ -62,6 +68,7 @@ while [ "$i" -lt 20 ]; do
 done
 if ! grep -q " $SDCARD " /proc/mounts; then
 	log "no card mounted"
+	idle_cpu
 	splash -1 "INSERT SD CARD"
 	# Sleep rather than spin: init respawns us, so pace the retry.
 	/bin/sleep 5
@@ -95,6 +102,7 @@ UPDATER="$SDCARD/.tmp_update/updater"
 if [ ! -x "$UPDATER" ]; then
 	# Two cards is the recommended setup, so with the left slot empty the
 	# thing to ask for is the card, not a frontend on this one.
+	idle_cpu
 	if [ -b /dev/mmcblk2p1 ]; then
 		log "no frontend on card"
 		splash -1 "ADD FRONTEND TO SD CARD"

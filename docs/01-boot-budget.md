@@ -118,7 +118,7 @@ in Bluetooth audio.
 | `nextui.elf` init → first frame | 3.11 s | 1.98 s | −1.13 s |
 | **total to first frame** | **31.50 s** | **7.93 s** | **−23.57 s** |
 | total to first frame, with SDR104 | 31.50 s | **6.87 s** | **−24.63 s** |
-| total to first frame, 2026-09-16 | 31.50 s | **5.99 s** | **−25.51 s** |
+| total to first frame, 2026-09-16 | 31.50 s | **5.89 s** | **−25.61 s** |
 
 Essentially the entire vendor userland — `mount -a` over SPI NAND,
 `udevadm settle --timeout=30`, then eight serialised `S*` scripts — is gone, and
@@ -188,8 +188,9 @@ byte-for-byte; only its storage changes. Default (`MY355_COMPRESS_KERNEL=gzip`).
 ¹ **libdeflate -12 since 2026-09-16.** It is the same deflate format, so U-Boot's
 inflater takes it unchanged, and it is 486 KB smaller than zlib's `-9`. At U-Boot's
 10.9 MB/s that predicts −45 ms. One cold boot each measured the first printk at
-2.897 s on zlib and 2.856 s on libdeflate, so −41 ms: it agrees with the
-prediction, but one boot per build cannot separate that from noise. The 2.86 s
+2.897 s on zlib and 2.856 s on libdeflate, so −41 ms, in line with the
+prediction. Four cold boots on libdeflate builds read 2.856–2.858 s, so
+pre-kernel repeats to 2 ms and the gap is real, though zlib has one boot only. The 2.86 s
 is not comparable with the 3.14 s row: pre-kernel has also moved 0.24 s for a
 reason still unknown (see [where a BaseOS boot
 stands](#where-a-baseos-boot-stands-2026-09-16)). `rkbootimg.py setargs` runs in
@@ -430,6 +431,10 @@ Remaining levers, now that the pre-kernel budget is decomposed:
    not have mattered either way: debug sections are non-`ALLOC`, so the dynamic
    linker never faults them in — stripping an mmap'd `.so` saves file size and
    page cache, not load time.
+8. **Hardware SHA1 in U-Boot — tried, no gain.** See [U-Boot](09-uboot.md).
+9. **`quiet` and a `performance` boot governor — taken, about 0.1 s** to the first
+   frame. See [where a BaseOS boot
+   stands](#where-a-baseos-boot-stands-2026-09-16).
 
 Projected with (2) and (3): pre-kernel **1.3–1.8 s**, power-on to input **5.8–6.3 s**.
 Lever (1) claims part of the same ground more cheaply, so they do not add.
@@ -438,25 +443,39 @@ Not currently being pursued.
 
 ## Where a BaseOS boot stands (2026-09-16)
 
-One cold boot, USB unplugged, with the kernel initcalls skipped. `uptime + 3.06 = power-on`, from the `jbd2/mmcblk1p4` anchor.
+Cold boots, USB unplugged, one change added per column. Times are from power-on.
+The `rcS`, hand-off and `nextui.elf` rows are on the uptime clock, converted per
+boot with the `jbd2/mmcblk1p4` anchor (offset 3.03–3.06 s on these boots).
 
-| phase | at power-on | 2026-08-24 |
-|---|---|---|
-| first printk | 2.90 s | 3.13 s |
-| `Run /init` | 3.71 s | 4.65 s |
-| `rcS` | 3.76–3.92 s (0.16 s) | 0.12 s |
-| **frontend hand-off** | **3.95 s** | — |
-| `nextui.elf` start | 4.47 s | |
-| **first NextUI frame** | **5.99 s** | **6.87 s** |
+| | 2026-08-24 | + initcalls | + libdeflate | + `quiet`, governor |
+|---|---|---|---|---|
+| boots | 1 | 1 | 2 | 2 |
+| first printk | 3.13 s | 2.90 s | 2.86 s | 2.86 s |
+| `Run /init` | 4.65 s | 3.71 s | 3.67–3.68 s | 3.66 s |
+| `rcS` | 0.12 s | 0.16 s | 0.16–0.17 s | 0.14–0.15 s |
+| **frontend hand-off** | — | 3.95 s | 3.91–3.93 s | **3.87–3.88 s** |
+| `nextui.elf` start | — | 4.47 s | 4.43–4.44 s | 4.35–4.36 s |
+| **first NextUI frame** | 6.87 s | 5.99 s | 5.99–6.02 s | **5.89 s** |
 
-Hand-off to first frame is 2.04 s, the same as on 2026-08-24. Two things here are
-**not explained by the initcall change**:
+**`quiet` and `cpufreq.default_governor=performance`** went in together.
+Hand-off moved about 50 ms and the first frame about 0.1 s. Both boots agree:
+3.867 and 3.876 s, then 5.895 s twice. The gain builds up from the kernel's last
+stretch through `nextui.elf`'s start. From there to the first frame is unchanged
+at 1.55 s, which fits: `launch.sh` switches to `schedutil` before `nextui.elf`
+runs. `performance` holds from cpufreq's probe, about 0.58 s into the kernel,
+until that switch. `frontend-session` drops back to `ondemand` when there is no
+frontend to start. The two were not measured separately.
 
-* **Pre-kernel is 0.24 s shorter** (2.90 s against 3.13 s), also on a cold boot.
-  Skipping initcalls only affects what runs after the first printk. The only
-  pre-kernel change is 45 more bytes of device tree. Unattributed.
-* **`rcS` is 0.16 s** against 0.12 s. Already so on 0.4.0 before this change; the
-  update check added since then (`baseos-update`) is the likely cause, unmeasured.
+Two things are **not explained** by any of these changes:
+
+* **Pre-kernel is 0.24 s shorter** than on 2026-08-24 (2.90 s against 3.13 s,
+  also a cold boot). Skipping initcalls only affects what runs after the first
+  printk, and the only pre-kernel change in that step is 45 more bytes of device
+  tree. Unattributed. It is stable since: the four boots after it read
+  2.856–2.858 s.
+* **`rcS` is 0.16 s** against 0.12 s. Already so on 0.4.0 before these changes;
+  the update check added since then (`baseos-update`) is the likely cause,
+  unmeasured.
 
 Both ext4 volumes still replay their journals at every boot: `rcK` never remounts
 `/` read-only, and BusyBox init unmounts nothing.

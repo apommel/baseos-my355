@@ -66,6 +66,12 @@ python3 "$HERE/tools/preloader-installer/mkfwimg.py" "$FWIMG" >/dev/null
 #                convention. Without this the kernel execs /bin/sh, which waits
 #                forever on a console that does not exist. H700 sets it too.
 #   rw           init writes runtime state to the root filesystem.
+#   quiet        nothing to the FIQ debugger UART, which no one reads; dmesg
+#                still holds every line.
+#   cpufreq.default_governor=performance
+#                full speed from cpufreq's probe (~0.58 s into the kernel) until
+#                the frontend picks its own; frontend-session drops to ondemand
+#                when there is none.
 # The vendor kernel is a raw 34.9 MiB arm64 Image and U-Boot reads every byte off
 # the card each boot, so storing it compressed is the big pre-kernel lever:
 # 4.96 s raw -> 3.14 s gzip -> 3.31 s lz4. gzip wins on size; both boot.
@@ -96,7 +102,7 @@ esac
 INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,ohci_platform_init,alpu_init}"
 
 DROP="earlycon="
-APPEND="rw init=$MY355_INIT${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
+APPEND="rw init=$MY355_INIT quiet cpufreq.default_governor=performance${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
 LED_TRIGGER=""
 
 # The BaseOS wordmark, cropped from the shared artwork so branding matches the
