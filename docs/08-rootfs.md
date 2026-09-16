@@ -233,7 +233,7 @@ that `updater`. Everything else lives on the card, in `.tmp_update/my355.sh`:
 | `$SDCARD/.userdata/my355/userdata` skeleton and first-run `system.json` | decides volume, brightness, keymap on first launch | runs as on stock; the image ships an empty `/userdata` to bind onto |
 | `mount --bind` it onto `/userdata` | `wpa_supplicant.conf`, `system.json` and BT pairings live there; the internal userdata partition corrupts | same |
 | `mount --bind /run/bluetooth_fix` over `/userdata/bluetooth` | BlueZ names pairing files by MAC, which FAT32 rejects | same |
-| "Please use the right SD slot" when `/mnt/sdcard` is `mmcblk2*` | a stock limitation | not triggered, but only because `/proc/mounts` lists `/mnt/SDCARD`; `/mnt/sdcard` is a symlink here. A fix scoped to the stock hook is proposed upstream |
+| "Please use the right SD slot" when `/mnt/sdcard` is `mmcblk2*` | a stock limitation | not triggered, but only because `/proc/mounts` lists `/mnt/SDCARD`; `/mnt/sdcard` is a symlink here. BaseOS must keep the card on `/mnt/SDCARD`: mounting it at the lowercase path would power off every boot |
 
 So BaseOS writes nothing to the card beyond staging `.tmp_update`, and anything
 before the hand-off that touches `/userdata` sees the empty root directory —
