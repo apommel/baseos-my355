@@ -14,10 +14,8 @@
 # path returns quietly, and /etc/init.d/dev backgrounds it so it cannot
 # serialise boot.
 #
-# Because it must not fail loudly, it logs instead. /data is persistent and
-# survives a power cut, so a boot where adb never appeared can still be
-# diagnosed afterwards by reading the card — the only way to see anything on a
-# device with no console. See docs/diagnostics.md.
+# Because it must not fail loudly, it logs instead — the only way to see anything
+# on a device with no console. See docs/diagnostics.md.
 #
 # Ordering is load-bearing. adbd must be running and have written its
 # descriptors into functionfs BEFORE the UDC is bound, or the host sees a
@@ -31,33 +29,31 @@ export USB_FUNCS="${USB_FUNCS:-adb}"
 export HOME=/
 export PATH=/usr/bin:/usr/sbin:/bin:/sbin
 
-LOG=/data/usb-gadget.log
-step() { echo "$(cut -d" " -f1 /proc/uptime) $*" >> "$LOG" 2>/dev/null; }
+. /usr/share/baseos/log.sh
 
 CONFIGFS=/sys/kernel/config
 G="$CONFIGFS/usb_gadget/rockchip"
 FFS=/dev/usb-ffs/adb
 ADBD=/usr/bin/adbd
 
-: > "$LOG" 2>/dev/null
-step "start"
-[ -x "$ADBD" ] || { step "no adbd at $ADBD"; exit 0; }
+log "start"
+[ -x "$ADBD" ] || { log "no adbd at $ADBD"; exit 0; }
 
 grep -q " $CONFIGFS " /proc/mounts 2>/dev/null || \
-	/bin/mount -t configfs none "$CONFIGFS" 2>/dev/null || { step "configfs mount failed"; exit 0; }
-step "configfs ok"
+	/bin/mount -t configfs none "$CONFIGFS" 2>/dev/null || { log "configfs mount failed"; exit 0; }
+log "configfs ok"
 
 udc=$(ls /sys/class/udc 2>/dev/null | head -1)
-[ -n "$udc" ] || { step "no UDC in /sys/class/udc"; exit 0; }
-step "udc=$udc"
+[ -n "$udc" ] || { log "no UDC in /sys/class/udc"; exit 0; }
+log "udc=$udc"
 
 # androidboot.serialno is what stock advertises; fall back to the machine id so
 # two units are never indistinguishable to a host.
 serial=$(sed 's/ /\n/g' /proc/cmdline 2>/dev/null | sed -n 's/^androidboot.serialno=//p')
 [ -n "$serial" ] || serial=$(cat /etc/machine-id 2>/dev/null) || serial=my355
 
-mkdir -p "$G" 2>/dev/null || { step "cannot create gadget $G"; exit 0; }
-step "gadget created"
+mkdir -p "$G" 2>/dev/null || { log "cannot create gadget $G"; exit 0; }
+log "gadget created"
 printf '0x2207' > "$G/idVendor"       2>/dev/null
 printf '0x0006' > "$G/idProduct"      2>/dev/null
 printf '0x0310' > "$G/bcdDevice"      2>/dev/null
@@ -78,20 +74,22 @@ printf '500' > "$G/configs/b.1/MaxPower" 2>/dev/null
 mkdir -p "$FFS" 2>/dev/null
 grep -q " $FFS " /proc/mounts 2>/dev/null || \
 	/bin/mount -t functionfs -o uid=2000,gid=2000 adb "$FFS" 2>/dev/null || \
-	{ step "functionfs mount failed"; exit 0; }
-step "functionfs mounted: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
+	{ log "functionfs mount failed"; exit 0; }
+log "functionfs mounted: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
 
 # adbd writes the descriptors into functionfs; give it a bounded moment to do so.
-"$ADBD" >>"$LOG" 2>&1 &
-step "adbd started (pid $!)"
+# Its own stream goes to /data only: it runs for the whole session, and the
+# card's copy of the log is on removable FAT.
+"$ADBD" >>"$BASEOS_LOG" 2>&1 &
+log "adbd started (pid $!)"
 i=0
 while [ "$i" -lt 100 ]; do
 	[ -e "$FFS/ep1" ] && break
 	/bin/sleep 0.1
 	i=$((i + 1))
 done
-step "after wait: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
+log "after wait: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
 
 printf '%s' "$udc" > "$G/UDC" 2>/dev/null
-step "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
+log "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
 exit 0

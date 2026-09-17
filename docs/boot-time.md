@@ -15,7 +15,7 @@ in the arch counter.
 | bootrom + DDR + SPL + BL31 | 0.39 s | [boot chain](boot-chain.md) |
 | **vendor U-Boot, from the card** | **2.85 s** | first printk |
 | kernel → `Run /init` | 3.58 s | dmesg |
-| `rcS` | +0.06 s | `/run/boot-*` |
+| `rcS` | +0.06–0.07 s | `/run/boot-*` |
 | **frontend hand-off — `exec updater`** | **3.72–3.74 s** | `/run/boot-frontend-exec` |
 | `nextui.elf` start | 4.19–4.23 s | `/proc/<pid>/stat` |
 | **first NextUI frame** | **5.72–5.75 s** | `Freeing drm_logo memory` |
@@ -42,8 +42,9 @@ the uptime clock, so pin the per-boot offset before reading the two together:
   `EXT4-fs … mounted` printk. Two anchors agree to 2 ms.
 
 `rcS` drops breadcrumbs in `/run/boot-*` at each stage, and `frontend-session`
-writes `/run/boot-frontend-exec`; both are uptime readings taken with shell
-builtins, so they cost no fork.
+writes `/run/boot-frontend-exec`; both are `mark()` from
+`/usr/share/baseos/log.sh`, uptime readings taken with shell builtins, so they
+cost no fork.
 
 ## Where the pre-kernel time goes
 

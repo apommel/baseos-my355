@@ -37,7 +37,6 @@ STATE="$STATE_DIR/state"
 # back is never retried — that would oscillate forever.
 HISTORY="$STATE_DIR/history"
 MANIFEST=/tmp/.bosupd-manifest
-LOG="$STATE_DIR/log"
 # Boots allowed after an update before the previous slots are restored. The
 # trial ends as soon as a frontend session starts, so this only ever counts
 # boots that never got that far.
@@ -52,11 +51,7 @@ VERIFY_TO=95
 COMMIT_STAGE=98
 CHUNK_MB=32
 
-log() {
-	mkdir -p "$STATE_DIR" 2>/dev/null
-	echo "$(cut -d' ' -f1 /proc/uptime 2>/dev/null) update: $*" >> "$LOG" 2>/dev/null
-	return 0
-}
+. /usr/share/baseos/log.sh
 
 splash() {
 	[ -x /usr/bin/baseos-splash ] && /usr/bin/baseos-splash --important "$@" 2>/dev/null
@@ -190,17 +185,19 @@ paint() { splash $(( $1 + ($2 - $1) * $3 / total_mb )) "UPDATING SYSTEM"; }
 # Write one region's member into its inactive half, in chunks so the track can
 # move. iflag=fullblock is load-bearing: a short read from the pipe would leave
 # every later chunk misaligned. conv=fsync per chunk spreads the flush across
-# the bar, so what it shows is data actually committed.
+# the bar, so what it shows is data actually committed. status=none drops the
+# per-chunk summary busybox dd prints on success; real errors still reach the log.
 write_slot() {
 	seek=$(( $(slot "$1" _INACTIVE) / 2048 ))
 	count=$(( $(slot "$1" _SECTORS) / 2048 ))
-	tar -xOf "$payload" "$1.img.gz" 2>>"$LOG" | gunzip 2>>"$LOG" | {
+	tar -xOf "$payload" "$1.img.gz" 2>>"$BASEOS_LOG" | gunzip 2>>"$BASEOS_LOG" | {
 		w=0
 		while [ "$w" -lt "$count" ]; do
 			n="$CHUNK_MB"
 			[ $((w + n)) -le "$count" ] || n=$((count - w))
 			dd of="$DISK" bs=1M seek=$((seek + w)) count="$n" \
-				iflag=fullblock conv=notrunc,fsync 2>>"$LOG" || exit 1
+				iflag=fullblock conv=notrunc,fsync status=none \
+				2>>"$BASEOS_LOG" || exit 1
 			w=$((w + n))
 			paint "$WRITE_FROM" "$WRITE_TO" $((done_mb + w))
 		done
@@ -284,7 +281,7 @@ apply() {
 	log "all slots verified"
 
 	# The commit. Everything above is reversible by doing nothing.
-	if ! /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$LOG" 2>&1; then
+	if ! /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$BASEOS_LOG" 2>&1; then
 		log "slot flip failed — still running the old slots"
 		splash -1 "UPDATE FAILED"
 		cleanup
@@ -324,7 +321,7 @@ boot_check() {
 		log "no session in $attempts boots — restoring the previous slots;"
 		log "the payload that produced them stays on the card but is not retried"
 		splash -1 "RESTORING SYSTEM"
-		if /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$LOG" 2>&1; then
+		if /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$BASEOS_LOG" 2>&1; then
 			rm -f "$STATE"
 			sync
 			reboot

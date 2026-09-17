@@ -42,10 +42,11 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
 echo "== expand-storage =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$HERE/overlay/usr/sbin/expand-storage":/test/expand-storage:ro \
+  -v "$HERE/overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+  --tmpfs /data \
   alpine:3.20 sh -euc '
   mknod /dev/mmcblk1 b 7 0
   mknod /dev/mmcblk1p5 b 7 1
-  mkdir -p /data
   for f in cut cp mkdir mv rm sync touch; do [ -e /bin/$f ] || ln -s "$(which $f)" /bin/$f; done
 
   stub() { rm -f "$1"; printf "%s\n" "#!/bin/sh" "$2" > "$1"; chmod 755 "$1"; }

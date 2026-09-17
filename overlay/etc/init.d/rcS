@@ -6,8 +6,10 @@
 # (CONFIG_DEVTMPFS_MOUNT=y) and carries Mali and the panel built in, so there is
 # nothing to insmod here.
 #
-# Boot forensics land in /run/boot-* and /data, because this device has neither
-# a UART attached nor a framebuffer console — see docs/diagnostics.md.
+# Boot forensics land in /run/boot-* and one log on /data, because this device
+# has neither a UART attached nor a framebuffer console — see docs/diagnostics.md.
+
+. /usr/share/baseos/log.sh
 
 /bin/mount -t proc  -o nodev,noexec,nosuid proc /proc
 /bin/mount -t sysfs -o nodev,noexec,nosuid sys  /sys
@@ -21,11 +23,6 @@ grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 /bin/mount -t tmpfs -o mode=1777,size=256m tmpfs /tmp
 /bin/mount -t tmpfs -o mode=755,size=32m   tmpfs /run
 
-# Builtins only: a marker costs no fork.
-mark() {
-	read -r _up _rest < /proc/uptime
-	echo "$_up" > "$1"
-}
 mark /run/boot-rcS-start
 
 # The vendor kernel restores rails from RK817 POWER_EN_SAVE1 on shutdown; if it
@@ -118,8 +115,8 @@ mark /run/boot-update-start
 
 mark /run/boot-rcS-done
 
-# Boot record, since /run is tmpfs and this device has no console. The card copy
-# is readable from any computer. Backgrounded: no write on the hand-off path.
+# Boot record: a block rather than a line, so it is assembled once and appended
+# to each copy of the log directly. Backgrounded: no write on the hand-off path.
 {
 	. /etc/baseos-release 2>/dev/null
 	{
@@ -134,8 +131,6 @@ mark /run/boot-rcS-done
 		echo "  mounts    $(/bin/grep -c . /proc/mounts) entries"
 		/bin/grep -E 'mmcblk|/data|SDCARD' /proc/mounts | /bin/sed 's/^/    /'
 	} > /run/boot-record
-	/bin/cat /run/boot-record >> /data/boot.log
-	if /bin/grep -q ' /mnt/SDCARD ' /proc/mounts; then
-		/bin/cat /run/boot-record >> /mnt/SDCARD/baseos-boot.log
-	fi
+	log_dests
+	for f in $LOG_DESTS; do /bin/cat /run/boot-record >> "$f"; done
 } 2>/dev/null &

@@ -20,6 +20,8 @@ echo "== update round trip =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$WORK":/work:ro -v "$HERE/src":/src:ro -v "$HERE/tools":/tools:ro \
   -v "$HERE/overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
+  -v "$HERE/overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+  --tmpfs /data --tmpfs /mnt/SDCARD \
   -e VERSION="$VERSION" \
   alpine:3.20 sh -euc '
   apk add -q build-base linux-headers python3 e2fsprogs e2fsprogs-extra
@@ -36,7 +38,6 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
 
   cp /work/baseos-my355.img /tmp/card.img
   ln -sf /tmp/card.img /dev/mmcblk1
-  mkdir -p /mnt/SDCARD /data
   cp "/work/baseos-my355-$VERSION.bosupd" /mnt/SDCARD/
   # An older running version, so the payload is an upgrade.
   printf "BASEOS_TARGET=my355\nBASEOS_VERSION=0.0.1\nBASEOS_BUILD=old\n" > /etc/baseos-release

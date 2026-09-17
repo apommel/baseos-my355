@@ -10,6 +10,8 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 echo "== baseos-update =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$HERE/overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
+  -v "$HERE/overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+  --tmpfs /data --tmpfs /mnt/SDCARD \
   alpine:3.20 sh -euc '
   apk add -q python3
 
@@ -37,7 +39,6 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   stub /bin/sleep ":"
   stub /bin/sync ":"
 
-  mkdir -p /mnt/SDCARD /data
   printf "BASEOS_TARGET=my355\nBASEOS_VERSION=0.3.0\nBASEOS_BUILD=abc\n" \
     > /etc/baseos-release
 
@@ -123,6 +124,10 @@ PY
   grep -q " 0.4.0 def$" /data/update/history
   grep -qx "attempts=0" /data/update/state
   [ -e /tmp/reboot.log ]
+  # One log, written to both copies: /data and the card (overlay/usr/share/baseos/log.sh).
+  for f in /data/baseos.log /mnt/SDCARD/baseos.log; do
+    grep -q "baseos-update: flipped to 0.4.0" "$f" || { echo "nothing logged to $f" >&2; exit 1; }
+  done
 
   # Same payload still on the card next boot: recorded in history, never redone.
   rm -f /tmp/flip.log

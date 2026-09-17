@@ -14,10 +14,9 @@ PART=/dev/mmcblk1p5             # `primary`, GPT entry 5 (tools/mkgpt.py)
 MNT=/tmp/.primary
 STAGE=/data/expand-stage
 DONE=/data/expanded
-LOG=/data/expand.log
 README=/usr/share/baseos/card-readme.txt
+. /usr/share/baseos/log.sh
 
-log() { echo "$(/bin/cut -d' ' -f1 /proc/uptime) expand: $*" >> "$LOG" 2>/dev/null; }
 mount_part() { /bin/mkdir -p "$MNT" && /bin/mount -t vfat -o rw "$PART" "$MNT" 2>/dev/null; }
 splash() { [ -x /usr/bin/baseos-splash ] && \
 	/usr/bin/baseos-splash --important "$1" "EXPANDING STORAGE" 2>/dev/null; }
@@ -26,7 +25,7 @@ splash() { [ -x /usr/bin/baseos-splash ] && \
 [ -b "$PART" ] || exit 0
 
 # 0 = grown, 1 = already fills the card, 2 = error.
-/usr/sbin/gptgrow "$DISK" primary >> "$LOG" 2>&1
+/usr/sbin/gptgrow "$DISK" primary >> "$BASEOS_LOG" 2>&1
 case "$?" in
 	0) log "grown" ;;
 	1) # Already full with nothing staged: not a card we grew, leave it alone.
@@ -40,7 +39,7 @@ splash 45
 if [ ! -d "$STAGE" ]; then
 	/bin/rm -rf "$STAGE.part"; /bin/mkdir -p "$STAGE.part"
 	if mount_part; then
-		if ! /bin/cp -a "$MNT"/. "$STAGE.part"/ 2>> "$LOG"; then
+		if ! /bin/cp -a "$MNT"/. "$STAGE.part"/ 2>> "$BASEOS_LOG"; then
 			/bin/umount "$MNT"; log "staging failed; partition untouched"; exit 1
 		fi
 		/bin/umount "$MNT"
@@ -51,11 +50,11 @@ fi
 splash 55
 
 # BusyBox mkfs.vfat is FAT32-only and chooses the cluster size itself.
-/sbin/mkfs.vfat -n BASEOS "$PART" >> "$LOG" 2>&1 || { log "mkfs.vfat failed"; exit 1; }
+/sbin/mkfs.vfat -n BASEOS "$PART" >> "$BASEOS_LOG" 2>&1 || { log "mkfs.vfat failed"; exit 1; }
 splash 80
 
 mount_part || { log "cannot mount the new filesystem"; exit 1; }
-/bin/cp -a "$STAGE"/. "$MNT"/ 2>> "$LOG"
+/bin/cp -a "$STAGE"/. "$MNT"/ 2>> "$BASEOS_LOG"
 [ -f "$MNT/miyoo355_fw.img" ] || /bin/cp /miyoo355_fw.img "$MNT/" 2>/dev/null
 [ -f "$README" ] && /bin/cp "$README" "$MNT/README.txt"
 /bin/sync

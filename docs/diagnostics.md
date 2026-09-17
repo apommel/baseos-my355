@@ -21,7 +21,7 @@ Ordered by how early they fire.
 |---|---|---|
 | **boot logo** | U-Boot ran *and* read the card's `boot` partition | `mkbootlogo.py` repaints the vendor BMP; only our card carries it |
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
-| **files on the card** | how far init got | `rcS` appends to `/data/boot.log` and, when the card is mounted, `baseos-boot.log` on it; `usb-gadget-adb` writes `/data/usb-gadget.log`, `rcK` `/data/shutdown.log`, updates `/data/update/log`. All persistent, all survive a power cut |
+| **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |
 
 During bring-up two more signals were used and then removed once the chain
@@ -39,7 +39,7 @@ Everything the failed boot wrote is then readable over adb.
 
 ```sh
 adb shell "grep mmcblk2 /proc/mounts"                    # find the mounts
-adb shell "cat /media/sdcardN/baseos-boot.log"           # how far init got
+adb shell "cat /media/sdcardN/baseos.log"                # how far init got
 adb shell "dumpe2fs -h /dev/mmcblk2p3 | grep -E 'Last mounted on|Mount count'"
 ```
 

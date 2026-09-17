@@ -7,7 +7,7 @@
 # /userdata included.
 
 SDCARD=/mnt/SDCARD
-LOG=/tmp/frontend-session.log
+. /usr/share/baseos/log.sh
 
 # A session starting is what ends a system-update trial: the OS came up far
 # enough to hand off. Keyed here rather than on the frontend exec because a card
@@ -16,21 +16,6 @@ LOG=/tmp/frontend-session.log
 # The builtin test is baseos-update's $STATE, sparing the 8 ms no-op.
 [ -f /data/update/state ] && [ -x /usr/sbin/baseos-update ] && \
 	/usr/sbin/baseos-update confirm 2>/dev/null
-
-# Builtins only: no fork.
-uptime_now() {
-	read -r _up _rest < /proc/uptime
-	echo "$_up"
-}
-
-log() {
-	line="$(uptime_now) $*"
-	echo "$line" >> "$LOG" 2>/dev/null
-	# On the mount, not the directory: an unmount window would otherwise
-	# leave a stray file on the root filesystem.
-	grep -q " $SDCARD " /proc/mounts && \
-		echo "$line" >> "$SDCARD/baseos-session.log" 2>/dev/null
-}
 
 # The panel is this device's only output. Ordinary boots never call this — the
 # bootloader logo stays untouched until the frontend draws its first frame.
@@ -91,7 +76,7 @@ if [ ! -f "$SDCARD/.tmp_update/updater" ]; then
 	elif [ -f "$SDCARD/MinUI.zip" ]; then
 		# The zip carries the same .tmp_update. Stock has no such fallback.
 		log "staging .tmp_update from MinUI.zip"
-		/bin/unzip -o "$SDCARD/MinUI.zip" '.tmp_update/*' -d "$SDCARD" >> "$LOG" 2>&1
+		/bin/unzip -o "$SDCARD/MinUI.zip" '.tmp_update/*' -d "$SDCARD" >> "$BASEOS_LOG" 2>&1
 	fi
 	# Only once staging is known good, so a failed copy can try again.
 	if [ -f "$SDCARD/.tmp_update/updater" ]; then
@@ -130,6 +115,6 @@ done
 # MinUI.zip/*.pakz payloads before starting the frontend. Keeping that entry
 # point is what makes updates behave identically, and NextUI can draw its own
 # installer because libSDL2/_image/_ttf are in the harvest.
-uptime_now > /run/boot-frontend-exec
+mark /run/boot-frontend-exec
 log "exec $UPDATER"
 exec "$UPDATER"

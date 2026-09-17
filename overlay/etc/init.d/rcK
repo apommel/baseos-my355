@@ -5,8 +5,7 @@
 
 /bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null
 
-LOG=/data/shutdown.log
-up() { read -r _up _rest < /proc/uptime; }
+. /usr/share/baseos/log.sh
 
 # init gives this script its own session, which killall5 spares.
 read -r _l < /proc/$$/stat
@@ -28,22 +27,22 @@ others() {
 	return 1
 }
 
-up; echo "$_up shutdown" > "$LOG"
+log "shutdown"
 /sbin/killall5 -15
 i=0
 while others && [ "$i" -lt 10 ]; do /bin/usleep 100000; i=$((i + 1)); done
-up; [ "$i" -lt 10 ] && echo "$_up all exited" >> "$LOG" || echo "$_up killing, $LEFT still running" >> "$LOG"
+if [ "$i" -lt 10 ]; then log "all exited"; else log "killing, $LEFT still running"; fi
 /sbin/killall5 -9
 i=0
 while others && [ "$i" -lt 10 ]; do /bin/usleep 50000; i=$((i + 1)); done
 
 # Everything but / and the system's own mounts, newest first so nested mounts go
-# before their parents.
+# before their parents. Logged first: /data carries the log and is one of them.
+log "unmounting"
 /bin/sync
 for m in $(/usr/bin/awk '$2 != "/" && $2 !~ /^\/(proc|sys|dev)(\/|$)/ && $2 !~ /^\/(run|tmp|var)$/ { print $2 }' /proc/mounts | /usr/bin/tac); do
-	[ "$m" = /data ] && { up; echo "$_up unmounting /data" >> "$LOG"; }
 	/bin/umount "$m" 2>/dev/null && continue
 	/bin/mount -o remount,ro "$m" 2>/dev/null && r="read-only" || r="still writable"
-	[ "$m" = /data ] || echo "umount $m failed, left $r" >> "$LOG"
+	log "umount $m failed, left $r"
 done
 /bin/mount -o remount,ro / 2>/dev/null

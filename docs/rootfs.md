@@ -135,12 +135,51 @@ update, and the USB gadget in the background. Of the two update hooks,
 `baseos-update boot-check` after `/data` only runs when a trial is pending (a
 builtin file test). `apply` after the card mount costs a failed glob plus a
 read-only mount of this card's FAT partition, about 20–30 ms
-([06](card.md)).
+([the card](card.md)).
 
 `rcK` does the shutdown work busybox init leaves out. It stops every other
 process (SIGTERM, at most 1 s, SIGKILL), unmounts the frontend's binds, the card
-and `/data`, and remounts `/` read-only, logging to `/data/shutdown.log`. Without
-that, both ext4 journals replay on every boot.
+and `/data`, and remounts `/` read-only. Without that, both ext4 journals replay
+on every boot.
+
+### One log
+
+Everything that logs writes the same file, through `log()` in
+`/usr/share/baseos/log.sh`: `rcS`, `rcK`, `expand-storage`, `baseos-update`,
+`usb-gadget-adb` and `frontend-session`. Each line carries the script's own name,
+so one file reads as the chronology of a boot:
+
+```
+0.47 rcS: ...
+0.52 expand-storage: expanded to fill the card
+1.57 usb-gadget-adb: start
+1.85 usb-gadget-adb: UDC bound -> fcc00000.dwc3
+3.72 frontend-session: exec /mnt/SDCARD/.tmp_update/updater
+```
+
+The file is `/data/baseos.log`, copied line for line to `/mnt/SDCARD/baseos.log`
+when a frontend card is mounted — `/data` is ext4 and needs the trick in
+[diagnostics](diagnostics.md) to read, while the card copy opens on any computer.
+Both **append across boots**, as upstream BaseOS does: `rcS`'s boot record is
+what delimits one boot from the next, and the whole history stays readable. That
+also keeps the `rcS` critical path free of the two `mv` forks an every-boot
+rotation would cost — 1.5 ms on `/data` and 3.0 ms on the card's FAT, measured on
+the device. About 1.1 KB per boot.
+
+The helper uses shell builtins only, including the `/proc/mounts` scan that
+decides where a line goes: its callers are on the boot path, where a fork costs
+about 8 ms. It writes **on the mounts, not the directories**, because writing
+through an unmounted mount point would leave a stray file on the root filesystem
+— which at shutdown is already going read-only. `mark()` lives there too, for the
+`/run/boot-*` uptime breadcrumbs the [boot-time](boot-time.md) measurements read
+back.
+
+Two things bypass `log()` and land on `/data` only, never on the card. `adbd`'s
+own output, because it runs for the whole session and the card copy is on
+removable FAT. And the raw stderr of the tools the scripts drive — `dd`,
+`gunzip`, `gptslot`, `mkfs.vfat`, `unzip` — which is redirected straight at
+`$BASEOS_LOG`, so it carries no tag and is only there for the failure it
+describes. The card copy stays tagged throughout, which is the one a user reads.
 
 ### Loopback is load-bearing
 
@@ -175,14 +214,17 @@ descriptors before the UDC is bound, or the host sees a gadget with no endpoints
 A successful run logs:
 
 ```
-1.57 start          1.60 gadget created      1.62 functionfs mounted: ep0
-1.62 adbd started   1.84 after wait: ep0 ep1 ep2
-1.85 UDC bound -> fcc00000.dwc3
+1.57 usb-gadget-adb: start
+1.60 usb-gadget-adb: gadget created
+1.62 usb-gadget-adb: functionfs mounted: ep0
+1.62 usb-gadget-adb: adbd started
+1.84 usb-gadget-adb: after wait: ep0 ep1 ep2
+1.85 usb-gadget-adb: UDC bound -> fcc00000.dwc3
 ```
 
 It never blocks boot: no `set -e`, every failure path returns quietly, and
-`/etc/init.d/dev` backgrounds it. Because it must fail quietly, it **logs** to `/data/usb-gadget.log`
-— persistent, and the only way to diagnose it on a device with no console.
+`/etc/init.d/dev` backgrounds it. Because it must fail quietly, it **logs** instead
+— the only way to diagnose it on a device with no console.
 
 > **A cable is not required before power-on — verified.** RK3566 uses dwc3 with
 > plain configfs and VBUS detection, and we only ever write `UDC`. Hot-plugging
@@ -219,7 +261,7 @@ frontend that ran from it left behind — and lets `mount-frontend` choose again
 before or after. A card already mounted from the left slot is never disturbed.
 
 `frontend-session` starts by ending any open update trial — a session starting is
-what confirms a new slot ([06](card.md)) — then stages
+what confirms a new slot ([the card](card.md)) — then stages
 `.tmp_update` on a fresh card (below) and execs `.tmp_update/updater`. **Not**
 `launch.sh`: the updater installs `MinUI.zip`/`*.pakz`, so updates behave the same.
 
@@ -434,8 +476,7 @@ the bootloader logo stays untouched until the frontend draws its first frame.
 `frontend-session` shows `INSERT SD CARD` when the left slot is empty and
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards
 is the recommended setup, so an empty left slot asks for the card, not for a
-frontend on this one. It logs to `/tmp/frontend-session.log`, mirrored to
-`baseos-session.log` on the card.
+frontend on this one, and logs each step to the one log above.
 
 ## Not yet done
 
