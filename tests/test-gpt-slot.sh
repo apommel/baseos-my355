@@ -1,12 +1,12 @@
 #!/bin/sh
 # Offline tests for gptslot against a real tools/mkgpt.py table: geometry
 # derivation, flips that move only the entries named, and layouts refused.
-# Host-native, no device needed.
+# Runs in a container; no device needed.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/docker-platform.sh
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=../tools/common.sh
+. "$HERE/tools/common.sh"
 
 echo "== gptslot =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \

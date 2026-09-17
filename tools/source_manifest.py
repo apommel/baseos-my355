@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check work/my355/prepared/ against the source.json describing it.
 
-    source_manifest.py verify SOURCE_JSON PREPARED_DIR
+    source_manifest.py verify SOURCE_JSON PREPARED_DIR [--quiet]
 
 The trust anchor for both ways of getting those artifacts — deriving them from a
 NAND dump, or restoring the published bundle. A bad restore then fails where a

@@ -1,11 +1,11 @@
 #!/bin/sh
 # BaseOS preloader installer. Reads this unit's own mtd5, repairs /pinctrl in the SPL
 # device tree, writes it back. Ships no preloader binary: the DDR blob and SPL code
-# stay whatever this unit shipped with. See docs/02-sd-boot.md.
+# stay whatever this unit shipped with. See docs/boot-chain.md.
 HERE="$(dirname "$0")"
 # /media/sdcard0 is a symlink; /proc/mounts carries the target, so resolve before use.
 CARD="${CARD:-$(pwd)}"
-CARD=$(cd "$CARD" 2>/dev/null && pwd -P) || CARD="${CARD:-$(pwd)}"
+resolved=$(cd "$CARD" 2>/dev/null && pwd -P) && CARD="$resolved"
 
 # Backup and log go on the card's FAT, which stock may not have mounted.
 FATMNT=/tmp/baseos-fat
@@ -109,5 +109,5 @@ while [ $n -lt 3 ]; do
         log "original restored; device is exactly as it was"; finish 1
     fi
 done
-log "FAILED to restore - recover with RKDevTool, see docs/03-nand-backup-and-recovery.md"
+log "FAILED to restore - recover with RKDevTool, see docs/recovery.md"
 finish 1

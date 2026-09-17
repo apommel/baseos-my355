@@ -21,7 +21,7 @@
 
 #include "gpt.h"
 
-#define UBOOT_START 16384   // fixed by the SPL (docs/02-sd-boot.md)
+#define UBOOT_START 16384   // fixed by the SPL (docs/boot-chain.md)
 #define NSLOTS 3
 
 static const char *NAMES[NSLOTS] = {"uboot", "boot", "rootfs"};
@@ -62,33 +62,17 @@ static int derive(struct gpt *g, struct slot *s) {
 	return 0;
 }
 
-// Refresh both headers' CRCs and write them, backup first: if power is lost
-// mid-commit the primary still describes the old halves, and every consumer
-// here (SPL, U-Boot, the kernel) reads the primary.
+// The flip is one GPT write. The backup header keeps whatever else it carries,
+// so it is read from the card rather than rebuilt from the primary.
 static int commit(int fd, struct gpt *g) {
-	uint32_t table_crc = gpt_crc32(g->table, g->table_bytes);
 	uint64_t backup_lba = gpt_rd64(g->hdr + 32);
-
 	uint8_t bak[SECTOR];
 	if (pread(fd, bak, SECTOR, backup_lba * SECTOR) != SECTOR ||
 	    memcmp(bak, "EFI PART", 8) != 0)
 		return fail("no backup GPT header");
-	uint64_t bak_entries = gpt_rd64(bak + 72);
 
-	gpt_wr32(g->hdr + 88, table_crc);
-	gpt_wr32(g->hdr + 16, 0);
-	gpt_wr32(g->hdr + 16, gpt_crc32(g->hdr, 92));
-	gpt_wr32(bak + 88, table_crc);
-	gpt_wr32(bak + 16, 0);
-	gpt_wr32(bak + 16, gpt_crc32(bak, 92));
-
-	if (pwrite(fd, g->table, g->table_bytes, bak_entries * SECTOR) != (ssize_t)g->table_bytes ||
-	    pwrite(fd, bak, SECTOR, backup_lba * SECTOR) != SECTOR || fsync(fd) != 0)
-		return fail("cannot write the backup GPT");
-	if (pwrite(fd, g->table, g->table_bytes, g->entries_lba * SECTOR) != (ssize_t)g->table_bytes ||
-	    pwrite(fd, g->hdr, SECTOR, 1 * SECTOR) != SECTOR || fsync(fd) != 0)
-		return fail("cannot write the primary GPT");
-	return 0;
+	const char *err = gpt_commit(fd, g, g->hdr, bak, backup_lba, gpt_rd64(bak + 72));
+	return err ? fail(err) : 0;
 }
 
 int main(int argc, char **argv) {

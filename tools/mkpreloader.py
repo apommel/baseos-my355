@@ -6,7 +6,7 @@ driver binds and dwmmc@fe2b0000's pinctrl-0 is never applied. This restores the 
 properties Rockchip's own loaders carry on that node, and nothing else: the DDR blob,
 the SPL code and the boot order stay the vendor's.
 
-Rationale, container format and the flashing procedure: docs/02-sd-boot.md.
+Rationale, container format and the flashing procedure: docs/boot-chain.md.
 
     mkpreloader.py IN.img OUT.img     patch, verify, write
     mkpreloader.py --verify IMG.img   re-check an image

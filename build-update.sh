@@ -6,11 +6,13 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=tools/common.sh
+. "$HERE/tools/common.sh"
 WORK="$HERE/work/my355"
 IMAGE="$WORK/baseos-my355.img"
 [ -f "$IMAGE" ] || { echo "missing $IMAGE (run ./build-image.sh)" >&2; exit 1; }
 
-VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
+VERSION="$(baseos_version)"
 # Stamped into the rootfs by build-rootfs.sh; the manifest must carry the same.
 BUILD="$(cat "$WORK/build-id" 2>/dev/null)" || { echo "missing $WORK/build-id (run ./build-rootfs.sh)" >&2; exit 1; }
 OUT="$WORK/baseos-my355-$VERSION.bosupd"

@@ -1,20 +1,22 @@
 #!/bin/sh
 # Derive my355 build inputs from a NAND backup of a Miyoo Flip.
 #
-# Produces work/my355/prepared/{uboot.img, boot.img, stock-harvest.tar, source.json}
-# — the same shape the H700 path produces from a vendor disk image, and the set
-# that would later ship as a release bundle (cf. fetch-prepared.sh).
+# Produces work/my355/prepared/{uboot.img, boot.img, stock-harvest.tar,
+# source.json} — the same set fetch-prepared.sh restores from a published bundle.
+# NAND_DIR holds mtd1-uboot.img, mtd2-boot.img and mtd3-rootfs.img, as
+# docs/recovery.md describes taking them.
 #
 # boot.img must be PRISTINE stock: a unit whose bootlogo has been replaced
 # carries a rewritten resource image, which is not what should be redistributed.
 #
-# Usage: ./prepare-stock.sh [NAND_DIR]
+# Usage: ./prepare-stock.sh NAND_DIR
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=tools/common.sh
+. "$HERE/tools/common.sh"
 
-NAND="${1:-$HOME/Development/miyoo-flip-nand-backup}"
+NAND="${1:?usage: $0 NAND_DIR}"
 OUT="$HERE/work/my355/prepared"
 mkdir -p "$OUT"
 

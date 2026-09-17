@@ -4,10 +4,12 @@ A minimal Linux that boots the **Miyoo Flip** (Rockchip RK3566,
 `MIYOO RK3566 355 V10 Board`, NextUI platform id `my355`) as fast as the hardware
 allows, then hands off to a frontend. It has no interface of its own.
 
-The vendor kernel, U-Boot and BL31 stay **byte-for-byte**; only the userland is
-replaced, with a BusyBox init over a measured harvest of the stock glibc stack. The
-one change to internal NAND is a 2 MiB preloader patch making the SPL try the SD card
-first — stock still boots when no BaseOS card is present.
+The vendor kernel, U-Boot and BL31 stay **byte-for-byte** — the kernel is stored
+gzipped on the card, and the build asserts it decompresses to the vendor image —
+and only the userland is replaced, with a BusyBox init over a measured harvest of
+the stock glibc stack. The one change to internal NAND is a 2 MiB preloader patch
+making the SPL try the SD card first — stock still boots when no BaseOS card is
+present.
 
 ## Where the time goes
 
@@ -18,8 +20,6 @@ power-on: stock once on 2026-08-23, BaseOS twice on 2026-09-16.
 |---|---|---|---|
 | power-on → frontend hand-off | 15.79 s | **3.73 s** | −12.06 s |
 | power-on → NextUI's first frame | 31.50 s | **5.74 s** | −25.76 s |
-
-It boots from SD faster than stock boots from internal NAND.
 
 ## Building
 
@@ -42,7 +42,7 @@ or derive them from a dump of your own unit's SPI NAND — byte-identical artifa
 same hashes:
 
 ```sh
-./prepare-stock.sh ~/Development/miyoo-flip-nand-backup
+./prepare-stock.sh ~/my-flip-nand-backup
 ./build-all.sh
 ```
 
@@ -62,27 +62,26 @@ erasing.
 **Take a NAND backup regardless.** Nothing here ships a preloader binary: the installer
 and `tools/mkpreloader.py` both patch the copy already on your device. A backup is how
 you recover from a bad NAND write. See
-[docs/03-nand-backup-and-recovery.md](docs/03-nand-backup-and-recovery.md);
-flashing and the preloader are in [docs/02-sd-boot.md](docs/02-sd-boot.md) and
-[docs/06-card-image-build.md](docs/06-card-image-build.md).
+[docs/recovery.md](docs/recovery.md);
+flashing and the preloader are in [docs/boot-chain.md](docs/boot-chain.md) and
+[docs/card.md](docs/card.md).
 
 ## Layout
 
 ```
 fetch-prepared.sh   published bundle → work/my355/prepared/
-prepare-stock.sh    NAND backup      → the same three files
+prepare-stock.sh    NAND backup      → the same four files
 cache-pack.sh       work/my355/prepared/ → a bundle to publish
 build-all.sh        rootfs → image → the release .img.zip and .bosupd
 build-rootfs.sh     harvest + overlay/ + BusyBox → rootfs.tar
 build-image.sh      prepared + rootfs → baseos-my355.img
 build-update.sh     image → baseos-my355-<version>.bosupd, the A/B update payload
-tests/              offline tests — card expansion, A/B slots, updates
+tests/              offline tests — card expansion, A/B slots, updates, preloader
 overlay/            init, inittab, rcS, the frontend session — what makes it ours
 manifest/           the harvest allowlist, verified closed at prepare time
 tools/              GPT, Android boot image, preloader and bootlogo surgery
 src/                fbsplash (the panel is this device's only output), the GPT tools
 docs/               how it works and why — start at docs/README.md
-upstream-h700/      parked H700 code, not built here (see upstream-h700/PARKED.md)
 ```
 
 ## Relationship to BaseOS for H700

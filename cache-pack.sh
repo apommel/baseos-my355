@@ -5,15 +5,12 @@
 # Packs uboot.img, boot.img and stock-harvest.tar into one zstd stream, and
 # writes manifest/prepared/{source.json,bundle.sha256,bundle.url}.
 #
-# No --long window: unlike H700's ten near-identical targets these members share
-# almost no bytes, and it would have to be repeated on every decompression.
-#
 # This redistributes vendor firmware. Read NOTICE before publishing.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=tools/docker-platform.sh
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=tools/common.sh
+. "$HERE/tools/common.sh"
 
 STAMP="${1:-$(date +%Y%m%d)}"
 case "$STAMP" in
@@ -28,15 +25,8 @@ OUT_DIR="$HERE/work/prepared"
 NAME="baseos-my355-prepared-$STAMP.tar.zst"
 TAG="prepared-$STAMP"
 
-for artifact in source.json uboot.img boot.img stock-harvest.tar; do
-  [ -f "$WORK/$artifact" ] || {
-    echo "missing $WORK/$artifact (run ./prepare-stock.sh)" >&2
-    exit 1
-  }
-done
-
 echo "== verifying what is about to be published =="
-python3 "$HERE/tools/source_manifest.py" verify "$WORK/source.json" "$WORK"
+baseos_require_prepared "$WORK"
 
 mkdir -p "$PREPARED" "$OUT_DIR"
 
@@ -53,11 +43,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   ls -l "/out/$NAME"
 '
 
-if command -v sha256sum >/dev/null 2>&1; then
-  BUNDLE_SHA="$(sha256sum "$OUT_DIR/$NAME" | cut -d' ' -f1)"
-else
-  BUNDLE_SHA="$(shasum -a 256 "$OUT_DIR/$NAME" | cut -d' ' -f1)"
-fi
+BUNDLE_SHA="$(baseos_sha256 "$OUT_DIR/$NAME")"
 
 cp "$WORK/source.json" "$PREPARED/source.json"
 printf "%s  %s\n" "$BUNDLE_SHA" "$NAME" > "$PREPARED/bundle.sha256"

@@ -1,11 +1,11 @@
 #!/bin/sh
 # Offline tests for baseos-update: the engine on stubs, with 1 MiB slots so a
-# whole round trip costs 3 MiB. Host-native, no device needed.
+# whole round trip costs 3 MiB. Runs in a container; no device needed.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/docker-platform.sh
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=../tools/common.sh
+. "$HERE/tools/common.sh"
 
 echo "== baseos-update =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \

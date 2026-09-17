@@ -2,11 +2,10 @@
 # First boot: grow the card's FAT partition to fill the card and reformat it.
 #
 # Growing FAT32 in place would need fatresize; a reformat is what BusyBox can do,
-# and it replaces the shipped 512-byte clusters with a normal size (docs/06).
+# and it replaces the shipped 512-byte clusters with a normal size (docs/card.md).
 #
-# Unlike the H700 port this partition is not empty — the preloader installer
-# leaves the user's original mtd5 on it — so its contents are staged on /data and
-# restored after. Staging counts only once the directory is renamed into place,
+# This partition is not empty — the preloader installer leaves the user's
+# original mtd5 on it — so its contents are staged on /data and restored after. Staging counts only once the directory is renamed into place,
 # and /data/expanded is written last, so a power cut leaves work the next boot
 # redoes rather than files it has lost.
 

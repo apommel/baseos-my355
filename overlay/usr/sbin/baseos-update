@@ -106,7 +106,8 @@ version_newer() {
 }
 
 # Judge one payload: 0 = apply it, 1 = nothing to do, 2 = rejected outright.
-# Sets EV_VERSION / EV_BUILD / EV_SHA, and EV_REASON for humans.
+# Sets EV_VERSION / EV_BUILD / EV_SHA, EV_REASON for humans, and leaves the
+# payload's own manifest in $MANIFEST — which is what apply() reads afterwards.
 evaluate() {
 	EV_VERSION=""; EV_BUILD=""; EV_SHA=""; EV_REASON=""
 	if ! tar -xOf "$1" manifest > "$MANIFEST" 2>/dev/null || [ ! -s "$MANIFEST" ]; then
@@ -151,6 +152,20 @@ evaluate() {
 	return 0
 }
 
+# The first *.bosupd across $DIRS, in search order. Sets $FOUND; no forks, so an
+# ordinary boot pays one failed glob per directory.
+first_payload() {
+	FOUND=""
+	for dir in $DIRS; do
+		for candidate in "$dir"/*.bosupd; do
+			[ -f "$candidate" ] || continue
+			FOUND="$candidate"
+			return 0
+		done
+	done
+	return 1
+}
+
 # Pick the first applicable payload across every directory. Considering all of
 # them matters: a stale payload must not mask the new one beside it.
 select_payload() {
@@ -192,7 +207,7 @@ write_slot() {
 	}
 }
 
-# Hash an inactive half back off the card. The pill calls inside the group must
+# Hash an inactive half back off the card. The splash calls inside the group must
 # not write to stdout — that stream is the hash input.
 verify_slot() {
 	skip=$(( $(slot "$1" _INACTIVE) / 2048 ))
@@ -218,15 +233,8 @@ fail() {
 
 apply() {
 	scan_dirs
-	# Ordinary boot: no payload anywhere. One failed glob and we are done.
-	any=0
-	for dir in $DIRS; do
-		for candidate in "$dir"/*.bosupd; do
-			[ -f "$candidate" ] && { any=1; break; }
-		done
-		[ "$any" -eq 1 ] && break
-	done
-	[ "$any" -eq 1 ] || { cleanup; return 0; }
+	# Ordinary boot: no payload anywhere, and nothing else runs.
+	first_payload || { cleanup; return 0; }
 
 	if ! load_geometry; then
 		log "payload present but this card has no A/B layout — ignoring"
@@ -240,11 +248,11 @@ apply() {
 		cleanup
 		return "$REJECTED"
 	fi
+	# evaluate() left the chosen payload's manifest in $MANIFEST.
 	payload="$CHOSEN"
 	version="$EV_VERSION"
 	build="$EV_BUILD"
 	want_sha="$EV_SHA"
-	tar -xOf "$payload" manifest > "$MANIFEST" 2>/dev/null
 
 	mkdir -p "$STATE_DIR"
 	log "applying $version ($build) from $payload"

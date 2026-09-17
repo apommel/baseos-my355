@@ -2,16 +2,12 @@
 # my355 base OS early init.
 #
 # Budget: well under a second on a normal boot. Nothing sleeps; anything slow
-# runs in the background. Compared with the H700 rcS this is shorter, because
-# the Flip's vendor kernel does more for us:
-#
-#   * CONFIG_DEVTMPFS_MOUNT=y — the kernel already mounted /dev
-#   * Mali is built in (no mali_kbase.ko to insmod, so no 0.7 s to hide)
-#   * the display is plain DRM, so there is no sunxi dispdbg debugfs dependency
+# runs in the background. The vendor kernel already mounts /dev
+# (CONFIG_DEVTMPFS_MOUNT=y) and carries Mali and the panel built in, so there is
+# nothing to insmod here.
 #
 # Boot forensics land in /run/boot-* and /data, because this device has neither
-# a UART attached nor a framebuffer console — see
-# docs/07-bringup-and-diagnostics.md.
+# a UART attached nor a framebuffer console — see docs/diagnostics.md.
 
 /bin/mount -t proc  -o nodev,noexec,nosuid proc /proc
 /bin/mount -t sysfs -o nodev,noexec,nosuid sys  /sys

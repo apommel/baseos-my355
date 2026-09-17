@@ -12,6 +12,7 @@ single point of failure for every update, and these images carry no secrets.
 
 Usage: mkupdate.py IMAGE TARGET VERSION BUILD OUTPUT
 """
+import argparse
 import gzip
 import hashlib
 import io
@@ -78,10 +79,15 @@ def pack(image: Path, start: int, sectors: int, stamps: dict) -> tuple[str, byte
 
 
 def main() -> int:
-    if len(sys.argv) != 6:
-        die("usage: mkupdate.py IMAGE TARGET VERSION BUILD OUTPUT")
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("image", type=Path)
+    ap.add_argument("target")
+    ap.add_argument("version")
+    ap.add_argument("build", help="the build id build-rootfs.sh stamped into the rootfs")
+    ap.add_argument("output", type=Path)
+    a = ap.parse_args()
     image, target, version, build, output = (
-        Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], Path(sys.argv[5])
+        a.image, a.target, a.version, a.build, a.output
     )
 
     parts = extents(image)

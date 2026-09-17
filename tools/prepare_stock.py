@@ -1,26 +1,22 @@
 #!/usr/bin/env python3
 """Derive my355 build inputs from a NAND backup of a Miyoo Flip.
 
-The H700 port prepares its inputs from an 11.7 GB vendor disk image
-(tools/prepare_stock.py). The Flip has no such image: its firmware lives in
-internal SPI NAND, so the inputs come from a backup of that
-(docs/03-nand-backup-and-recovery.md).
-
-Three artifacts are produced, mirroring the H700 shape:
+The Flip's firmware lives in internal SPI NAND, so the inputs come from a backup
+of that (docs/recovery.md). Four files are produced:
 
     uboot.img          mtd1 verbatim — the Rockchip U-Boot FIT the SPL loads
     boot.img           mtd2 verbatim — the Android boot image (kernel + DTB)
     stock-harvest.tar  the allowlisted slice of mtd3's squashfs rootfs
-    source.json        sizes, hashes and provenance for all three
+    source.json        sizes, hashes and provenance for the other three
 
 `boot.img` must be **pristine stock**. A unit whose bootlogo has been replaced
 carries a rewritten resource image — different logo geometry and a reordered
 entry table — which still boots but is not what should be redistributed.
 
-Unlike the H700 source, mtd3 is **squashfs**, so it is unpacked with unsquashfs
-rather than debugfs. It is unpacked to a container-local scratch directory, never
-to a bind-mounted output path: the stock rootfs contains both /mnt/sdcard and
-/mnt/SDCARD, which collide on a case-insensitive host filesystem such as macOS.
+mtd3 is squashfs, and is unpacked to a container-local scratch directory rather
+than to a bind-mounted output path: the stock rootfs contains both /mnt/sdcard
+and /mnt/SDCARD, which collide on a case-insensitive host filesystem such as
+macOS.
 
 The harvest is verified, not assumed: every DT_NEEDED of every harvested ELF
 must resolve inside the harvest, or preparation fails. That is the check that
@@ -33,7 +29,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -45,22 +40,16 @@ import tarfile
 import tempfile
 import time
 
+from source_manifest import sha256_of
+
 MTD1 = "mtd1-uboot.img"
 MTD2 = "mtd2-boot.img"
 MTD3 = "mtd3-rootfs.img"
 
 
-def sha256_of(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def read_list(path: str) -> tuple[list[str], list[str]]:
     """Returns (include, exclude). A leading "!" excludes a path from a
-    directory listed above it — tzdata's posix/ and right/ trees, for example."""
+    directory listed above it — tzdata's right/ tree, for example."""
     include, exclude = [], []
     for line in open(path):
         line = line.split("#", 1)[0].strip()
@@ -119,7 +108,10 @@ def unpack_rootfs(image: str, dest: str) -> None:
 
 def harvest(root: str, paths: list[str], out_tar: str,
             excludes: list[str] | None = None) -> tuple[list[str], list[str]]:
-    """Tar the allowlisted paths, dereferencing symlinks. Returns (taken, missing)."""
+    """Tar the allowlisted paths, resolving each one. Returns (taken, missing).
+
+    Only the listed path itself is resolved; symlinks *inside* a listed
+    directory are archived as links, which is what /etc/ssl/certs relies on."""
     drop = [e.strip("/") for e in (excludes or [])]
 
     def keep(ti: tarfile.TarInfo):
@@ -237,7 +229,7 @@ def main() -> int:
     with open(os.path.join(a.out_dir, "source.json"), "w") as fh:
         json.dump(source, fh, indent=2, sort_keys=True)
         fh.write("\n")
-    print(f"  source.json written")
+    print("  source.json written")
     return 0
 
 

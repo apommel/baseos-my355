@@ -47,7 +47,7 @@ idle_cpu() {
 # --- the frontend card ------------------------------------------------------
 # rcS is ::sysinit: and mounts once, so a card inserted later would never be
 # seen. Mount here too — same devices, options and order — since init respawns
-# this script. Same as the H700 port.
+# this script.
 
 # With the left slot empty at boot rcS mounted the fallback, so a card inserted
 # later has to displace it: drop the mount and let mount-frontend decide again.
@@ -128,12 +128,8 @@ done
 
 # Stock calls the updater, not launch.sh directly: it is what installs
 # MinUI.zip/*.pakz payloads before starting the frontend. Keeping that entry
-# point is what makes updates behave identically.
-#
-# The H700 port bypasses it and runs the platform script itself, because
-# NextUI's installer UI needs libSDL2/_image/_ttf which that rootfs does not
-# ship. This one does — they are in the measured harvest — so NextUI can draw
-# its own installer and the flow matches stock exactly.
+# point is what makes updates behave identically, and NextUI can draw its own
+# installer because libSDL2/_image/_ttf are in the harvest.
 uptime_now > /run/boot-frontend-exec
 log "exec $UPDATER"
 exec "$UPDATER"

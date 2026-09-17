@@ -7,9 +7,8 @@
 // and the protective MBR, then live-resizes the partition in the kernel.
 // Exits 0 if it grew, 1 if it already fills the device, 2 on error.
 //
-// Derived from upstream-h700/tools/gptgrow.c, which hardcodes that port's GPT
-// geometry (8 entries, first usable LBA 4). Here everything is read from the
-// header, so it also works on the 128-entry table tools/mkgpt.py writes.
+// The table geometry is read from the GPT header rather than assumed, so this
+// works on whatever shape tools/mkgpt.py writes.
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
@@ -62,42 +61,35 @@ int main(int argc, char **argv) {
 	if (start >= last_usable) { fprintf(stderr, "partition start past device end\n"); return 2; }
 
 	gpt_wr64(e + GPT_END, last_usable);
-	uint32_t table_crc = gpt_crc32(g.table, g.table_bytes);
 
-	uint8_t out[SECTOR];
-	for (int copy = 0; copy < 2; copy++) {
-		memset(out, 0, SECTOR);
-		memcpy(out, g.hdr, 92);
-		gpt_wr32(out + 16, 0);  // header CRC placeholder
-		if (copy == 0) {
-			gpt_wr64(out + 24, 1);
-			gpt_wr64(out + 32, backup_hdr_lba);
-			gpt_wr64(out + 72, g.entries_lba);
-		} else {
-			gpt_wr64(out + 24, backup_hdr_lba);
-			gpt_wr64(out + 32, 1);
-			gpt_wr64(out + 72, backup_entries_lba);
-		}
-		gpt_wr64(out + 48, last_usable);
-		gpt_wr32(out + 88, table_crc);
-		gpt_wr32(out + 16, gpt_crc32(out, 92));
-		uint64_t at = (copy == 0) ? 1 : backup_hdr_lba;
-		if (pwrite(fd, out, SECTOR, at * SECTOR) != SECTOR) { perror("write hdr"); return 2; }
-	}
-	if (pwrite(fd, g.table, g.table_bytes, g.entries_lba * SECTOR) != (ssize_t)g.table_bytes) {
-		perror("write pri entries"); return 2;
-	}
-	if (pwrite(fd, g.table, g.table_bytes, backup_entries_lba * SECTOR) != (ssize_t)g.table_bytes) {
-		perror("write bak entries"); return 2;
-	}
+	// The device is larger than the table describes, so both headers move with
+	// it: the backup to the new last sector, and the usable span with it.
+	uint8_t primary[SECTOR], backup[SECTOR];
+	memset(primary, 0, SECTOR);
+	memset(backup, 0, SECTOR);
+	memcpy(primary, g.hdr, 92);
+	memcpy(backup, g.hdr, 92);
+	gpt_wr64(primary + 24, 1);
+	gpt_wr64(primary + 32, backup_hdr_lba);
+	gpt_wr64(primary + 72, g.entries_lba);
+	gpt_wr64(backup + 24, backup_hdr_lba);
+	gpt_wr64(backup + 32, 1);
+	gpt_wr64(backup + 72, backup_entries_lba);
+	gpt_wr64(primary + 48, last_usable);
+	gpt_wr64(backup + 48, last_usable);
+
+	const char *werr = gpt_commit(fd, &g, primary, backup,
+	                              backup_hdr_lba, backup_entries_lba);
+	if (werr) { fprintf(stderr, "%s\n", werr); return 2; }
 
 	uint8_t mbr[SECTOR];
 	if (pread(fd, mbr, SECTOR, 0) == SECTOR) {
 		uint32_t sz = total - 1 > 0xFFFFFFFFu ? 0xFFFFFFFFu : (uint32_t)(total - 1);
 		gpt_wr32(mbr + 446 + 12, sz);
-		pwrite(fd, mbr, SECTOR, 0);
+		if (pwrite(fd, mbr, SECTOR, 0) != SECTOR)
+			perror("write protective MBR (advisory only)");
+		fsync(fd);
 	}
-	fsync(fd);
 
 	// Resize the partition in the kernel: a full table reread is refused while
 	// a sibling (the mounted rootfs) is busy. ENOTTY on a regular file.

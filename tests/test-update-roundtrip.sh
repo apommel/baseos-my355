@@ -6,11 +6,11 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/docker-platform.sh
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=../tools/common.sh
+. "$HERE/tools/common.sh"
 
 WORK="$HERE/work/my355"
-VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
+VERSION="$(baseos_version)"
 PAYLOAD="$WORK/baseos-my355-$VERSION.bosupd"
 for f in "$WORK/baseos-my355.img" "$PAYLOAD"; do
   [ -f "$f" ] || { echo "missing $f (run ./build-image.sh && ./build-update.sh)" >&2; exit 1; }

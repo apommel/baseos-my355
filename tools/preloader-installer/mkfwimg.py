@@ -2,7 +2,7 @@
 """Pack the preloader installer as a miyoo355_fw.img stock will pick up off a card.
 
 Header at sector 0, the script stock runs at sector 1, the payload tar at sector 16.
-Mechanism and rationale: docs/02-sd-boot.md.
+Mechanism and rationale: docs/boot-chain.md.
 
     mkfwimg.py OUT.img [--version STR]
 """

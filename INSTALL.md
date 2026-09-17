@@ -175,4 +175,4 @@ Take the card out. The Flip boots stock, with everything as it was.
 
 To undo the preloader patch as well, write the **mtd5-original-\<hash\>.img** file from
 your card back to internal storage. See
-[docs/03-nand-backup-and-recovery.md](docs/03-nand-backup-and-recovery.md).
+[docs/recovery.md](docs/recovery.md).

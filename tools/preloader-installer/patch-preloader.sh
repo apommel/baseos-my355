@@ -1,6 +1,6 @@
 #!/bin/sh
 # Patch a my355 preloader image in place, on the device, using only BusyBox.
-# The same edit as tools/mkpreloader.py; rationale in docs/02-sd-boot.md.
+# The same edit as tools/mkpreloader.py; rationale in docs/boot-chain.md.
 #
 # usage: patch-preloader.sh IN.img OUT.img
 set -e
@@ -8,7 +8,8 @@ set -e
 IN="$1"; OUT="$2"
 AWK="${AWK_SCRIPT:-$(dirname "$0")/fdtpatch.awk}"
 SIZE=2097152
-COPIES="131072 524288"
+FIRST=131072                    # the two IDB copies, at 0x20000 and 0x80000
+COPIES="$FIRST 524288"
 
 die() { echo "refused: $*" >&2; exit 1; }
 
@@ -36,15 +37,18 @@ for base in $COPIES; do
         want=$(stored_hash "$IN" $e)
         got=$(sha_range "$IN" $(( base + off * 512 )) $(( cnt * 512 )))
         [ "$want" = "$got" ] || die "IDB entry $i at $base fails its own SHA-256"
-        eval "E${i}_OFF_$base=$off; E${i}_CNT_$base=$cnt"
+        # Both copies are identical, so the first one's geometry drives the
+        # patch: entry 0 is the DDR blob, entry 1 the SPL. Only the SPL is
+        # touched.
+        case "$base:$i" in
+            "$FIRST:0") DDR_OFF=$off; DDR_CNT=$cnt ;;
+            "$FIRST:1") SPL_OFF=$off; SPL_CNT=$cnt ;;
+        esac
     done
 done
 
-# entry 1 is the DDR blob, entry 2 the SPL; only the SPL is touched
-eval "SPL_OFF=\$E1_OFF_131072; SPL_CNT=\$E1_CNT_131072"
-SPL=$(( 131072 + SPL_OFF * 512 ))
+SPL=$(( FIRST + SPL_OFF * 512 ))
 SPL_LEN=$(( SPL_CNT * 512 ))
-DELTA=$(( 524288 - 131072 ))
 
 # --- locate the device tree: it sits at the end of the SPL payload ---
 DTB=""
@@ -76,7 +80,7 @@ TAIL=$(dd if="$IN" bs=1 skip=$(( DTB + TOTAL )) count="$SLACK" 2>/dev/null | tr 
 
 cp "$IN" "$OUT"
 for base in $COPIES; do
-    at=$(( DTB + base - 131072 ))
+    at=$(( DTB + base - FIRST ))
     dd if="$T/new.dtb" of="$OUT" bs=1 seek="$at" conv=notrunc 2>/dev/null
 done
 
@@ -98,8 +102,8 @@ for base in $COPIES; do
         [ "$want" = "$got" ] || die "output IDB entry $i at $base fails its SHA-256"
     done
 done
-A=$(dd if="$IN"  bs=512 skip=$(( 131072 / 512 + $(eval echo \$E0_OFF_131072) )) count=$(eval echo \$E0_CNT_131072) 2>/dev/null | sha256sum)
-B=$(dd if="$OUT" bs=512 skip=$(( 131072 / 512 + $(eval echo \$E0_OFF_131072) )) count=$(eval echo \$E0_CNT_131072) 2>/dev/null | sha256sum)
+A=$(dd if="$IN"  bs=512 skip=$(( FIRST / 512 + DDR_OFF )) count="$DDR_CNT" 2>/dev/null | sha256sum)
+B=$(dd if="$OUT" bs=512 skip=$(( FIRST / 512 + DDR_OFF )) count="$DDR_CNT" 2>/dev/null | sha256sum)
 [ "$A" = "$B" ] || die "the DDR blob changed"
 A=$(dd if="$IN"  bs=1 skip="$SPL" count=$(( DTB - SPL )) 2>/dev/null | sha256sum)
 B=$(dd if="$OUT" bs=1 skip="$SPL" count=$(( DTB - SPL )) 2>/dev/null | sha256sum)

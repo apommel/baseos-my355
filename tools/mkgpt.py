@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Build the my355 (Miyoo Flip) SD card partition table from scratch.
 
-Unlike the H700 port — which inherits the vendor GPT and edits it (upstream-h700/tools/mkgpt.py)
-— the Flip's boot chain lives in internal SPI NAND, so a BaseOS card owns its
+The Flip's boot chain lives in internal SPI NAND, so a BaseOS card owns its
 whole table. Three names are load-bearing:
 
     uboot    the SPL locates U-Boot by `part_get_info_by_name("uboot")`
@@ -11,8 +10,8 @@ whole table. Three names are load-bearing:
     boot     stock U-Boot runs `boot_android mmc 1`, which resolves the Android
              boot image by this name.
     rootfs   named for humans only. What actually matters is its ENTRY NUMBER:
-             `root=/dev/mmcblk1p3` is baked into rk-kernel.dtb at build time
-             (tools/rkbootimg.py), so rootfs must stay entry 3.
+             `root=` is baked into rk-kernel.dtb at build time
+             (tools/rkbootimg.py), and --shell derives it from that number.
 
 Layout:
 
@@ -23,8 +22,8 @@ Layout:
     5 primary  rest    FAT32, the only desktop-visible volume
 
 Each of the three updatable regions reserves twice what it needs and only ever
-has one half as a partition; `usr/sbin/baseos-update` writes the other half and
-flips the entry. The spare halves are unallocated on purpose: they cost no
+has one half as a partition; overlay/usr/sbin/baseos-update writes the other half
+and flips the entry. The spare halves are unallocated on purpose: they cost no
 visible partition and no desktop OS offers to format them. Every entry except
 `primary` carries GPT attribute bits 62 and 63, so a desktop assigns exactly one
 drive letter for the whole card.
@@ -35,6 +34,7 @@ builds of the same layout produce byte-identical tables.
 Usage:
     mkgpt.py IMAGE [--primary-sectors N]   write the table into IMAGE
     mkgpt.py --shell                       emit the layout as shell vars
+    mkgpt.py --print-only                  print the layout and stop
 """
 
 from __future__ import annotations
@@ -126,6 +126,8 @@ def main() -> int:
                          "source of truth for build-image.sh")
     a = ap.parse_args()
 
+    if not (a.shell or a.print_only or a.image):
+        sys.exit("mkgpt: IMAGE is required unless --shell/--print-only")
     parts, total, reserved = layout(a.primary_sectors)
 
     if a.shell:
@@ -137,10 +139,9 @@ def main() -> int:
         print(f"MY355_DATA_SECTORS={DATA_SECTORS}")
         print(f"MY355_PRIMARY_START={by_name['primary'][0]}")
         print(f"MY355_PRIMARY_SECTORS={a.primary_sectors}")
-        print(f"MY355_TOTAL_SECTORS={total}")
-        # rootfs is GPT entry 3; root= must name that number (see module docstring)
-        print("MY355_ROOT_DEV=/dev/mmcblk1p3")
-        print("MY355_INIT=/init")
+        # root= must name rootfs's entry number, not its name (see the docstring).
+        rootfs_entry = [name for name, _t, _f, _l, _a in parts].index("rootfs") + 1
+        print(f"MY355_ROOT_DEV=/dev/mmcblk1p{rootfs_entry}")
         return 0
 
     first_usable = 2 + ENTRY_SECTORS
@@ -170,8 +171,6 @@ def main() -> int:
     entries_crc = zlib.crc32(entries) & 0xFFFFFFFF
     disk_guid = guid_for("__disk__")
 
-    if not a.image:
-        sys.exit("mkgpt: IMAGE is required unless --shell/--print-only")
     with open(a.image, "r+b") as f:
         f.truncate(total * SECTOR)
         f.seek(0)

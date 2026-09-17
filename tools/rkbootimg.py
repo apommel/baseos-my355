@@ -14,13 +14,9 @@ It lives in `/chosen/bootargs` inside rk-kernel.dtb, inside the resource image:
 
     earlycon=... console=ttyFIQ0 root=/dev/mtdblock3 rootfstype=squashfs rootwait
 
-Booting the vendor kernel from SD therefore needs exactly one string changed.
-This tool rewrites it in place and repacks, so the kernel Image and every other
-resource entry stay byte-for-byte vendor — the same doctrine the H700 port
-applies to its boot chain (docs/00).
-
-The replacement bootargs is space-padded in place when it fits the vendor's
-100 bytes, so the FDT keeps its layout; a longer one grows the FDT.
+`setargs` rewrites that line, raises the boot slot's UHS ceiling, replaces the
+logo and stores the kernel gzipped. The kernel itself is never modified: the
+build asserts that what it writes decompresses to the vendor bytes.
 
 The resource image around it is rebuilt rather than patched, which frees the
 logo from having to match the vendor's exact byte count and lets the whole
@@ -29,7 +25,7 @@ resource stay small enough for U-Boot's loader (see RESOURCE_SAFE_BYTES).
 Usage:
     rkbootimg.py info    BOOTIMG
     rkbootimg.py extract BOOTIMG OUTDIR
-    rkbootimg.py setargs BOOTIMG OUT --root /dev/mmcblk1p4 --rootfstype ext4
+    rkbootimg.py setargs BOOTIMG OUT --root /dev/mmcblk1p3 --rootfstype ext4
 """
 
 from __future__ import annotations
@@ -37,96 +33,50 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
-import shutil
-import subprocess
-import tempfile
 import os
+import shutil
 import struct
+import subprocess
 import sys
 
 PAGE_DEFAULT = 2048
 # Largest resource image observed to boot on hardware. 943 616 bytes hangs this
 # U-Boot before display init; 465 408 boots. The exact threshold is unmeasured.
 RESOURCE_SAFE_BYTES = 465408
-# This U-Boot sniffs the Android boot image's kernel payload for its compression:
-# android_image_get_comp() tries zImage, then LZ4, then gzip, then LZMA, else
-# IH_COMP_NONE. Read out of the vendor binary (FIT /images/uboot, load 0xa00000),
-# not assumed — see docs/01-boot-budget.md.
 # SD slot 0 — the boot card, `mmcblk1` in Linux, the right-hand slot next to the
 # power button. Slot 1 (dwmmc@fe2c0000) names the same vqmmc-supply, but its pins
 # are on vccio4 = fixed 3.3 V, so UHS there hangs the card (tried 2026-09-16).
 SD_SLOT0_NODE = "dwmmc@fe2b0000"
-LZ4_FRAME_MAGIC = b"\x04\x22\x4d\x18"
-LZ4_LEGACY_MAGIC = b"\x02\x21\x4c\x18"
 
-
-def uboot_accepts_lz4(blob: bytes) -> list[str]:
-    """Reasons this U-Boot would refuse `blob`; empty means it boots.
-
-    Transcribed from lz4_valid_frame() and ulz4fn() in the vendor U-Boot. A
-    legacy-framed kernel sniffs as IH_COMP_NONE and hangs silently, which is
-    what the 2026-08-20 card did, so the build refuses to write one.
-    """
-    why = []
-    if blob[:4] != LZ4_FRAME_MAGIC:
-        which = "legacy" if blob[:4] == LZ4_LEGACY_MAGIC else blob[:4].hex(" ")
-        return [f"magic is {which}, not the frame magic — sniffs as IH_COMP_NONE"]
-    if len(blob) <= 14:
-        why.append("frame is <= 14 bytes — ulz4fn returns -EINVAL")
-    flg, bd = blob[4], blob[5]
-    if flg & 0xC0 != 0x40:
-        why.append(f"frame version is {flg >> 6}, not 1")
-    if flg & 0x03:
-        why.append(f"FLG reserved/dictID bits set (0x{flg & 3:02x})")
-    if not flg >> 5 & 1:
-        why.append("linked blocks — ulz4fn returns -EPROTONOSUPPORT; compress with -BI")
-    if bd & 0x8F:
-        why.append(f"BD reserved bits set (0x{bd & 0x8f:02x})")
-    return why
-
-
-def compress_kernel(raw: bytes, how: str) -> bytes:
-    """Compress a kernel payload for U-Boot's Android boot image path.
-
-    The SD read dominates the pre-kernel budget, so this is the big lever:
-    4.96 s raw -> 3.14 s gzip -> 3.31 s lz4. gzip wins because it is smaller.
-    gzip comes from libdeflate -12: still a plain gzip stream, 486 KB smaller
-    than zlib -9. build-image.sh runs this in Alpine, which pins the encoder.
-    """
-    if how == "gzip":
-        # -n: no name or mtime, so the bytes reproduce.
-        cmd, brew, apk = ["libdeflate-gzip", "-12", "-n", "-c"], "libdeflate", "libdeflate-utils"
-    else:
-        # Frame format, and -BI because `ulz4fn` refuses linked blocks.
-        cmd, brew, apk = ["lz4", "-12", "-BI", "--no-frame-crc", "-c"], "lz4", "lz4"
-    if shutil.which(cmd[0]) is None:
-        sys.exit(f"rkbootimg: --compress-kernel {how} needs the `{cmd[0]}` CLI "
-                 f"(brew install {brew}, or apk add {apk})")
-    blob = subprocess.run(cmd, input=raw, stdout=subprocess.PIPE, check=True).stdout
-    if how == "gzip":
-        return blob
-    why = uboot_accepts_lz4(blob)
-    if why:
-        sys.exit("rkbootimg: this lz4 frame would not boot — " + "; ".join(why))
-    return blob
-
-
-def decompress_kernel(blob: bytes) -> bytes:
-    """Inverse of compress_kernel, used to prove the round-trip before writing."""
-    if blob[:2] == b"\x1f\x8b":
-        return gzip.decompress(blob)
-    if blob[:4] not in (LZ4_FRAME_MAGIC, LZ4_LEGACY_MAGIC):
-        raise ValueError("unrecognised compressed kernel")
-    with tempfile.TemporaryDirectory() as td:
-        src, dst = f"{td}/k.lz4", f"{td}/k"
-        with open(src, "wb") as fh:
-            fh.write(blob)
-        subprocess.run(["lz4", "-d", "-f", "-q", src, dst], check=True)
-        return open(dst, "rb").read()
 RES_MAGIC = b"RSCE"
 RES_BLOCK = 512
 RES_NAME_LEN = 256
 FDT_MAGIC = b"\xd0\x0d\xfe\xed"
+GZIP_MAGIC = b"\x1f\x8b"
+
+
+def compress_kernel(raw: bytes) -> bytes:
+    """Store the kernel gzipped, which is the big pre-kernel lever.
+
+    U-Boot reads every byte of the payload off the card, so 4.96 s raw becomes
+    2.86 s gzipped. libdeflate -12 is the same deflate format U-Boot's inflater
+    already takes and 486 KB smaller than zlib -9; build-image.sh runs this in
+    Alpine, which pins the encoder. (lz4 also boots, and was measured 0.17 s
+    slower because the frame is 2.5 MiB larger — see docs/history.md.)
+    """
+    # -n: no name or mtime, so the bytes reproduce.
+    cmd = ["libdeflate-gzip", "-12", "-n", "-c"]
+    if shutil.which(cmd[0]) is None:
+        sys.exit("rkbootimg: --compress-kernel gzip needs the `libdeflate-gzip` CLI "
+                 "(brew install libdeflate, or apk add libdeflate-utils)")
+    return subprocess.run(cmd, input=raw, stdout=subprocess.PIPE, check=True).stdout
+
+
+def decompress_kernel(blob: bytes) -> bytes:
+    """Inverse of compress_kernel, used to prove the round-trip before writing."""
+    if blob[:2] != GZIP_MAGIC:
+        raise ValueError("unrecognised compressed kernel")
+    return gzip.decompress(blob)
 
 
 def _pad(value: int, page: int) -> int:
@@ -160,7 +110,7 @@ class BootImage:
     def ramdisk(self) -> bytes:
         return self.blob[self.ramdisk_off:self.ramdisk_off + self.ramdisk_size]
 
-    def compute_id(self, blob: bytes | None = None) -> bytes:
+    def compute_id(self) -> bytes:
         """SHA1 over kernel|size|ramdisk|size|second|size, as mkbootimg defines it.
 
         U-Boot verifies this before booting ("ANDROID: Hash OK"). Editing any
@@ -168,18 +118,10 @@ class BootImage:
         while the *resource* image is still read earlier and unverified, so a
         replaced logo appears and then nothing boots.
         """
-        src = blob if blob is not None else self.blob
-        page = self.page_size
-        ko = page
-        ro = ko + _pad(self.kernel_size, page)
-        so = ro + _pad(self.ramdisk_size, page)
-        parts = ((src[ko:ko + self.kernel_size], self.kernel_size),
-                 (src[ro:ro + self.ramdisk_size], self.ramdisk_size),
-                 (src[so:so + self.second_size], self.second_size))
         h = hashlib.sha1()
-        for payload, size in parts:
+        for payload in (self.kernel, self.ramdisk, self.second):
             h.update(payload)
-            h.update(struct.pack("<I", size))
+            h.update(struct.pack("<I", len(payload)))
         return h.digest()
 
     @property
@@ -190,19 +132,16 @@ class BootImage:
         """Repack with a new `second` and/or kernel, refreshing sizes and the id."""
         page = self.page_size
         kernel = self.kernel if kernel is None else kernel
-        b = bytearray(self.blob[:page])                       # header page
-        struct.pack_into("<I", b, 8, len(kernel))             # kernel_size field
-        struct.pack_into("<I", b, 8 + 16, len(second))        # second_size field
-        out = bytearray(b)
+        header = bytearray(self.blob[:page])
+        struct.pack_into("<I", header, 8, len(kernel))          # kernel_size field
+        struct.pack_into("<I", header, 8 + 16, len(second))     # second_size field
+        out = bytearray(header)
         out += kernel + b"\0" * (_pad(len(kernel), page) - len(kernel))
         out += self.ramdisk + b"\0" * (_pad(self.ramdisk_size, page) - self.ramdisk_size)
         out += second + b"\0" * (_pad(len(second), page) - len(second))
-        rebuilt = BootImage(bytes(out))
-        digest = rebuilt.compute_id()
-        out[576:576 + 20] = digest
+        out[576:576 + 20] = BootImage(bytes(out)).compute_id()
         out[576 + 20:576 + 32] = b"\0" * 12
         return bytes(out)
-
 
 
 class ResourceImage:
@@ -237,9 +176,7 @@ class ResourceImage:
         In-place replacement forces every payload to keep its exact vendor byte
         count, which in turn forces our logo to match the vendor's geometry.
         Building the image instead lets the logo be any size — and, critically,
-        lets the whole resource stay small. A 943 616-byte resource (the stock
-        one, with its two 480x198 logos) hangs this U-Boot before display init;
-        465 408 bytes boots. See docs/06-card-image-build.md.
+        lets the whole resource stay under RESOURCE_SAFE_BYTES.
         """
         header_blocks = 1
         entry_blocks = 1
@@ -268,144 +205,115 @@ class ResourceImage:
         return blob + b"\0" * ((-len(blob)) % RES_BLOCK)
 
 
+# --- flattened device tree ---------------------------------------------------
+# One walker serves every reader below; the two writers both grow the struct
+# block and hand it back to _fdt_rebuild.
 
-def fdt_find_prop(dtb: bytes, node: str, prop: str) -> tuple[int, int]:
-    """Return (offset, length) of `prop`'s value inside the last node named `node`."""
+def _fdt_header(dtb: bytes) -> tuple[int, int, int, int]:
     if dtb[:4] != FDT_MAGIC:
         raise ValueError("not a device tree blob")
     off_struct, off_strings = struct.unpack(">II", dtb[8:16])
     size_strings, size_struct = struct.unpack(">II", dtb[32:40])
+    return off_struct, off_strings, size_strings, size_struct
+
+
+def fdt_walk(dtb: bytes):
+    """Yield the tree in file order.
+
+    ("node", path, offset just past the name) for FDT_BEGIN_NODE, and
+    ("prop", path, name, value offset, value length) for FDT_PROP.
+    """
+    off_struct, off_strings, size_strings, size_struct = _fdt_header(dtb)
     strings = dtb[off_strings:off_strings + size_strings]
     p, end, path = off_struct, off_struct + size_struct, []
     while p < end:
         tok = struct.unpack(">I", dtb[p:p + 4])[0]
         p += 4
-        if tok == 1:
+        if tok == 1:                                  # FDT_BEGIN_NODE
             e = dtb.index(b"\0", p)
             path.append(dtb[p:e].decode() or "/")
             p = (e + 1 + 3) & ~3
-        elif tok == 2:
+            yield "node", tuple(path), p
+        elif tok == 2:                                # FDT_END_NODE
             path.pop()
-        elif tok == 3:
+        elif tok == 3:                                # FDT_PROP
             length, nameoff = struct.unpack(">II", dtb[p:p + 8])
             p += 8
             name_end = strings.index(b"\0", nameoff)
-            if strings[nameoff:name_end].decode() == prop and path[-1:] == [node]:
-                return p, length
+            yield "prop", tuple(path), strings[nameoff:name_end].decode(), p, length
             p = (p + length + 3) & ~3
-        elif tok == 9:
+        elif tok == 9:                                # FDT_END
             break
+
+
+def fdt_find_prop(dtb: bytes, node: str, prop: str) -> tuple[int, int]:
+    """Return (offset, length) of `prop`'s value in the first node named `node`."""
+    for event in fdt_walk(dtb):
+        if event[0] == "prop" and event[1][-1:] == (node,) and event[2] == prop:
+            return event[3], event[4]
     raise KeyError(f"{node}/{prop} not found")
-
-
-def set_prop_string(dtb: bytes, node: str, prop: str, value: str) -> bytes:
-    """Rewrite a string property in place, NUL-padded to its original length.
-
-    Device tree string properties are read with strcmp semantics, so trailing
-    NULs beyond the terminator are ignored — which lets a shorter value be
-    substituted without relayout.
-    """
-    off, length = fdt_find_prop(dtb, node, prop)
-    encoded = value.encode() + b"\0"
-    if len(encoded) > length:
-        raise ValueError(f"{node}/{prop}: '{value}' needs {len(encoded)} bytes, "
-                         f"only {length} available; in-place patching cannot grow the FDT")
-    b = bytearray(dtb)
-    b[off:off + length] = encoded.ljust(length, b"\0")
-    return bytes(b)
-
-
-
-# UHS modes the RK3566 sdmmc controller can drive, in ascending order, with the
-# bus clock each one implies. Anything above SDR25 also needs max-frequency to
-# allow it and the I/O rail to be switchable to 1.8 V — both asserted below.
-SD_UHS_MODES = {
-    "sdr50": (["sd-uhs-sdr50"], 100_000_000),
-    "sdr104": (["sd-uhs-sdr50", "sd-uhs-sdr104"], 150_000_000),
-}
 
 
 def fdt_node_props(dtb: bytes, node: str) -> "dict[str, bytes]":
     """Every property of the first node named `node`, as name -> raw value."""
-    if dtb[:4] != FDT_MAGIC:
-        raise ValueError("not a device tree blob")
-    off_struct, off_strings = struct.unpack(">II", dtb[8:16])
-    size_strings, size_struct = struct.unpack(">II", dtb[32:40])
-    strings = dtb[off_strings:off_strings + size_strings]
-    p, end, path, found = off_struct, off_struct + size_struct, [], None
-    while p < end:
-        tok = struct.unpack(">I", dtb[p:p + 4])[0]
-        p += 4
-        if tok == 1:
-            e = dtb.index(b"\0", p)
-            path.append(dtb[p:e].decode() or "/")
-            p = (e + 1 + 3) & ~3
-            if path[-1] == node:
-                found = {}
-        elif tok == 2:
-            if path[-1:] == [node] and found is not None:
-                return found
-            path.pop()
-        elif tok == 3:
-            length, nameoff = struct.unpack(">II", dtb[p:p + 8])
-            p += 8
-            if found is not None and path[-1:] == [node]:
-                name_end = strings.index(b"\0", nameoff)
-                found[strings[nameoff:name_end].decode()] = dtb[p:p + length]
-            p = (p + length + 3) & ~3
-        elif tok == 9:
+    target, props = None, {}
+    for event in fdt_walk(dtb):
+        kind, path = event[0], event[1]
+        if target is None:
+            if kind == "node" and path[-1] == node:
+                target = path
+            continue
+        if path[:len(target)] != target:              # left the node
             break
-    raise KeyError(node)
+        if kind == "prop" and path == target:
+            props[event[2]] = dtb[event[3]:event[3] + event[4]]
+    if target is None:
+        raise KeyError(node)
+    return props
+
+
+def _fdt_require_dtc_layout(dtb: bytes) -> None:
+    off_struct, off_strings, _size_strings, size_struct = _fdt_header(dtb)
+    if off_strings < off_struct + size_struct:
+        raise ValueError("FDT strings block does not follow the struct block; "
+                         "this rewriter assumes dtc's layout")
+
+
+def _fdt_rebuild(dtb: bytes, body: bytes, strings: bytes) -> bytes:
+    """Reassemble around a new struct block, correcting the header's offsets."""
+    off_struct = struct.unpack(">I", dtb[8:12])[0]
+    out = bytearray(dtb[:off_struct] + body + strings)
+    struct.pack_into(">I", out, 4, len(out))                 # totalsize
+    struct.pack_into(">I", out, 12, off_struct + len(body))  # off_dt_strings
+    struct.pack_into(">I", out, 32, len(strings))            # size_dt_strings
+    struct.pack_into(">I", out, 36, len(body))               # size_dt_struct
+    return bytes(out)
 
 
 def fdt_add_props(dtb: bytes, node: str,
                   props: "list[tuple[str, bytes]]") -> bytes:
     """Insert properties into the first node named `node`, growing the FDT.
 
-    The other patchers here all work in place, because a string value can be
-    NUL- or space-padded back to its original length. A property that does not
-    exist yet has no length to reuse, so this one relays out the blob: the new
-    FDT_PROP tokens go at the head of the node's property list (the spec
-    requires properties before subnodes, and right after FDT_BEGIN_NODE always
-    satisfies that), their names are appended to the strings block, and the
-    header's offsets and sizes are corrected.
+    A property that does not exist yet has no length to reuse, so this relays
+    out the blob: the new FDT_PROP tokens go at the head of the node's property
+    list (the spec requires properties before subnodes, and right after
+    FDT_BEGIN_NODE always satisfies that), their names are appended to the
+    strings block, and the header's offsets and sizes are corrected.
 
     Properties already present are skipped rather than duplicated, so this is
     idempotent.
     """
-    if dtb[:4] != FDT_MAGIC:
-        raise ValueError("not a device tree blob")
-    off_struct, off_strings = struct.unpack(">II", dtb[8:16])
-    size_strings, size_struct = struct.unpack(">II", dtb[32:40])
-    if off_strings < off_struct + size_struct:
-        raise ValueError("FDT strings block does not follow the struct block; "
-                         "this rewriter assumes dtc's layout")
+    _fdt_require_dtc_layout(dtb)
+    off_struct, off_strings, size_strings, size_struct = _fdt_header(dtb)
 
     existing = fdt_node_props(dtb, node)
     todo = [(n, v) for n, v in props if n not in existing]
     if not todo:
         return dtb
 
-    # Locate the insertion point: just past this node's FDT_BEGIN_NODE.
-    p, end, path, insert_at = off_struct, off_struct + size_struct, [], None
-    while p < end and insert_at is None:
-        tok = struct.unpack(">I", dtb[p:p + 4])[0]
-        p += 4
-        if tok == 1:
-            e = dtb.index(b"\0", p)
-            path.append(dtb[p:e].decode() or "/")
-            p = (e + 1 + 3) & ~3
-            if path[-1] == node:
-                insert_at = p
-        elif tok == 2:
-            path.pop()
-        elif tok == 3:
-            length, _ = struct.unpack(">II", dtb[p:p + 8])
-            p = (p + 8 + length + 3) & ~3
-        elif tok == 9:
-            break
-    if insert_at is None:
-        raise KeyError(node)
+    # Just past this node's FDT_BEGIN_NODE.
+    insert_at = next(e[2] for e in fdt_walk(dtb)
+                     if e[0] == "node" and e[1][-1] == node)
 
     strings = bytearray(dtb[off_strings:off_strings + size_strings])
     tokens = bytearray()
@@ -422,23 +330,27 @@ def fdt_add_props(dtb: bytes, node: str,
 
     body = (dtb[off_struct:insert_at] + bytes(tokens)
             + dtb[insert_at:off_struct + size_struct])
-    head = bytearray(dtb[:off_struct])
-    out = bytearray(head + body + bytes(strings))
-    struct.pack_into(">I", out, 4, len(out))                 # totalsize
-    struct.pack_into(">I", out, 12, off_struct + len(body))  # off_dt_strings
-    struct.pack_into(">I", out, 32, len(strings))            # size_dt_strings
-    struct.pack_into(">I", out, 36, len(body))               # size_dt_struct
+    out = _fdt_rebuild(dtb, body, bytes(strings))
 
     # Read it back rather than trust the arithmetic: a mislaid offset here is a
     # card that hangs before any output exists to debug it.
-    check = fdt_node_props(bytes(out), node)
+    check = fdt_node_props(out, node)
     for name, value in props:
         if check.get(name) != value:
             raise ValueError(f"{node}/{name}: not readable after insertion")
     for name, value in existing.items():
         if check.get(name) != value:
             raise ValueError(f"{node}/{name}: damaged by insertion")
-    return bytes(out)
+    return out
+
+
+# UHS modes the RK3566 sdmmc controller can drive, in ascending order, with the
+# bus clock each one implies. Anything above SDR25 also needs max-frequency to
+# allow it and the I/O rail to be switchable to 1.8 V — both asserted below.
+SD_UHS_MODES = {
+    "sdr50": (["sd-uhs-sdr50"], 100_000_000),
+    "sdr104": (["sd-uhs-sdr50", "sd-uhs-sdr104"], 150_000_000),
+}
 
 
 def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
@@ -461,71 +373,34 @@ def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
     return fdt_add_props(dtb, node, [(f, b"") for f in flags])
 
 
-def fdt_find_bootargs(dtb: bytes) -> tuple[int, int]:
-    """Return (offset, length) of /chosen/bootargs' value inside `dtb`."""
-    if dtb[:4] != FDT_MAGIC:
-        raise ValueError("not a device tree blob")
-    off_struct, off_strings = struct.unpack(">II", dtb[8:16])
-    size_strings, size_struct = struct.unpack(">II", dtb[32:40])
-    strings = dtb[off_strings:off_strings + size_strings]
-    p, end, path = off_struct, off_struct + size_struct, []
-    while p < end:
-        tok = struct.unpack(">I", dtb[p:p + 4])[0]
-        p += 4
-        if tok == 1:                                  # FDT_BEGIN_NODE
-            e = dtb.index(b"\0", p)
-            path.append(dtb[p:e].decode() or "/")
-            p = (e + 1 + 3) & ~3
-        elif tok == 2:                                # FDT_END_NODE
-            path.pop()
-        elif tok == 3:                                # FDT_PROP
-            length, nameoff = struct.unpack(">II", dtb[p:p + 8])
-            p += 8
-            name_end = strings.index(b"\0", nameoff)
-            if strings[nameoff:name_end] == b"bootargs" and path[-1:] == ["chosen"]:
-                return p, length
-            p = (p + length + 3) & ~3
-        elif tok == 9:                                # FDT_END
-            break
-    raise KeyError("/chosen/bootargs not found")
-
-
 def set_bootargs(dtb: bytes, new_args: str) -> bytes:
     """Rewrite /chosen/bootargs: in place, space-padded, when it fits; grown otherwise.
 
     The vendor value holds 100 bytes. Growing relays out the struct block the way
     fdt_add_props does, which the SDR104 flags already prove this U-Boot accepts.
     """
-    off, length = fdt_find_bootargs(dtb)
+    off, length = fdt_find_prop(dtb, "chosen", "bootargs")
     budget = length - 1                               # value includes its NUL
     if len(new_args) <= budget:
-        padded = new_args.ljust(budget).encode() + b"\0"
-        b = bytearray(dtb)
-        b[off:off + length] = padded
-        return bytes(b)
+        out = bytearray(dtb)
+        out[off:off + length] = new_args.ljust(budget).encode() + b"\0"
+        return bytes(out)
 
-    off_struct, off_strings = struct.unpack(">II", dtb[8:16])
-    size_strings, size_struct = struct.unpack(">II", dtb[32:40])
-    if off_strings < off_struct + size_struct:
-        raise ValueError("FDT strings block does not follow the struct block; "
-                         "this rewriter assumes dtc's layout")
+    _fdt_require_dtc_layout(dtb)
+    off_struct, off_strings, size_strings, size_struct = _fdt_header(dtb)
     value = new_args.encode() + b"\0"
     old_end = off + length + ((-length) % 4)
     body = (dtb[off_struct:off - 8]
             + struct.pack(">I", len(value)) + dtb[off - 4:off]   # len, nameoff
             + value + b"\0" * ((-len(value)) % 4)
             + dtb[old_end:off_struct + size_struct])
-    strings = dtb[off_strings:off_strings + size_strings]
-    out = bytearray(dtb[:off_struct] + body + strings)
-    struct.pack_into(">I", out, 4, len(out))                 # totalsize
-    struct.pack_into(">I", out, 12, off_struct + len(body))  # off_dt_strings
-    struct.pack_into(">I", out, 36, len(body))               # size_dt_struct
+    out = _fdt_rebuild(dtb, body, dtb[off_strings:off_strings + size_strings])
 
     # Read it back: a mislaid offset is a card that hangs with nothing to debug.
-    noff, nlen = fdt_find_bootargs(bytes(out))
-    if bytes(out[noff:noff + nlen]) != value:
+    noff, nlen = fdt_find_prop(out, "chosen", "bootargs")
+    if out[noff:noff + nlen] != value:
         raise ValueError("bootargs not readable after growing the FDT")
-    return bytes(out)
+    return out
 
 
 def rewrite_root(args_str: str, root: str, rootfstype: str | None,
@@ -554,38 +429,41 @@ def rewrite_root(args_str: str, root: str, rootfstype: str | None,
     return " ".join(out)
 
 
-def load(path: str) -> tuple[BootImage, ResourceImage, bytes]:
+def load(path: str) -> tuple[BootImage, ResourceImage]:
     boot = BootImage(open(path, "rb").read())
-    res = ResourceImage(boot.second)
-    off, size = res.get("rk-kernel.dtb")
-    return boot, res, res.blob[off:off + size]
+    return boot, ResourceImage(boot.second)
+
+
+def bootargs_of(res: ResourceImage, off: int, size: int) -> str:
+    blob = res.blob[off:off + size]
+    boff, blen = fdt_find_prop(blob, "chosen", "bootargs")
+    return blob[boff:boff + blen].split(b"\0")[0].decode()
 
 
 def cmd_info(a) -> int:
-    boot, res, _ = load(a.bootimg)
+    boot, res = load(a.bootimg)
     print(f"boot image     {a.bootimg}")
     print(f"  page size    {boot.page_size}")
     print(f"  kernel       {boot.kernel_size} bytes @ {boot.kernel_off} "
           f"(load 0x{boot.kernel_addr:x})  sha256 {hashlib.sha256(boot.kernel).hexdigest()[:16]}…")
     print(f"  ramdisk      {boot.ramdisk_size} bytes")
     print(f"  second       {boot.second_size} bytes @ {boot.second_off}  (RSCE, {res.count} entries)")
-    for name, off, size in res.entries():
+    for name, _off, size in res.entries():
         print(f"      {name:22s} {size:>8} bytes")
     ok = boot.compute_id() == boot.stored_id
     print(f"  image id     {boot.stored_id.hex()}  ({'valid' if ok else 'STALE'})")
     for name, off, size in res.entries():
         if not name.startswith("rk-kernel.dtb"):
             continue
-        blob = res.blob[off:off + size]
-        boff, blen = fdt_find_bootargs(blob)
-        cur = blob[boff:boff + blen].split(b"\0")[0].decode()
+        cur = bootargs_of(res, off, size)
+        _boff, blen = fdt_find_prop(res.blob[off:off + size], "chosen", "bootargs")
         print(f"  bootargs     {name}: {len(cur)} chars used of {blen - 1} available")
         print(f"      {cur}")
     return 0
 
 
 def cmd_extract(a) -> int:
-    boot, res, _ = load(a.bootimg)
+    boot, res = load(a.bootimg)
     os.makedirs(a.outdir, exist_ok=True)
     kpath = os.path.join(a.outdir, "kernel.Image")
     with open(kpath, "wb") as fh:
@@ -600,7 +478,7 @@ def cmd_extract(a) -> int:
 
 
 def cmd_setargs(a) -> int:
-    boot, res, _ = load(a.bootimg)
+    boot, res = load(a.bootimg)
 
     # Every rk-kernel.dtb* variant gets the same treatment. U-Boot selects the
     # `.hdmi` one when Miyoo's g_miyoo_use_hdmi is set, and a variant left
@@ -608,14 +486,11 @@ def cmd_setargs(a) -> int:
     expected: "dict[str, str]" = {}
 
     def patch(name: str, blob: bytes) -> bytes:
-        off, length = fdt_find_bootargs(blob)
+        off, length = fdt_find_prop(blob, "chosen", "bootargs")
         old = blob[off:off + length].split(b"\0")[0].decode()
         new = rewrite_root(old, a.root, a.rootfstype, a.drop, a.append)
         expected[name] = new
         out = set_bootargs(blob, new)
-        if a.led_trigger:
-            out = set_prop_string(out, "work", "linux,default-trigger",
-                                  a.led_trigger)
         if a.sd_uhs != "off":
             out = set_sd_uhs(out, SD_SLOT0_NODE, a.sd_uhs)
         print(f"  {name}")
@@ -636,9 +511,6 @@ def cmd_setargs(a) -> int:
             entries.append((name, logo))
         else:
             entries.append((name, data))
-    if a.led_trigger:
-        print(f"  led: /leds/work default-trigger -> {a.led_trigger} "
-              f"(kernel-side signal, fires at gpio-leds probe)")
     if a.sd_uhs != "off":
         added = ", ".join(SD_UHS_MODES[a.sd_uhs][0])
         print(f"  sd: {SD_SLOT0_NODE} += {added} "
@@ -653,19 +525,18 @@ def cmd_setargs(a) -> int:
               f"some threshold between that and 943616.", file=sys.stderr)
     kernel = None
     if a.compress_kernel != "none":
-        raw = boot.kernel
-        if raw[:2] == b"\x1f\x8b" or raw[:4] in (LZ4_FRAME_MAGIC, LZ4_LEGACY_MAGIC):
+        if boot.kernel[:2] == GZIP_MAGIC:
             print("  kernel: already compressed, left alone")
         else:
-            kernel = compress_kernel(raw, a.compress_kernel)
-            print(f"  kernel: {a.compress_kernel} {len(raw)} -> {len(kernel)} bytes "
-                  f"({100 * len(kernel) / len(raw):.0f}%)")
+            kernel = compress_kernel(boot.kernel)
+            print(f"  kernel: gzip {boot.kernel_size} -> {len(kernel)} bytes "
+                  f"({100 * len(kernel) / boot.kernel_size:.0f}%)")
     out = boot.rebuild(second, kernel)
     with open(a.out, "wb") as fh:
         fh.write(out)
     print(f"  wrote {a.out}  ({len(out)} bytes)")
 
-    verify_boot, verify_res, _ = load(a.out)
+    verify_boot, verify_res = load(a.out)
     expected_kernel = kernel if kernel is not None else boot.kernel
     assert verify_boot.kernel == expected_kernel, "kernel payload changed — refusing"
     if kernel is not None:
@@ -679,9 +550,7 @@ def cmd_setargs(a) -> int:
     for name, off, size in verify_res.entries():
         if not name.startswith("rk-kernel.dtb"):
             continue
-        blob = verify_res.blob[off:off + size]
-        voff, vlen = fdt_find_bootargs(blob)
-        got = blob[voff:voff + vlen].split(b"\0")[0].decode().strip()
+        got = bootargs_of(verify_res, off, size).strip()
         assert got == expected[name].strip(), f"{name}: bootargs read back wrong"
         assert f"root={a.root}" in got, f"{name}: root= was not repointed"
         seen += 1
@@ -706,23 +575,21 @@ def main() -> int:
     p.add_argument("outdir")
     p.set_defaults(fn=cmd_extract)
 
-    p = sub.add_parser("setargs", help="repoint root= and repack in place")
+    p = sub.add_parser("setargs", help="repoint root= and repack")
     p.add_argument("bootimg")
     p.add_argument("out")
-    p.add_argument("--root", required=True, help="e.g. /dev/mmcblk1p4")
+    p.add_argument("--root", required=True, help="e.g. /dev/mmcblk1p3")
     p.add_argument("--rootfstype", default=None, help="e.g. ext4")
     p.add_argument("--drop", action="append", default=[],
                    metavar="PREFIX", help="remove tokens starting with PREFIX (repeatable)")
     p.add_argument("--append", default=None,
                    metavar="TOKENS", help='extra tokens, e.g. "console=tty0"')
-    p.add_argument("--compress-kernel", choices=("none", "gzip", "lz4"), default="none",
-                   help="store the kernel compressed so U-Boot reads far less off "
-                        "the card. Both are sniffed by this U-Boot; gzip is smaller, "
-                        "lz4 inflates faster")
-    p.add_argument("--led-trigger", default=None, metavar="NAME",
-                   help="set /leds/work linux,default-trigger (e.g. heartbeat)")
+    p.add_argument("--compress-kernel", choices=("none", "gzip"), default="none",
+                   help="store the kernel gzipped so U-Boot reads far less off "
+                        "the card; this U-Boot sniffs the format")
     p.add_argument("--logo", default=None, metavar="BMP",
-                   help="replace logo.bmp/logo_kernel.bmp (must be the same byte size)")
+                   help="replace logo.bmp/logo_kernel.bmp; any size, subject to "
+                        "RESOURCE_SAFE_BYTES")
     p.add_argument("--sd-uhs", choices=("off", "sdr50", "sdr104"), default="off",
                    help="raise the boot slot's UHS ceiling above the vendor's "
                         "SDR25. The controller does SDR104 and max-frequency is "

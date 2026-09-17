@@ -79,6 +79,31 @@ static int gpt_find(struct gpt *g, const char *want) {
 	return -1;
 }
 
+// Refresh both headers' CRCs over the current table and write both copies,
+// backup first: if power is lost mid-commit the primary still describes the old
+// layout, and every consumer here (SPL, U-Boot, the kernel) reads the primary.
+// `primary` and `backup` are the two header sectors, already pointed at their
+// own LBAs by the caller. NULL on success, else the reason.
+static const char *gpt_commit(int fd, struct gpt *g, uint8_t *primary, uint8_t *backup,
+                              uint64_t backup_hdr_lba, uint64_t backup_entries_lba) {
+	uint32_t table_crc = gpt_crc32(g->table, g->table_bytes);
+	uint8_t *hdr[2] = {primary, backup};
+	for (int i = 0; i < 2; i++) {
+		gpt_wr32(hdr[i] + 88, table_crc);
+		gpt_wr32(hdr[i] + 16, 0);
+		gpt_wr32(hdr[i] + 16, gpt_crc32(hdr[i], 92));
+	}
+	if (pwrite(fd, g->table, g->table_bytes, backup_entries_lba * SECTOR) !=
+	        (ssize_t)g->table_bytes ||
+	    pwrite(fd, backup, SECTOR, backup_hdr_lba * SECTOR) != SECTOR || fsync(fd) != 0)
+		return "cannot write the backup GPT";
+	if (pwrite(fd, g->table, g->table_bytes, g->entries_lba * SECTOR) !=
+	        (ssize_t)g->table_bytes ||
+	    pwrite(fd, primary, SECTOR, 1 * SECTOR) != SECTOR || fsync(fd) != 0)
+		return "cannot write the primary GPT";
+	return NULL;
+}
+
 // Read the primary header and entry table. NULL on success, else the reason.
 static const char *gpt_read(int fd, struct gpt *g) {
 	if (pread(fd, g->hdr, SECTOR, 1 * SECTOR) != SECTOR) return "cannot read the GPT";

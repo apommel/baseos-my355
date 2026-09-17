@@ -9,12 +9,12 @@
 # source.json covers the contents and is what every build checks.
 #
 # No preloader — mkpreloader.py patches your own mtd5, and recovery needs a NAND
-# backup. Take one either way (docs/03-nand-backup-and-recovery.md).
+# backup. Take one either way (docs/recovery.md).
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=tools/docker-platform.sh
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=tools/common.sh
+. "$HERE/tools/common.sh"
 
 PREPARED="$HERE/manifest/prepared"
 WORK="$HERE/work/my355/prepared"
@@ -43,14 +43,6 @@ WANT_SHA="$(cut -d' ' -f1 < "$PREPARED/bundle.sha256")"
 NAME="$(awk '{print $NF}' < "$PREPARED/bundle.sha256")"
 URL="${BASEOS_PREPARED_URL:-$(cat "$PREPARED/bundle.url")}"
 
-sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | cut -d' ' -f1
-  else
-    shasum -a 256 "$1" | cut -d' ' -f1
-  fi
-}
-
 # A differing local source.json means a prepare against another dump; it is the
 # only record of what that build came from.
 if [ -f "$WORK/source.json" ] && ! cmp -s "$PREPARED/source.json" "$WORK/source.json" \
@@ -74,7 +66,7 @@ if [ -n "$BUNDLE" ]; then
 else
   mkdir -p "$CACHE_DIR"
   BUNDLE="$CACHE_DIR/$NAME"
-  if [ -f "$BUNDLE" ] && [ "$(sha256_of "$BUNDLE")" = "$WANT_SHA" ]; then
+  if [ -f "$BUNDLE" ] && [ "$(baseos_sha256 "$BUNDLE")" = "$WANT_SHA" ]; then
     echo "using previously downloaded $BUNDLE"
   else
     echo "downloading $URL"
@@ -83,7 +75,7 @@ else
   fi
 fi
 
-GOT_SHA="$(sha256_of "$BUNDLE")"
+GOT_SHA="$(baseos_sha256 "$BUNDLE")"
 if [ "$GOT_SHA" != "$WANT_SHA" ]; then
   echo "bundle SHA-256 mismatch — refusing to unpack" >&2
   echo "  expected $WANT_SHA" >&2

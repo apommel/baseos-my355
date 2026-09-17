@@ -2,42 +2,33 @@
 # Build the my355 (Miyoo Flip) rootfs tarball.
 #
 # Four sources, assembled in this order so each can override the last:
-#   1. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
-#   2. the stock harvest (work/my355/prepared/stock-harvest.tar) — glibc, Mali,
+#   1. the merged-/usr skeleton the harvest assumes
+#   2. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
+#   3. the stock harvest (work/my355/prepared/stock-harvest.tar) — glibc, Mali,
 #      SDL2, adbd, wpa_supplicant; a verified closure, see prepare-stock.sh
-#   3. the merged-/usr skeleton the harvest assumes
 #   4. overlay/ — init, inittab, rcS, the frontend session
 #
-# fbsplash is built from the shared src/fbsplash.c: this device has no console,
-# so a status message on the panel is the only way to say "insert a card" or
-# "installing frontend". It reads panel geometry from the framebuffer and
-# rotation from /etc/baseos-release. src/gptgrow.c is built the same way.
+# fbsplash is built from src/fbsplash.c: this device has no console, so a status
+# message on the panel is the only way to say "insert a card" or "installing
+# frontend". It reads panel geometry from the framebuffer and rotation from
+# /etc/baseos-release. src/gptgrow.c is built the same way.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=tools/common.sh
+. "$HERE/tools/common.sh"
 WORK="$HERE/work/my355"
 PREPARED="$WORK/prepared"
 mkdir -p "$WORK"
 
-BASEOS_VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
-[ -n "$BASEOS_VERSION" ] || { echo "VERSION is empty" >&2; exit 1; }
+BASEOS_VERSION="$(baseos_version)"
 BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
 # Two builds of the same uncommitted tree would otherwise share an id, and a card
 # skips a same-version payload whose id matches its own. build-update.sh reads it.
 case "$BASEOS_BUILD" in *-dirty) BASEOS_BUILD="$BASEOS_BUILD-$(date -u +%Y%m%d%H%M%S)" ;; esac
 printf '%s\n' "$BASEOS_BUILD" > "$WORK/build-id"
 
-
-for artifact in source.json stock-harvest.tar; do
-  [ -f "$PREPARED/$artifact" ] || {
-    echo "missing $PREPARED/$artifact" >&2
-    echo "run ./fetch-prepared.sh, or ./prepare-stock.sh from a NAND dump" >&2
-    exit 1
-  }
-done
-python3 "$HERE/tools/source_manifest.py" verify "$PREPARED/source.json" "$PREPARED" --quiet
-
+baseos_require_prepared "$PREPARED"
 baseos_require_aarch64
 
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
@@ -48,7 +39,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   apk add -q busybox-static
   R=/tmp/rootfs; rm -rf "$R"; mkdir -p "$R"
 
-  # Merged /usr, matching the stock rootfs the harvest came from.
+  # 1. Merged /usr, matching the stock rootfs the harvest came from.
   mkdir -p "$R"/usr/bin "$R"/usr/sbin "$R"/usr/lib "$R"/usr/share
   ln -sf usr/bin  "$R"/bin
   ln -sf usr/sbin "$R"/sbin
@@ -62,7 +53,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # Stock uses the lowercase path, NextUI the uppercase one.
   ln -sfn /mnt/SDCARD "$R"/mnt/sdcard
 
-  # 1. BusyBox and its applet links (mount, sh, init, getty, ... — rcS calls
+  # 2. BusyBox and its applet links (mount, sh, init, getty, ... — rcS calls
   #    them by path, so the links must exist).
   cp /bin/busybox.static "$R"/usr/bin/busybox
   chroot "$R" /usr/bin/busybox --install -s
@@ -70,7 +61,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # on the device.
   [ -L "$R"/sbin/init ] || { echo "busybox --install left no /sbin/init" >&2; exit 1; }
 
-  # 2. The stock harvest. Applied after BusyBox so vendor binaries win where
+  # 3. The stock harvest. Applied after BusyBox so vendor binaries win where
   #    both provide a name.
   tar -xf /work/prepared/stock-harvest.tar -C "$R"
 
@@ -102,13 +93,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # whole file when bt_init.sh loads it.
   strip --strip-debug "$R"/usr/lib/modules/rtk_btusb.ko
 
-  # 3. The overlay wins over everything.
+  # 4. The overlay wins over everything. cp -a carries the modes across, and
+  #    every script in overlay/ is committed executable.
   cp -a /overlay/. "$R"/
-  chmod +x "$R"/init "$R"/etc/init.d/* \
-           "$R"/usr/sbin/frontend-session "$R"/usr/sbin/usb-gadget-adb \
-           "$R"/usr/sbin/expand-storage "$R"/usr/sbin/mount-frontend \
-           "$R"/usr/sbin/baseos-update \
-           "$R"/usr/bin/baseos-splash "$R"/usr/share/udhcpc/default.script
 
   # All three from VERSION so they cannot drift. NextUI reads
   # /usr/miyoo/version for its About screen.

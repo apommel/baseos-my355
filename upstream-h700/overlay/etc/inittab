@@ -1,9 +1,0 @@
-# BusyBox init for NextUI H700 base OS.
-# Kernel runs /init -> /sbin/init (busybox) which reads this file.
-::sysinit:/etc/init.d/rcS
-::respawn:/sbin/nextui-session
-# Serial console on the debug UART (dev builds; harmless without a cable).
-ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100
-::ctrlaltdel:/sbin/reboot
-::shutdown:/etc/init.d/rcK
-::restart:/sbin/init

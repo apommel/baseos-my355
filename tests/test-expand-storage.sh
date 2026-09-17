@@ -1,11 +1,11 @@
 #!/bin/sh
 # Offline tests for the first-boot card expansion: gptgrow against a real GPT,
-# and expand-storage against stubs. Host-native, no device needed.
+# and expand-storage against stubs. Runs in a container; no device needed.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/docker-platform.sh
-. "$HERE/tools/docker-platform.sh"
+# shellcheck source=../tools/common.sh
+. "$HERE/tools/common.sh"
 
 echo "== gptgrow =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
