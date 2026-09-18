@@ -14,7 +14,10 @@ behaves exactly as it does on stock.
 ```
 
 Both routes produce byte-identical inputs, and `source.json` — which travels in
-git, not inside the bundle — is what every build checks them against.
+git, not inside the bundle — is what every build checks them against. The
+harvest's paths are checked against `manifest/harvest.list` as well: its hash
+would still match an old tar after the list changes, so a list edit that was
+never re-prepared fails the build instead of shipping without the new path.
 
 ## Sources
 

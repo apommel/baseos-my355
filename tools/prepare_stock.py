@@ -40,23 +40,11 @@ import tarfile
 import tempfile
 import time
 
-from source_manifest import sha256_of
+from source_manifest import read_list, sha256_of
 
 MTD1 = "mtd1-uboot.img"
 MTD2 = "mtd2-boot.img"
 MTD3 = "mtd3-rootfs.img"
-
-
-def read_list(path: str) -> tuple[list[str], list[str]]:
-    """Returns (include, exclude). A leading "!" excludes a path from a
-    directory listed above it — tzdata's right/ tree, for example."""
-    include, exclude = [], []
-    for line in open(path):
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        (exclude if line.startswith("!") else include).append(line.lstrip("!").strip())
-    return include, exclude
 
 
 def elf_needed(path: str) -> tuple[list[str], str | None]:
