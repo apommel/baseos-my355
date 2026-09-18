@@ -51,6 +51,43 @@ Stock also lets you test binaries against the *exact* kernel before trusting
 them: `adb shell /media/sdcardN/bin/busybox` confirmed our static aarch64
 busybox runs, ruling out the rootfs while the real bug was elsewhere.
 
+## The mainline U-Boot path
+
+With `MY355_UBOOT=mainline` ([U-Boot](uboot.md) Part 3) there is no logo either,
+so the panel stays dark until the kernel draws whether or not the boot worked.
+A debug build (`MY355_UBOOT_DEBUG=1`, the default) makes up for it two ways.
+
+**The charge LED** (`gpio0 PC2`, off from reset until the kernel's
+`battery-charging` trigger claims it) marks U-Boot's stages. Keep the charger
+connected during bring-up so a failed boot cannot flatten the battery; a cable
+at power-on only matters for timing boots.
+
+| with the card in the right slot | means |
+|---|---|
+| stock boots | the SPL rejected our `uboot` FIT and fell through to NAND |
+| dark, LED never lit | U-Boot died during its own init, before the boot script — the one blind case; the last change is the suspect |
+| dark, LED stays lit | stuck finding or reading the `boot` FIT: read the log |
+| dark, LED lit then off | the FIT was read; the hang is in `bootm` or the kernel: read the log |
+| the device switches itself off | `bootm` refused the FIT, or the read failed; the log says which |
+
+**U-Boot's console output** is recorded and written to the last 64 KiB of the
+active `boot` partition just before hand-off, and again if the hand-off fails.
+On BaseOS, `baseos-bootinfo log`. After a failed boot, from stock with the card in
+the left slot:
+
+```sh
+adb shell 'n=$(cat /sys/class/block/mmcblk2p2/size); dd if=/dev/mmcblk2p2 bs=512 skip=$((n - 128)) count=128 2>/dev/null' | tr -d '\000'
+```
+
+The first save happens before `bootm`, so a log that ends at the FIT read with
+no `bootm` error after it means the hang is in `bootm` or the kernel — the shape
+the 2026-08-24 failure would have had. A failed `bootm` returns, and the second
+save then captures its error. Before the save, the debug script also logs
+`mmc info` and `SDMMC0_CON0/1`, the card's drive and sample phases; `Bus Speed`
+there is what U-Boot asked for, which until patch `0004` was twice what the card
+got ([U-Boot](uboot.md)). `baseos-bootinfo` alone prints U-Boot's bootstage
+timings on any mainline boot that reached userspace.
+
 ## Failure signatures
 
 | symptom | means |

@@ -16,6 +16,11 @@ VERSION="$(baseos_version)"
 command -v zip >/dev/null 2>&1 || { echo "zip is required to package images" >&2; exit 1; }
 # Up front, rather than part-way through a long build.
 baseos_require_prepared "$WORK/prepared"
+if [ "${MY355_UBOOT:-vendor}" = mainline ]; then
+  python3 "$HERE/tools/mkfit.py" verify-uboot "$WORK/uboot-mainline.json" \
+    "$WORK/uboot-mainline.itb" >/dev/null || {
+    echo "run ./build-uboot.sh first (MY355_UBOOT=mainline)" >&2; exit 1; }
+fi
 
 "$HERE/build-rootfs.sh"
 "$HERE/build-image.sh"

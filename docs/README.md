@@ -32,7 +32,7 @@ not deleted, in [history](history.md).
 | | |
 |---|---|
 | [decisions](decisions.md) | The choices the port rests on, and what is still open. |
-| [U-Boot](uboot.md) | Tuning it (tried, 22 ms) and replacing it (shelved). |
+| [U-Boot](uboot.md) | Tuning it (tried, 22 ms) and replacing it with mainline (under evaluation). |
 | [history](history.md) | Experiments, SPL disassembly, superseded measurements, every retracted theory. |
 
 ## The short version

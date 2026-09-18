@@ -56,14 +56,25 @@ SPI NAND, **not** sector 64 as on SD), emission of the `bootdev` ATAG, and a DDR
 blob BL31 accepts. Each is individually known; together they are a real piece of
 work, and every iteration is a preloader write.
 
-### Keep the vendor U-Boot
+### The vendor U-Boot by default; mainline under evaluation
 
-Replacing it is the largest remaining boot-time lever — 1.2–1.7 s — and needs no
-NAND write, because the card already carries the `uboot` partition. Evaluated and
-**shelved**: mainline U-Boot has no VOP2 driver, so a boot logo means writing
-one, and a dark panel until the kernel comes up is a worse product than a slower
-boot. Tuning the vendor one from its device tree was tried and measured at 22 ms.
-Both in [U-Boot](uboot.md).
+Replacing it needs no NAND write, because the card already carries the `uboot`
+partition, and it fails safe: a bad FIT sends the SPL on to stock in NAND. The
+1.2–1.7 s once projected for it is **refuted**; what it measures is smaller and
+still growing. The first build to boot (2026-09-05) was 0.16 s slower, because
+it handed the kernel 816 MHz where the vendor hands 1104. Matching that,
+decoding zstd, and driving the card at the 50 MHz it only claimed to use, it
+reaches `Run /init` **0.92 s** ahead (2026-09-18). It costs the boot logo —
+mainline U-Boot has no VOP2 driver — and the low-battery guard.
+
+So it is built behind `MY355_UBOOT=mainline` and ships only if it measures faster
+end to end with those costs accepted. It replaces U-Boot proper and nothing else:
+BL31, OP-TEE and the SPL's control tree stay the vendor's, byte-for-byte. Its
+four U-Boot patches are ours to carry: a boot-script helper command, room for
+the bootstage report, unaligned access for the decompressors, and the RK3568 SD
+clock — an upstream bug, and the one to send upstream.
+Tuning the vendor U-Boot from its device tree was tried and measured at 22 ms.
+All in [U-Boot](uboot.md).
 
 ### No signing key for updates
 

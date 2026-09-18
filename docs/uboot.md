@@ -1,9 +1,11 @@
 # U-Boot
 
-Two separate questions, both settled. **Part 1**: tuning the vendor U-Boot —
-tried, measured at 22 ms, code removed. **Part 2**: replacing it — evaluated,
-shelved. The decision that rests on them is in [decisions](decisions.md); what
-either would be worth is in [boot time](boot-time.md).
+**Part 1**: tuning the vendor U-Boot — tried, measured at 22 ms, code removed.
+**Part 2**: replacing it — evaluated 2026-08-22 and shelved. **Part 3**: replacing
+it after all — a first build booted on 2026-09-05, and this one is rebuilt from
+what that taught, behind `MY355_UBOOT=mainline`; the vendor U-Boot stays the
+default. The decision is in [decisions](decisions.md); what each is worth is in
+[boot time](boot-time.md).
 
 ---
 
@@ -32,6 +34,12 @@ tree (the kernel's own mode changed from `sd uhs SDR25` to `new high speed SDXC
 card`, both 50 MHz) and the budget did not move. **So the slow read is not a UHS
 fallback**; the cause is inside the binary — transfer sizes, no DMA, or the SHA1 —
 and unreachable from a device tree. Halving that 1.19 s needs Part 2.
+
+Mainline had the same ceiling for a reason now found: on this SoC the SD
+controller halves its input clock, and mainline's RK3568 clock driver did not
+provide for it, so "50 MHz" ran the card at 25 MHz (Part 3, *The SD clock*).
+10.9 MB/s sits under that 12.5 MB/s cap too, so the vendor binary most likely
+carries the same driver; its source was not checked.
 
 **The crypto block, 2026-09-16.** The vendor U-Boot has a
 `rockchip,rk3568-crypto` driver, and the node ships `disabled`, so the SHA1 over
@@ -64,7 +72,10 @@ HDMI every boot and gets nothing (on a live unit it patched `logo,offset` into
 route-dsi0 only, and `card0-HDMI-A-1` reads `disconnected`). Worth 0.05–0.2 s, but
 HDMI is supported on stock and NextUI.
 
-# Part 2 — Replacing it (evaluated, not pursued)
+# Part 2 — Replacing it (evaluated 2026-08-22, superseded by Part 3)
+
+> Kept as the record of what was believed before anything was booted. Its
+> 1.2–1.7 s estimate and its zstd case are **refuted** by measurement; see Part 3.
 
 The card's `uboot` partition holds the vendor 2017.09 FIT verbatim. Replacing it
 with a lean mainline build was evaluated and **shelved**.
@@ -205,3 +216,264 @@ From the build that was made and then removed (U-Boot v2026.07,
   `rockchip-dmc` in dmesg — all four FSPs, no `loader&trust unmatch!!!` — as
   [SD boot](boot-chain.md) did for the preloader swap. Stock's own BL31 is TF-A v2.3
   (Jun 2023), so an older rkbin BL31 is the fallback.
+
+# Part 3 — Mainline U-Boot, under evaluation (2026-09-18)
+
+`./build-uboot.sh` then `MY355_UBOOT=mainline ./build-image.sh`. The default
+stays `vendor` until mainline is settled on the costs listed at the end. It
+**boots**, and it reaches `Run /init` **0.92 s earlier** than the vendor path:
+2.66 s against 3.58 s (2026-09-18; U-Boot's timings agree to 0.1 ms over four
+cold boots). Everything below is measured on this unit and card unless marked
+otherwise.
+
+## What the first build measured (2026-08-24 / 09-05)
+
+Flashed 2026-08-24: dark screen, no kernel. The kernel was never told OP-TEE
+sits resident at `0x08400000`, overwrote it and died after `Starting kernel`.
+The vendor U-Boot hides those 16 MiB by splitting `/memory` (the stock serial
+log: `Adding bank 0x00200000 - 0x08400000`, then `0x09400000 - …`); mainline
+does not. Fixed with a `/reserved-memory` node, confirmed on the next boot by
+the kernel reserving exactly 16 MiB more.
+
+Booted 2026-09-05, one U-Boot binary, one cold boot per payload:
+
+| payload | FIT | first printk | kernel → `Run /init` | → `rcS` done |
+|---|---|---|---|---|
+| vendor U-Boot, gzip | 13.09 MB | 3.134 s | 1.523 s | **4.83 s** |
+| mainline, gzip | 13.09 MB | **2.682 s** | 2.095 s | 4.99 s |
+| mainline, none | 36.75 MB | 4.188 s | 2.098 s | 6.50 s |
+| mainline, zstd | 10.93 MB | 4.277 s | 2.107 s | 6.61 s |
+
+0.45 s faster before the kernel, 0.57 s slower inside it. **Retracted:** "zstd
+decodes in ~2.1 s against gzip's ~0.35 s, and it stays out". The 0.35 s was the
+vendor U-Boot's inflate, borrowed; mainline's is 0.61 s at the same clock, and
+zstd's slowness was U-Boot's build flags, not zstd (below).
+
+## What was re-examined, and what changed
+
+| belief from the first build | now | evidence |
+|---|---|---|
+| The vendor U-Boot hands the kernel a CPU at 1104 MHz; mainline at 816 | **verified, fixed** | stock serial log: `CLK: (sync kernel. arm: enter 816000 KHz …)`, `armclk 1104000 KHz`; mainline `cru_rk3568.h`: `APLL_HZ (816 * MHz)`. Before cpufreq, the kernel took 0.788 s at 816 MHz against the 0.785 s the ratio predicts |
+| `vdd_cpu` is a TCS4525 at i2c0 `0x1c`, at 850 mV | **wrong** | the Flip has an **RK8600 at `0x40`** (i2cdump of `0x1c` is empty; Miyoo confirmed one SKU, per the wiki). It powers on at **1000 mV** (VSEL0 `0x97`, read by our U-Boot). The 850 mV was read from a running kernel after cpufreq had set it |
+| quartz64-a's control tree is correct for the Flip | **SD slot only** | right for `sdmmc0`'s rails and card detect, wrong for the CPU rail, and it describes Ethernet, PCIe and USB this board lacks — 287 ms of pre-relocation driver model (below) |
+| U-Boot may read the kernel at a fixed sector | **wrong** | an A/B update moves `boot` to its other half (`src/gptslot.c`: nothing in the boot chain references an address). That U-Boot would have booted the old kernel on the new rootfs |
+| U-Boot init ~0.91 s, SD read ~12.7 MB/s | **measured: 0.97 s, 12.0 MB/s** | bootstage, below. The inferred split had borrowed the vendor's inflate time |
+| zstd is slower than gzip on this SoC | **wrong** | U-Boot builds arm64 with `-mstrict-align`, and `ZSTD_LIB_MINIFY` defaults on; together 5.6x. Below |
+| SDR50 in U-Boot needs only `mmc_of_parse()` and two Kconfig lines | **incomplete** | U-Boot's io-domain driver sets `PMU_GRF_IO_VSEL` once, at probe; the 1.8 V switch never updates it. Not attempted |
+| U-Boot drives the card at 50 MHz, and 12.0 MB/s is what that allows | **wrong: 25 MHz** | the controller halves its input clock and mainline's RK3568 clock driver did not provide for it (below). Fixed: **23.8 MB/s** |
+
+**Zlyme** and **ROCKNIX** both boot this unit with mainline U-Boot v2026.01 on
+`quartz64-a-rk3566_defconfig` plus charger-wake shutdown, an rkbin BL31 and an
+extlinux scan of a FAT partition, into a mainline kernel. They prove the stock
+SPL loads a mainline `u-boot.itb`; they are not built for speed (Zlyme: "under
+10 seconds"). Their Flip device tree is the reference for the RK8600 and the LEDs.
+
+## Where U-Boot's time goes
+
+Bootstage, debug build, USB unplugged, each change added to the one before:
+three cold boots at 816 MHz agreeing to 0.2 ms, one at 1104 MHz, one with the
+zstd kernel, then four with the SD clock fixed, agreeing to 0.1 ms.
+
+| stage | 816 MHz, gzip | 1104 MHz | zstd | **SD clock** | |
+|---|---|---|---|---|---|
+| → `board_init_f` | 45 ms | 45 | 45 | 45 | |
+| **pre-relocation init** | 568 ms | 566 | 569 | **570** | caches are off until `initr_caches()` in `board_r`; `dm_f` alone is 287 ms binding quartz64-a's tree. The same work post-relocation (`dm_r`) takes 1.5 ms |
+| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | |
+| `my355 cpu 1104` | — | 2 | 2 | 2 | |
+| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | **202** | the kernel initialises the same card, SDR104 tuning included, in 90–220 ms. Why the clock fix also took 87 ms off is not established |
+| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | **536** | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
+| debug log save | 8 ms | 8 | 8 | 7 | the debug build's whole cost |
+| **decompress** | 608 ms | 447 | 347 | **348** | gzip, then zstd |
+| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | |
+| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | **1,791** | |
+
+| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | **SD clock** |
+|---|---|---|---|---|---|
+| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | **1.837** |
+| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | **2.663** |
+
+The kernel phase, 0.79–0.83 s, varies with SD card detection (88–219 ms from
+controller probe to `new ultra high speed SDR104`). One boot with the SD clock
+fixed reached `Run /init` at 3.050 s: its root needed an ext4 journal replay
+(`EXT4-fs (mmcblk1p3): recovery complete`) after an unclean shutdown, which
+is the root being mounted `rw` ([decisions](decisions.md)), not U-Boot.
+
+Bootstage and printk share the arch counter (hand-off at 1,791 ms, first printk
+at 1,837 ms), but its zero is **not** power-on: `board_init_f` reads 45 ms,
+after a bootrom, DDR init, SPL and BL31 the docs put at 0.39 s. Comparisons
+between the two paths hold, because everything before U-Boot is identical on
+both; "power-on-relative" elsewhere in these docs means "since the counter
+started". Open.
+
+## The CPU clock
+
+`my355 cpu 1104` (patch `0001`) runs first in the boot script: it checks the
+RK8600's ID, reads VSEL0 (712.5 mV + 12.5 mV per step, 6-bit, confirmed against
+the kernel's own reading), raises it to 900 mV only if it is lower, then sets
+`ARMCLK` and reads it back. On this unit the rail already sits at 1000 mV, so
+it only sets the clock. **Nothing above 1104 MHz**: the vendor kernel sets
+`vdd_cpu` to its `regulator-init-microvolt` of 900 mV when the regulator probes,
+before cpufreq, so a faster hand-off would be under-volted for that window.
+
+Inflate 608 → 447 ms, first printk 2.723 → 2.537 s. The kernel phase moved less
+than predicted (0.94 → 0.90 s) because it now waits on the SD card: detection
+took 212 ms on that boot against 90 ms on an earlier one.
+
+## zstd
+
+Measured by linking **U-Boot's own compiled decoders** — `lib/zstd`, `lib/zlib`,
+`lib/xxhash`, `lib/string.c`, built with U-Boot's exact flags and renamed so
+glibc's routines never stand in — into a static program run on the Flip at a
+pinned 1104 MHz (`tools/uboot/decomp-bench/`). Its gzip reads 428 ms against the
+447 ms U-Boot measured itself, so the numbers carry over.
+
+| decoder build | 8 MiB window + checksum | 8 MiB | 1 MiB | 128 KiB | level 9 |
+|---|---|---|---|---|---|
+| U-Boot as built | 1,982 ms | 1,869 | 1,816 | 1,704 | 1,538 |
+| without `MINIFY` | 1,793 | 1,667 | 1,564 | 1,390 | 1,334 |
+| without `-mstrict-align` | 998 | 1,050 | 915 | 784 | 811 |
+| **without either** | 738 | 630 | 503 | 446 | 650 |
+
+* **`-mstrict-align`**, which U-Boot applies to all of arm64, turns zstd's
+  unaligned loads and 16-byte copies into byte operations: 2x. gzip, which works
+  bytewise anyway, gains only 428 → 392 ms.
+* **`ZSTD_LIB_MINIFY`** strips the fast decode paths to save ~50 KB: a further
+  1.6x once alignment is fixed, almost nothing before.
+* **The window**: 8 MiB of history does not stay in this SoC's caches; 128–256
+  KiB does, 1.4x.
+* **The checksum** costs ~100 ms to verify.
+
+Tuned on the fixed decoder, `--ultra -22 --zstd=wlog=18,mml=6 --no-check`
+decodes in **352 ms** at 12.64 MB — slightly *larger* than gzip's 12.50 MB,
+because a larger minimum match trades ratio for fewer, longer copies. At the
+current read rate every good setting lands within 15 ms of it (the smallest,
+11.28 MB, decodes in 467 ms); this one is chosen because it keeps winning if the
+read gets faster:
+
+| | size | decode | read at 12.0 MB/s | total |
+|---|---|---|---|---|
+| gzip, U-Boot as built | 12.50 MB | 428 ms | 1,042 ms | 1,470 ms |
+| gzip, unaligned allowed | 12.50 MB | 392 ms | 1,042 ms | 1,434 ms |
+| zstd, first build | 10.83 MB | 1,982 ms | 903 ms | 2,885 ms |
+| **zstd, as shipped here** | 12.64 MB | **352 ms** | 1,053 ms | **1,405 ms** |
+
+Predicted −65 ms against gzip; booted, it decoded in **347 ms** and moved
+`start_kernel` by **−87 ms**. At the 23.8 MB/s the read runs at since, the
+smallest setting would lose: 475 + 467 ms against 531 + 348 for this one.
+Patch `0003` builds `lib/zstd`, `lib/zlib` and `lib/xxhash` with
+`-mno-strict-align` and clears `SCTLR.A` in `image_decomp()`: bootm decompresses
+after relocation, with the MMU on and DRAM mapped as normal memory, where that
+bit is all that could forbid an unaligned access. `CONFIG_ZSTD_LIB_MINIFY` is
+off. `mkfit.py` owns the encoder settings; `MY355_COMPRESS_KERNEL=gzip` still
+builds a gzip FIT.
+
+## The SD clock
+
+On the RK3568 the dw_mmc controller divides its input clock by 2 before the
+card sees it. The kernel provides for it (`RK3288_CLKGEN_DIV`): on this unit,
+`clk_sdmmc0` runs at 297 MHz to drive the card at 148.5 MHz. U-Boot's
+px30, rk3308, rk3328 and rk3399 clock drivers do the same, taking and
+reporting the card's rate and programming the CRU at double. **The rk3568
+driver maps the request straight onto the CRU**, so the MMC core's 50 MHz
+reached the card as 25 MHz, and 4-bit 25 MHz caps a read at 12.5 MB/s: the
+12.0 measured. The core never knew; `mmc info` printed `Bus Speed: 50000000`
+throughout. Unfixed on upstream master as of 2026-09-18, and Zlyme and ROCKNIX
+build this driver too.
+
+Patch `0004` provides the double: 50 MHz → the 100 MHz source, 25 → 50, and
+400 kHz stays on the 750 kHz source (375 kHz at the card, as before). The read
+went **1,063 → 536 ms**, 23.8 MB/s. U-Boot programs no drive or sample phase;
+what the SPL leaves (`SDMMC0_CON0/1` = `4`/`0`: drive 180°, sample 0°) is what
+Linux uses at these speeds, and the debug build logs both registers alongside
+`mmc info`.
+
+The next doubling is SDR50: 100 MHz at 1.8 V, no tuning needed. It needs the
+1.8 V switch, which U-Boot's io-domain driver does not follow (it sets
+`PMU_GRF_IO_VSEL` once, at probe), and it hands the kernel a card already at
+1.8 V. Not attempted.
+
+## How this build works
+
+**The secure world is the vendor's.** `mkfit.py uboot` takes the stock FIT apart
+and replaces only the `uboot` image: BL31, OP-TEE and the SPL's control FDT stay
+byte-for-byte, layout and `loadables` mirror the vendor's, and every image carries
+the sha256 the SPL checks (it checks no signature: `## Verified-boot: 0`). The DDR
+blob in `mtd5` is paired with its BL31, and the vendor kernel reaches BL31 for DDR
+scaling, so U-Boot stays the only variable. `CONFIG_TEXT_BASE` is the vendor's
+`0x00a00000`, the address the first build booted at.
+
+**The boot FIT.** `mkfit.py boot` packs the vendor kernel (zstd by default,
+round-trip checked) and `rk-kernel.dtb` with the same command line, SD flags and
+root as the vendor path, plus the OP-TEE reservation. No hash nodes: bootm
+treats them as optional, and a hash over the kernel is the work this path exists
+to delete. A 512-byte header in front carries `MY355FIT` and the FIT's sector
+count.
+
+**The boot script**, generated by `build-uboot.sh`: `my355 cpu 1104`, `mmc dev
+1`, then `part start`/`part size` to find `boot` **by name**, read the header,
+check both magic words, read exactly the FIT, `bootm`. Every step after the
+clock is `&&`-chained, and a failed `bootm` ends in `poweroff` rather than a dark
+screen until the battery is flat. No scan, no filesystem, no environment.
+
+| DRAM | holds |
+|---|---|
+| `0x02000000` | the kernel, decompressed (2 MiB-aligned; `image_size` incl. BSS checked) |
+| `0x08400000`–`0x093fffff` | OP-TEE, resident; nothing may be staged here |
+| `0x0a000000` | the boot FIT as read |
+| `0x0c000000` | its header |
+| `0x0c100000` | the console record, staged for writing (debug builds) |
+
+`mkfit.py` owns this map, refuses any overlap, and `build-uboot.sh` bakes it into
+the boot script; `build-image.sh` refuses a U-Boot built against another.
+
+**The configuration** is `quartz64-a-rk3566_defconfig` plus
+`tools/uboot/my355.config` — no scan, PCIe, USB, networking, SFC or eMMC driver,
+`BOOTDELAY=-2`, `BOOTSTAGE_FDT`, zstd without `MINIFY`. `build-uboot.sh` asserts
+every fragment line survives `olddefconfig`, and builds with
+`SOURCE_DATE_EPOCH=0`: two builds of the same inputs give the same FIT.
+
+**Four patches** in `tools/uboot/patches/`:
+
+* `0001` — the `my355` command: `mark <name>` (a bootstage record from the boot
+  script), `cpu <MHz>` (above) and `log <addr> <max>` (the console record, for
+  saving to the card).
+* `0002` — room for the bootstage report. `image_setup_libfdt()` shrinks the
+  kernel's tree to its minimum before the report is added, so only the last ten
+  of ~30 records fitted and the earliest were lost; the tree is grown back by
+  4 KiB inside a `CONFIG_SYS_FDT_PAD` raised to 24 KiB.
+* `0003` — unaligned access for the decompressors (above).
+* `0004` — the SD clock at the rate asked for (above); the one worth sending
+  upstream.
+
+## Measuring it
+
+`baseos-bootinfo` on the device prints U-Boot's bootstage records, which it
+writes into the kernel's tree at hand-off (`/proc/device-tree/bootstage`), and
+`baseos-bootinfo log` the console output a debug build saved, `mmc info` and the
+SD phase registers included. Build with `MY355_UBOOT_DEBUG=0` for timing boots;
+the debug build costs 7 ms.
+
+## Bring-up without a UART
+
+A debug build (`MY355_UBOOT_DEBUG=1`, the default) adds the console record and
+the charge LED; how to read them is in [diagnostics](diagnostics.md).
+
+## Next, in order
+
+1. **Pre-relocation init**, now the largest item at 570 ms with the caches off:
+   a Flip control tree with only the devices on the boot path, RK8600 included.
+2. **The read**, 536 ms: SDR50 would halve it (above).
+3. **Decompression**, 348 ms: at the CPU clock the vendor kernel allows.
+4. **Card init**, 202 ms against the kernel's 90–220 ms; and whether the state
+   U-Boot leaves the card in costs the kernel its variable detection time.
+5. Cold boots with `MY355_UBOOT_DEBUG=0`, expected 7 ms faster; and `0004`
+   upstream.
+6. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
+
+**What mainline gives up**, to be settled before it could become the default: the
+boot logo (no VOP2 driver; the panel is dark until the kernel draws), the
+low-battery guard and charge animation, the `.hdmi` device tree variant, and
+`androidboot.serialno` (`usb-gadget-adb` falls back to the machine id). It also
+removes `Freeing drm_logo memory`, the first-frame marker in
+[boot time](boot-time.md), so compare the two paths on first printk, `Run /init`
+and the `/run/boot-*` breadcrumbs.

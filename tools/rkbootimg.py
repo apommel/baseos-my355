@@ -290,6 +290,20 @@ def _fdt_rebuild(dtb: bytes, body: bytes, strings: bytes) -> bytes:
     return bytes(out)
 
 
+def _fdt_intern(strings: bytearray, name: str) -> int:
+    """Offset of `name` in the strings block, appending it if absent."""
+    encoded = name.encode() + b"\0"
+    # Reuse an existing string only on a whole-entry match; a suffix match
+    # (e.g. "sdr50" inside "sd-uhs-sdr50") would name the wrong property.
+    if strings.startswith(encoded):
+        return 0
+    at = strings.find(b"\0" + encoded)
+    if at >= 0:
+        return at + 1
+    strings += encoded
+    return len(strings) - len(encoded)
+
+
 def fdt_add_props(dtb: bytes, node: str,
                   props: "list[tuple[str, bytes]]") -> bytes:
     """Insert properties into the first node named `node`, growing the FDT.
@@ -318,14 +332,7 @@ def fdt_add_props(dtb: bytes, node: str,
     strings = bytearray(dtb[off_strings:off_strings + size_strings])
     tokens = bytearray()
     for name, value in todo:
-        encoded = name.encode() + b"\0"
-        # Reuse an existing string only on a whole-entry match; a suffix match
-        # (e.g. "sdr50" inside "sd-uhs-sdr50") would name the wrong property.
-        at = 0 if strings.startswith(encoded) else strings.find(b"\0" + encoded)
-        nameoff = at + 1 if at > 0 else (0 if at == 0 else len(strings))
-        if at < 0:
-            strings += encoded
-        tokens += struct.pack(">III", 3, len(value), nameoff)
+        tokens += struct.pack(">III", 3, len(value), _fdt_intern(strings, name))
         tokens += value + b"\0" * ((-len(value)) % 4)
 
     body = (dtb[off_struct:insert_at] + bytes(tokens)
@@ -342,6 +349,90 @@ def fdt_add_props(dtb: bytes, node: str,
         if check.get(name) != value:
             raise ValueError(f"{node}/{name}: damaged by insertion")
     return out
+
+
+def fdt_add_subnode(dtb: bytes, parent: str, name: str,
+                    props: "list[tuple[str, bytes]]") -> bytes:
+    """Append a child node to the first node named `parent`, growing the FDT.
+
+    The child goes just before the parent's FDT_END_NODE, which is valid
+    whatever the parent holds: properties precede subnodes, and this is after
+    both. A child of that name already present is left alone.
+    """
+    _fdt_require_dtc_layout(dtb)
+    off_struct, off_strings, size_strings, size_struct = _fdt_header(dtb)
+    try:
+        fdt_node_props(dtb, name)
+        return dtb
+    except KeyError:
+        pass
+
+    # fdt_walk does not report FDT_END_NODE, so track depth here.
+    p, end, depth, want, insert_at = off_struct, off_struct + size_struct, 0, None, None
+    while p < end and insert_at is None:
+        tok = struct.unpack(">I", dtb[p:p + 4])[0]
+        if tok == 1:
+            e = dtb.index(b"\0", p + 4)
+            depth += 1
+            if want is None and (dtb[p + 4:e].decode() or "/") == parent:
+                want = depth
+            p = (e + 1 + 3) & ~3
+        elif tok == 2:
+            if depth == want:
+                insert_at = p
+            depth -= 1
+            p += 4
+        elif tok == 3:
+            length = struct.unpack(">I", dtb[p + 4:p + 8])[0]
+            p = (p + 12 + length + 3) & ~3
+        elif tok == 9:
+            break
+        else:                                         # FDT_NOP
+            p += 4
+    if insert_at is None:
+        raise KeyError(parent)
+
+    strings = bytearray(dtb[off_strings:off_strings + size_strings])
+    encoded = name.encode() + b"\0"
+    tokens = bytearray(struct.pack(">I", 1) + encoded + b"\0" * ((-len(encoded)) % 4))
+    for pname, value in props:
+        tokens += struct.pack(">III", 3, len(value), _fdt_intern(strings, pname))
+        tokens += value + b"\0" * ((-len(value)) % 4)
+    tokens += struct.pack(">I", 2)
+
+    body = (dtb[off_struct:insert_at] + bytes(tokens)
+            + dtb[insert_at:off_struct + size_struct])
+    out = _fdt_rebuild(dtb, body, bytes(strings))
+
+    check = fdt_node_props(out, name)
+    for pname, value in props:
+        if check.get(pname) != value:
+            raise ValueError(f"{name}/{pname}: not readable after insertion")
+    if fdt_node_props(out, parent) != fdt_node_props(dtb, parent):
+        raise ValueError(f"{parent}: damaged by insertion")
+    return out
+
+
+# OP-TEE, resident for the life of the system: BL31 runs it as BL32. The vendor
+# U-Boot carves it out of the /memory banks it writes; mainline U-Boot knows
+# nothing about it, so on that path the reservation has to be in the tree.
+OPTEE_BASE = 0x08400000
+OPTEE_SIZE = 0x01000000
+
+
+def add_optee_reservation(dtb: bytes) -> bytes:
+    """Reserve OP-TEE's 16 MiB as no-map, for the mainline U-Boot path only.
+
+    Without it the kernel allocates over live secure firmware and dies just
+    after `Starting kernel ...` — the 2026-08-24 failure (docs/uboot.md).
+    """
+    cells = fdt_node_props(dtb, "reserved-memory")
+    if (struct.unpack(">I", cells["#address-cells"])[0],
+            struct.unpack(">I", cells["#size-cells"])[0]) != (2, 2):
+        raise ValueError("/reserved-memory is not 2/2 cells; the reg below assumes it")
+    reg = struct.pack(">QQ", OPTEE_BASE, OPTEE_SIZE)
+    return fdt_add_subnode(dtb, "reserved-memory", f"optee@{OPTEE_BASE:x}",
+                           [("reg", reg), ("no-map", b"")])
 
 
 # UHS modes the RK3566 sdmmc controller can drive, in ascending order, with the

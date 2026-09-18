@@ -64,7 +64,9 @@ probing, GPT repair, the charge-animation path, a full DRM bring-up and a SHA1
 over the boot image, all before it fetches a byte. Its read runs at **10.9 MB/s**
 against the 63 MB/s the kernel gets from the same card, and neither figure is
 reachable from the device tree: both are properties of the vendor binary. See
-[U-Boot](uboot.md) for what was tried.
+[U-Boot](uboot.md) for what was tried. Mainline hit the same ceiling until its
+card clock was found to run at half the rate it reported; the vendor binary most
+likely does the same.
 
 ## What each change was worth
 
@@ -147,21 +149,35 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 ## What is left
 
-1. **Ship our own U-Boot — 1.2–1.7 s.** The largest single item in the boot, and
-   it needs no NAND write because the card already carries the `uboot`
-   partition. **Evaluated and shelved**: mainline U-Boot has no VOP2 driver, so
-   a boot logo means writing one — [U-Boot](uboot.md).
-2. **zstd for the kernel — 0.2–0.3 s.** Not independent of (1): this 2017.09
-   U-Boot has no zstd, and the Android boot path *sniffs* the format, so it
-   needs the FIT path a replacement U-Boot would bring.
+1. **Ship our own U-Boot — under evaluation, 0.92 s ahead.** Behind
+   `MY355_UBOOT=mainline`: first printk **1.84 s** against 2.85 s, `Run /init`
+   **2.66 s** against 3.58 s (2026-09-18). It costs the boot logo. What got it
+   there, each measured on its own cold boots:
+
+   | step | `Run /init` |
+   |---|---|
+   | first build, CPU left at 816 MHz | 3.65–3.67 s |
+   | CPU handed over at 1104 MHz, as the vendor does | 3.44 s |
+   | zstd kernel, decoded in 347 ms against gzip's 447 | 3.24 s |
+   | **SD card actually at 50 MHz**: mainline's RK3568 clock driver ran it at 25 | **2.66 s** |
+
+   U-Boot reports its own bootstage timings; what is left of its 1.79 s is
+   pre-relocation init with the caches off (0.57 s), the read (0.54 s at
+   23.8 MB/s), decompression (0.35 s) and card init (0.20 s) — [U-Boot](uboot.md)
+   Part 3.
+2. **zstd for the kernel — 87 ms, on the mainline path.** First measured
+   1.60 s *slower* than gzip; the cause was U-Boot's `-mstrict-align` and
+   `ZSTD_LIB_MINIFY`, not zstd. Fixed and tuned for decode speed on this SoC,
+   and included in (1).
 3. **Shrink what U-Boot reads.** The resource image is already rebuilt at
    442 880 bytes against the stock 943 616. Dropping the charge artwork would
    save another 176 KB, worth ~16 ms.
 4. **Tuning the vendor U-Boot from its device tree — tried, 22 ms, dropped.**
    See [U-Boot](uboot.md).
 
-Projected with (1) and (2): pre-kernel 1.3–1.8 s, first frame under 5 s. Not
-currently being pursued.
+**Retracted:** "projected with (1) and (2): pre-kernel 1.3–1.8 s, first frame
+under 5 s". It assumed the vendor U-Boot's 1.21 s was mostly removable work and
+priced a zstd decode nobody had run; both were measured wrong ([U-Boot](uboot.md)).
 
 ## Stock, for comparison
 

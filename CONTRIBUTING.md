@@ -33,6 +33,15 @@ recovery.
 ./flash-card.sh diskN                         # macOS: the image → an SD card
 ```
 
+`./build-all.sh` runs all four and packages the release. To put a mainline
+U-Boot on the card instead of the vendor's — under evaluation, no boot logo
+([docs/uboot.md](docs/uboot.md) Part 3):
+
+```sh
+./build-uboot.sh                              # → work/my355/uboot-mainline.itb
+MY355_UBOOT=mainline ./build-image.sh
+```
+
 `./build-all.sh` runs all four and packages the release. To derive the inputs
 instead — needed to move onto a new vendor release — replace the first line with
 `./prepare-stock.sh NAND_DIR`, whose three `mtd*.img` files are described in
@@ -104,7 +113,8 @@ real payload against the real image, so `./build-all.sh` has to have run first.
 
 - The vendor kernel, U-Boot and BL31 stay byte-for-byte. Rebuilding one is a design
   decision, not an implementation detail — write it into
-  [docs/decisions.md](docs/decisions.md) first.
+  [docs/decisions.md](docs/decisions.md) first. The one such decision so far is
+  the opt-in mainline U-Boot, which replaces U-Boot proper and nothing else.
 - Claims in `docs/` are *verified* (observed on hardware) or *inferred* (from
   binaries). Retracted ones are kept, not deleted, in
   [docs/history.md](docs/history.md).

@@ -1,0 +1,68 @@
+Let the decompressors use unaligned access on arm64.
+
+diff --git a/boot/image.c b/boot/image.c
+index abac2c70..68bf556b 100644
+--- a/boot/image.c
++++ b/boot/image.c
+@@ -27,6 +27,9 @@
+ #include <asm/global_data.h>
+ #include <linux/errno.h>
+ #include <asm/io.h>
++#if defined(CONFIG_ARM64) && !defined(USE_HOSTCC)
++#include <asm/system.h>
++#endif
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -454,6 +457,11 @@ int image_decomp(int comp, ulong load, ulong image_start, int type,
+ {
+ 	int ret = -ENOSYS;
+ 
++#if defined(CONFIG_ARM64) && !defined(USE_HOSTCC)
++	/* The decompressors are built for unaligned access, legal with the MMU on */
++	if (get_sctlr() & CR_A)
++		set_sctlr(get_sctlr() & ~CR_A);
++#endif
+ 	*load_end = load;
+ 	print_decomp_msg(comp, type, load == image_start, load);
+ 
+diff --git a/lib/Makefile b/lib/Makefile
+index 07702cef..3145b3a4 100644
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -47,6 +47,8 @@ obj-$(CONFIG_SMBIOS_PARSER) += smbios-parser.o
+ obj-$(CONFIG_IMAGE_SPARSE) += image-sparse.o
+ obj-y += ldiv.o
+ obj-$(CONFIG_XXHASH) += xxhash.o
++# zstd's frame checksum; see lib/zstd/Makefile.
++CFLAGS_REMOVE_xxhash.o += $(if $(CONFIG_ARM64),-mstrict-align)
+ obj-y += net_utils.o
+ obj-$(CONFIG_PHYSMEM) += physmem.o
+ obj-y += rc4.o
+diff --git a/lib/zlib/Makefile b/lib/zlib/Makefile
+index 4a3e985a..3e82a7d6 100644
+--- a/lib/zlib/Makefile
++++ b/lib/zlib/Makefile
+@@ -4,3 +4,6 @@
+ # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
+ 
+ obj-y += zlib.o
++
++# As lib/zstd: decompression runs with the MMU on (boot/image.c).
++CFLAGS_REMOVE_zlib.o += $(if $(CONFIG_ARM64),-mstrict-align)
+diff --git a/lib/zstd/Makefile b/lib/zstd/Makefile
+index 2003e184..037e86e8 100644
+--- a/lib/zstd/Makefile
++++ b/lib/zstd/Makefile
+@@ -34,3 +34,11 @@ zstd_common-y := \
+ 		common/error_private.o \
+ 		common/fse_decompress.o \
+ 		common/zstd_common.o \
++
++# Built with -mstrict-align, zstd's unaligned loads become byte loads: twice as
++# slow on an RK3566. Decompression runs with the MMU on (boot/image.c). Per
++# object, because PLATFORM_CPPFLAGS is appended after ccflags-y.
++ifdef CONFIG_ARM64
++$(foreach o,$(zstd_decompress-y) $(zstd_common-y),\
++	$(eval CFLAGS_REMOVE_$(notdir $(o)) += -mstrict-align))
++endif

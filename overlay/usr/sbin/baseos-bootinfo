@@ -1,0 +1,50 @@
+#!/bin/sh
+# What the bootloader left behind, for the mainline U-Boot path (docs/uboot.md).
+#
+#   baseos-bootinfo          which U-Boot booted, and its bootstage timings
+#   baseos-bootinfo log      the console output a debug build saved to the card
+#
+# Timings come from /proc/device-tree/bootstage, which U-Boot writes at hand-off
+# in arch-counter microseconds — power-on-relative, like the kernel's printk.
+# The log is the last 64 KiB of the `boot` partition (GPT entry 2, whichever
+# half it points at), written just before the hand-off and again if it fails.
+
+BOOT_PART=/dev/mmcblk1p2
+LOG_SECTORS=128
+BS=/proc/device-tree/bootstage
+
+# A big-endian cell as a decimal.
+be32() { printf '%d' "0x$(od -An -tx1 "$1" | tr -d ' \n')"; }
+
+case "${1:-}" in
+log)
+	[ -b "$BOOT_PART" ] || { echo "no $BOOT_PART" >&2; exit 1; }
+	size=$(cat "/sys/class/block/${BOOT_PART##*/}/size")
+	dd if="$BOOT_PART" bs=512 skip=$((size - LOG_SECTORS)) count="$LOG_SECTORS" \
+		2>/dev/null | tr -d '\000'
+	exit 0 ;;
+"") ;;
+*) echo "usage: baseos-bootinfo [log]" >&2; exit 2 ;;
+esac
+
+if [ -r /proc/device-tree/chosen/u-boot,version ]; then
+	echo "U-Boot $(tr -d '\000' < /proc/device-tree/chosen/u-boot,version)"
+else
+	echo "vendor U-Boot (no bootstage records)"
+	exit 0
+fi
+[ -d "$BS" ] || { echo "no bootstage records in the device tree"; exit 0; }
+
+# Marks in time order with the step from the previous one; accumulated
+# durations after them.
+for rec in "$BS"/*/; do
+	name=$(tr -d '\000' < "$rec/name")
+	if [ -r "$rec/mark" ]; then
+		echo "m $(be32 "$rec/mark") $name"
+	elif [ -r "$rec/accum" ]; then
+		echo "a $(be32 "$rec/accum") $name"
+	fi
+done | sort -k1,1r -k2,2n | awk '
+	BEGIN { printf "%10s %10s  %s\n", "at (ms)", "step (ms)", "stage" }
+	$1 == "m" { printf "%10.1f %10.1f  %s\n", $2 / 1000, ($2 - prev) / 1000, $3; prev = $2 }
+	$1 == "a" { if (!acc++) print "accumulated:"; printf "%10s %10.1f  %s\n", "", $2 / 1000, $3 }'

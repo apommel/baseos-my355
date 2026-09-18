@@ -1,0 +1,208 @@
+Add the `my355` command: named bootstage marks from the boot script, the
+core clock handed to the kernel, and a copy of the console record the boot
+script can save to the card. The Flip has no UART attached, so this is how
+a failed boot reports what happened.
+
+diff --git a/cmd/Kconfig b/cmd/Kconfig
+index 5c611fb3..4a2533a0 100644
+--- a/cmd/Kconfig
++++ b/cmd/Kconfig
+@@ -1640,6 +1640,15 @@ config CMD_PART
+ 	  Read and display information about the partition table on
+ 	  various media.
+ 
++config CMD_MY355
++	bool "my355 - BaseOS Miyoo Flip boot helpers"
++	depends on BOOTSTAGE
++	help
++	  Named bootstage marks from the boot script, the core clock handed
++	  to the kernel and, with CONSOLE_RECORD, a copy of the console output
++	  the boot script can save to the card. For a unit with no serial
++	  console attached.
++
+ config CMD_PCI
+ 	bool "pci - Access PCI devices"
+ 	help
+diff --git a/cmd/Makefile b/cmd/Makefile
+index 25479907..2ba004cb 100644
+--- a/cmd/Makefile
++++ b/cmd/Makefile
+@@ -142,6 +142,7 @@ obj-$(CONFIG_ENV_SUPPORT) += nvedit.o
+ obj-$(CONFIG_CMD_NVEDIT_EFI) += nvedit_efi.o
+ obj-$(CONFIG_CMD_ONENAND) += onenand.o
+ obj-$(CONFIG_CMD_OSD) += osd.o
++obj-$(CONFIG_CMD_MY355) += my355.o
+ obj-$(CONFIG_CMD_PART) += part.o
+ obj-$(CONFIG_CMD_PCAP) += pcap.o
+ ifdef CONFIG_PCI
+diff --git a/cmd/my355.c b/cmd/my355.c
+new file mode 100644
+index 00000000..e92ba588
+--- /dev/null
++++ b/cmd/my355.c
+@@ -0,0 +1,165 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * BaseOS my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
++ * the boot script records its own timings and saves its own console output.
++ */
++
++#include <bootstage.h>
++#include <clk.h>
++#include <command.h>
++#include <dm.h>
++#include <env.h>
++#include <i2c.h>
++#include <mapmem.h>
++#include <membuf.h>
++#include <asm/global_data.h>
++#include <linux/string.h>
++#include <vsprintf.h>
++#include <dt-bindings/clock/rk3568-cru.h>
++#include <linux/bitops.h>
++#include <linux/delay.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++static int do_my355_mark(struct cmd_tbl *cmdtp, int flag, int argc,
++			 char *const argv[])
++{
++	char *name;
++
++	if (argc != 2)
++		return CMD_RET_USAGE;
++	/* bootstage keeps the pointer; argv does not outlive this command */
++	name = strdup(argv[1]);
++	if (!name)
++		return CMD_RET_FAILURE;
++	bootstage_mark_name(BOOTSTAGE_ID_ALLOC, name);
++
++	return CMD_RET_SUCCESS;
++}
++
++static int do_my355_log(struct cmd_tbl *cmdtp, int flag, int argc,
++			char *const argv[])
++{
++#if CONFIG_IS_ENABLED(CONSOLE_RECORD)
++	struct membuf copy;
++	ulong max;
++	char *dst, *data;
++	int i, len, total = 0;
++
++	if (argc != 3)
++		return CMD_RET_USAGE;
++	max = hextoul(argv[2], NULL);
++	dst = map_sysmem(hextoul(argv[1], NULL), max);
++	/* Drain a copy, so a second save still has everything */
++	copy = gd->console_out;
++	for (i = 0; i < 2; i++) {
++		len = membuf_getraw(&copy, max - total, true, &data);
++		memcpy(dst + total, data, len);
++		total += len;
++	}
++	unmap_sysmem(dst);
++	env_set_hex("my355_logsize", total);
++
++	return CMD_RET_SUCCESS;
++#else
++	return CMD_RET_FAILURE;
++#endif
++}
++
++/*
++ * vdd_cpu is an RK8600 on i2c0; VSEL0 is its run-time selector. The mainline
++ * clock driver leaves the cores at 816 MHz, where the vendor U-Boot hands the
++ * kernel 1104 MHz, and the kernel runs at whatever it inherits until cpufreq.
++ */
++#define RK8600_ADDR	0x40
++#define RK8600_VSEL0	0x00
++#define RK8600_ID1	0x03
++#define RK8600_ID1_VAL	0x88
++#define RK8600_EN	BIT(7)
++#define RK8600_NSEL	GENMASK(5, 0)
++#define RK8600_UV(n)	(712500 + 12500 * (n))
++#define RK8600_RAMP_UV_PER_US	2300
++
++/*
++ * The vendor OPP table's voltage per rate. Nothing above 1104 MHz: the vendor
++ * kernel sets vdd_cpu to 900 mV when its regulator probes, before cpufreq.
++ */
++static const struct { ulong mhz; int uv; } my355_opps[] = {
++	{ 816, 850000 },
++	{ 1104, 900000 },
++};
++
++static int do_my355_cpu(struct cmd_tbl *cmdtp, int flag, int argc,
++			char *const argv[])
++{
++#if IS_ENABLED(CONFIG_ROCKCHIP_RK3568)
++	struct udevice *pmic, *cru;
++	struct clk armclk;
++	ulong mhz, hz;
++	int i, uv = 0, reg, nsel, id, ret;
++
++	if (argc != 2)
++		return CMD_RET_USAGE;
++	mhz = dectoul(argv[1], NULL);
++	for (i = 0; i < ARRAY_SIZE(my355_opps); i++)
++		if (my355_opps[i].mhz == mhz)
++			uv = my355_opps[i].uv;
++	if (!uv) {
++		printf("my355 cpu: %lu MHz is not a supported rate\n", mhz);
++		return CMD_RET_FAILURE;
++	}
++
++	ret = i2c_get_chip_for_busnum(0, RK8600_ADDR, 1, &pmic);
++	id = ret ? ret : dm_i2c_reg_read(pmic, RK8600_ID1);
++	reg = ret ? ret : dm_i2c_reg_read(pmic, RK8600_VSEL0);
++	if (id != RK8600_ID1_VAL || reg < 0 || !(reg & RK8600_EN)) {
++		printf("my355 cpu: no RK8600 at i2c0 0x%x (id %d, vsel0 %d)\n",
++		       RK8600_ADDR, id, reg);
++		return CMD_RET_FAILURE;
++	}
++	nsel = reg & RK8600_NSEL;
++	printf("my355 cpu: vdd_cpu vsel0 0x%02x = %d uV\n", reg, RK8600_UV(nsel));
++	/* Raise only; never lower a rail someone else set */
++	if (RK8600_UV(nsel) < uv) {
++		int want = DIV_ROUND_UP(uv - RK8600_UV(0), 12500);
++
++		ret = dm_i2c_reg_write(pmic, RK8600_VSEL0,
++				       (reg & ~RK8600_NSEL) | want);
++		if (ret || dm_i2c_reg_read(pmic, RK8600_VSEL0) !=
++			   ((reg & ~RK8600_NSEL) | want)) {
++			printf("my355 cpu: vdd_cpu write failed\n");
++			return CMD_RET_FAILURE;
++		}
++		udelay((RK8600_UV(want) - RK8600_UV(nsel)) /
++		       RK8600_RAMP_UV_PER_US + 100);
++		printf("my355 cpu: vdd_cpu -> %d uV\n", RK8600_UV(want));
++	}
++
++	ret = uclass_get_device_by_driver(UCLASS_CLK,
++					  DM_DRIVER_GET(rockchip_rk3568_cru), &cru);
++	if (ret)
++		return CMD_RET_FAILURE;
++	armclk.dev = cru;
++	armclk.id = ARMCLK;
++	hz = mhz * 1000000;
++	/* The driver records the first ARMCLK rate and applies later ones */
++	for (i = 0; i < 2 && clk_get_rate(&armclk) != hz; i++)
++		clk_set_rate(&armclk, hz);
++	printf("my355 cpu: armclk %lu Hz\n", clk_get_rate(&armclk));
++
++	return clk_get_rate(&armclk) == hz ? CMD_RET_SUCCESS : CMD_RET_FAILURE;
++#else
++	return CMD_RET_FAILURE;
++#endif
++}
++
++U_BOOT_LONGHELP(my355,
++	"mark <name>       - add a named bootstage record\n"
++	"my355 log <addr> <max> - copy the console record to <addr>;\n"
++	"                        its length goes in $my355_logsize\n"
++	"my355 cpu <MHz>        - raise vdd_cpu if needed, then set the core clock");
++
++U_BOOT_CMD_WITH_SUBCMDS(my355, "BaseOS my355 boot helpers", my355_help_text,
++	U_BOOT_SUBCMD_MKENT(mark, 2, 1, do_my355_mark),
++	U_BOOT_SUBCMD_MKENT(log, 3, 1, do_my355_log),
++	U_BOOT_SUBCMD_MKENT(cpu, 2, 1, do_my355_cpu));

@@ -3,7 +3,7 @@
 #
 # The Flip's boot chain lives in internal SPI NAND, so the card supplies only
 # what that chain reaches for — a U-Boot FIT in a GPT partition named `uboot`,
-# an Android boot image in one named `boot` — plus the BaseOS rootfs.
+# and whatever that U-Boot boots from one named `boot` — plus the BaseOS rootfs.
 #
 # This requires a preloader with a working /pinctrl in mtd5; see docs/boot-chain.md.
 #
@@ -14,9 +14,13 @@
 #               identical, only the DTB's bootargs and logo are rewritten
 #
 # Environment:
+#   MY355_UBOOT      vendor (default): the stock U-Boot FIT verbatim, booting a
+#                    rewritten Android boot image. mainline: ./build-uboot.sh's
+#                    FIT, booting a FIT of the same kernel (docs/uboot.md).
 #   MY355_SD_UHS     boot slot UHS ceiling: off | sdr50 | sdr104 (default
 #                    sdr104; the vendor caps at sdr25 = 50 MHz = 22 MB/s)
-#   MY355_COMPRESS_KERNEL   gzip (default) | none
+#   MY355_COMPRESS_KERNEL   vendor: gzip (default) | none
+#                    mainline: zstd (default) | gzip
 #   MY355_INITCALL_BLACKLIST  built-in initcalls to skip; empty restores the
 #                    vendor set
 #   MY355_LOGO_SIZE, MY355_LOGO_ASSET   boot logo
@@ -38,6 +42,21 @@ BOOT_SRC="$PREPARED/boot.img"
 # U-Boot goes on the card verbatim and the kernel must stay byte-for-byte vendor.
 baseos_require_prepared "$PREPARED"
 
+UBOOT="${MY355_UBOOT:-vendor}"
+case "$UBOOT" in
+  vendor)
+    UBOOT_IMG="$UBOOT_SRC"
+    BOOT_IMG="$WORK/boot-sd.img" ;;
+  mainline)
+    UBOOT_IMG="$WORK/uboot-mainline.itb"
+    BOOT_IMG="$WORK/boot-fit.img"
+    [ -f "$UBOOT_IMG" ] && [ -f "$WORK/uboot-mainline.json" ] || {
+      echo "missing $UBOOT_IMG (run ./build-uboot.sh)" >&2; exit 1; }
+    # Its boot script bakes in mkfit.py's DRAM map and header layout.
+    python3 "$HERE/tools/mkfit.py" verify-uboot "$WORK/uboot-mainline.json" "$UBOOT_IMG" ;;
+  *) echo "MY355_UBOOT must be vendor or mainline (got '$UBOOT')" >&2; exit 1 ;;
+esac
+
 [ -f "$ROOTFS_TAR" ] || { echo "missing $ROOTFS_TAR (run ./build-rootfs.sh)" >&2; exit 1; }
 
 mkdir -p "$WORK"
@@ -55,7 +74,11 @@ python3 "$HERE/tools/preloader-installer/mkfwimg.py" "$FWIMG" >/dev/null
 # The vendor kernel is a raw 34.9 MiB arm64 Image and U-Boot reads every byte off
 # the card each boot, so storing it compressed is the big pre-kernel lever:
 # 4.96 s raw -> 2.86 s gzip.
-COMPRESS="${MY355_COMPRESS_KERNEL:-gzip}"     # none | gzip
+if [ "$UBOOT" = mainline ]; then
+  COMPRESS="${MY355_COMPRESS_KERNEL:-zstd}"   # zstd | gzip
+else
+  COMPRESS="${MY355_COMPRESS_KERNEL:-gzip}"   # none | gzip
+fi
 
 # The vendor DTB declares sd-uhs-sdr12/sdr25 on the boot slot and stops there,
 # which pins the bus at 50 MHz: both cards measure 22.3 MB/s, exactly the SDR25
@@ -105,22 +128,32 @@ python3 "$HERE/tools/mkbootlogo.py" "$MY355_LOGO_ASSET" \
 
 # In Alpine so the gzip encoder (libdeflate) comes pinned with the release rather
 # than from whatever the host has installed.
-echo "== repointing the vendor boot image at the card =="
+if [ "$UBOOT" = vendor ]; then
+  echo "== repointing the vendor boot image at the card =="
+  set -- rkbootimg.py setargs --logo /work/baseos-logo.bmp --compress-kernel "$COMPRESS"
+else
+  # A FIT names its compression, so zstd is reachable here and not on the
+  # vendor path. No logo: mainline U-Boot has no display driver for this SoC.
+  case "$COMPRESS" in zstd|gzip) ;; *)
+    echo "the mainline path stores the kernel as zstd or gzip" >&2; exit 1 ;; esac
+  echo "== packing the vendor kernel and device tree as a FIT =="
+  set -- mkfit.py boot --compress "$COMPRESS" --slot-sectors "$MY355_BOOT_SLOT_SECTORS"
+fi
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$WORK":/work -v "$HERE/tools":/tools:ro \
   alpine:3.20 sh -euc '
-  apk add -q python3 libdeflate-utils
-  python3 /tools/rkbootimg.py setargs "$@"' sh \
-  "/work/prepared/$(basename "$BOOT_SRC")" /work/boot-sd.img \
-  --root "$MY355_ROOT_DEV" --rootfstype ext4 --logo /work/baseos-logo.bmp \
+  apk add -q python3 libdeflate-utils zstd
+  tool=$1 cmd=$2; shift 2
+  python3 "/tools/$tool" "$cmd" "/work/prepared/boot.img" "$@"' sh \
+  "$@" "/work/$(basename "$BOOT_IMG")" \
+  --root "$MY355_ROOT_DEV" --rootfstype ext4 \
   --drop "$DROP" --append "$APPEND" \
-  --sd-uhs "$SD_UHS" \
-  --compress-kernel "$COMPRESS"
+  --sd-uhs "$SD_UHS"
 
 # Both go in an A/B slot, and an update writes a whole slot, so overflowing one
 # would corrupt the reserved half rather than just this partition.
-for pair in "uboot:$UBOOT_SRC:$MY355_UBOOT_SLOT_SECTORS" \
-            "boot:$WORK/boot-sd.img:$MY355_BOOT_SLOT_SECTORS"; do
+for pair in "uboot:$UBOOT_IMG:$MY355_UBOOT_SLOT_SECTORS" \
+            "boot:$BOOT_IMG:$MY355_BOOT_SLOT_SECTORS"; do
   name="${pair%%:*}"; rest="${pair#*:}"; file="${rest%:*}"; room=$(( ${rest##*:} * 512 ))
   bytes=$(wc -c < "$file")
   [ "$bytes" -le "$room" ] || {
@@ -133,6 +166,7 @@ echo "== composing $OUT =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$WORK":/work -v "$HERE/tools":/tools:ro \
   -e OUT_NAME="$(basename "$OUT")" \
+  -e UBOOT_IMG="${UBOOT_IMG#"$WORK"/}" -e BOOT_IMG="${BOOT_IMG#"$WORK"/}" \
   -e UBOOT_START="$MY355_UBOOT_START" -e BOOT_START="$MY355_BOOT_START" \
   -e ROOTFS_START="$MY355_ROOTFS_START" -e SLOT_SECTORS="$MY355_ROOTFS_SLOT_SECTORS" \
   -e DATA_START="$MY355_DATA_START" -e DATA_SECTORS="$MY355_DATA_SECTORS" \
@@ -144,9 +178,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   rm -f "$OUT"; : > "$OUT"
   python3 /tools/mkgpt.py "$OUT"
 
-  # The vendor chain: U-Boot verbatim, boot image with only the DTB rewritten.
-  dd if=/work/prepared/uboot.img of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none
-  dd if=/work/boot-sd.img    of="$OUT" bs=512 seek="$BOOT_START"  conv=notrunc status=none
+  dd if="/work/$UBOOT_IMG" of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none
+  dd if="/work/$BOOT_IMG"  of="$OUT" bs=512 seek="$BOOT_START"  conv=notrunc status=none
 
   # This kernel is 5.10.160. orphan_file needs 5.15+, so it must be off; the
   # other modern features are fine.
@@ -185,5 +218,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   mdir -i "$OUT@@$((PRIMARY_START * 512))" :: 2>/dev/null | grep -q -i miyoo355 && n=$((n + 1))
   [ "$n" -eq 3 ] && echo "  preloader installer on all 3 mountable filesystems"
 '
-python3 "$HERE/tools/rkbootimg.py" info "$WORK/boot-sd.img" | grep -E "image id|bootargs"
-echo "image: $OUT"
+if [ "$UBOOT" = vendor ]; then
+  python3 "$HERE/tools/rkbootimg.py" info "$BOOT_IMG" | grep -E "image id|bootargs"
+else
+  python3 "$HERE/tools/mkfit.py" info "$BOOT_IMG"
+fi
+echo "image: $OUT (U-Boot: $UBOOT)"
