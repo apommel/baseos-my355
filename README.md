@@ -11,15 +11,30 @@ the stock glibc stack. The one change to internal NAND is a 2 MiB preloader patc
 making the SPL try the SD card first — stock still boots when no BaseOS card is
 present.
 
-## Where the time goes
+## Startup time
 
-Measured on hardware over adb, cold boots with the USB cable unplugged at
-power-on: stock once on 2026-08-23, BaseOS twice on 2026-09-16.
+BaseOS hands off to the frontend **3.73 s** after power-on, and NextUI shows its
+first frame at **5.74 s**. Stock takes 15.79 s and 31.50 s.
 
-| | stock | BaseOS | |
+| | stock | BaseOS 0.6.0 | |
 |---|---|---|---|
 | power-on → frontend hand-off | 15.79 s | **3.73 s** | −12.06 s |
 | power-on → NextUI's first frame | 31.50 s | **5.74 s** | −25.76 s |
+
+- **Vendor userland replaced by a BusyBox init**, deleting 9.9 s of stock boot
+  scripts.
+- **Kernel stored gzipped: 1.86 s.** U-Boot reads 11.9 MiB off the card instead
+  of 34.9 MiB.
+- **SD bus raised to SDR104 (0.2.0): 1.06 s.** The vendor device tree held the
+  boot slot at 50 MHz; reads go from 22 to 63 MB/s, at boot and after.
+- **Kernel init steps skipped (0.6.0): 0.71 s** Unnecessary kernel init steps were
+  skipped, dividing by two kernel initialization time.
+- **Vendor libraries on the boot card's ext4**, not the squashfs in SPI NAND.
+  NextUI's `launch.sh` loads them in 0.89 s against 12.45 s on stock.
+
+The vendor U-Boot is now the largest remaining cost: 2.46 s of the 2.85 s
+before the kernel prints its first line. Where the rest goes, and what is left
+to try, is in [docs/boot-time.md](docs/boot-time.md).
 
 ## Building
 
