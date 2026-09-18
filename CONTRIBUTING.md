@@ -30,6 +30,7 @@ recovery.
 ./build-rootfs.sh                             # → work/my355/rootfs.tar
 ./build-image.sh                              # → work/my355/baseos-my355.img
 ./build-update.sh                             # → the .bosupd payload
+./flash-card.sh diskN                         # macOS: the image → an SD card
 ```
 
 `./build-all.sh` runs all four and packages the release. To derive the inputs
@@ -41,8 +42,12 @@ the build fails. That is what makes `manifest/harvest.list` a proof rather than 
 guess. It cannot see `dlopen` or `system()`; those are in
 [docs/rootfs.md](docs/rootfs.md).
 
-Both paths get the same check — `tools/source_manifest.py verify` runs at the start
-of `build-rootfs.sh` and `build-image.sh`.
+Both paths get the same check — `tools/source_manifest.py verify` runs before
+every build step, and in `fetch-prepared.sh` and `cache-pack.sh`. Besides the
+hashes in `source.json`, it checks the harvest's paths against
+`manifest/harvest.list`, because those hashes still match an old tar after the
+list changes. So **editing the list means re-running `prepare-stock.sh`**, and
+`cache-pack.sh` after it so the published bundle follows.
 
 ### Publishing a new bundle
 
@@ -85,7 +90,8 @@ attach afterwards.
 
 ## Tests
 
-`tests/` is offline: every test runs in a container, none needs a device.
+`tests/` is offline: none needs a device, and all but `test-harvest-drift.sh`,
+which is plain host Python, run in a container.
 
 ```sh
 for t in tests/test-*.sh; do "$t" || break; done

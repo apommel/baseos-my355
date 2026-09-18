@@ -292,11 +292,17 @@ The build verifies as it goes: `sgdisk -v` clean, `e2fsck -fn` on both ext4
 filesystems, the boot image id valid, and the stored kernel decompressing back
 to the vendor bytes.
 
-Flashing (macOS; **check the disk number every time**, it moves):
+Flashing, on macOS:
 
 ```sh
-diskutil list external
-diskutil unmountDisk /dev/diskN && sudo dd if=work/my355/baseos-my355.img of=/dev/rdiskN bs=4m
+./flash-card.sh          # lists the candidates — the disk number moves between runs
+./flash-card.sh diskN
 ```
+
+It writes `work/my355/baseos-my355.img` to the raw node, and refuses before
+writing anything unless the disk is physical **removable** media at least the
+size of the image: every SSD, internal or external, reports itself `Fixed`, and
+a mounted disk image reports `Virtual`. It then asks for the disk name typed
+back. Anywhere else, any image writer does ([INSTALL](../INSTALL.md)).
 
 Then the card goes in the **right slot** — the only slot in the SPL's boot order.

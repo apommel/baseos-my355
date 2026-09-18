@@ -23,6 +23,8 @@ Files that remain upstream's work, unmodified or nearly so:
                                 the update engine, adapted to this layout
     assets/bootlogo.bmp         the BaseOS wordmark
     tools/common.sh             container platform selection
+    flash-card.sh               macOS card writer; reduced to one target, and its
+                                disk guard rekeyed on removable and virtual media
 
 assets/boot.ttf is licensed under the SIL Open Font License; see assets/OFL.txt.
 
