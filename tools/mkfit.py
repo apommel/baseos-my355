@@ -347,8 +347,12 @@ def cmd_boot(a) -> int:
         dtb = rk.set_sd_uhs(dtb, rk.SD_SLOT0_NODE, a.sd_uhs)
     # Bootloader-specific, and only this path needs it (rkbootimg.add_optee_reservation).
     dtb = rk.add_optee_reservation(dtb)
+    dtb = rk.set_vop2_plane_masks(dtb)
     print(f"  rk-kernel.dtb  {len(dtb)} bytes, OP-TEE reserved "
           f"at 0x{rk.OPTEE_BASE:x} ({rk.OPTEE_SIZE >> 20} MiB)")
+    for encoder, (mask, primary) in rk.VOP2_DISPLAYS:
+        print(f"      vop2: {encoder} on {rk._vop2_port_of(dtb, encoder)}, "
+              f"planes 0x{mask:02x}, primary {primary}")
     if a.sd_uhs != "off":
         print(f"      sd: {rk.SD_SLOT0_NODE} += {', '.join(rk.SD_UHS_MODES[a.sd_uhs][0])}")
     print(f"      old: {old}")
@@ -420,8 +424,12 @@ def cmd_boot(a) -> int:
         "bootargs read back wrong"
     assert rk.fdt_node_props(back, f"optee@{rk.OPTEE_BASE:x}")["no-map"] == b"", \
         "OP-TEE reservation not readable back"
+    for encoder, (mask, _primary) in rk.VOP2_DISPLAYS:
+        port = rk.fdt_node_props(back, f"{rk.VOP2_NODE}/ports/{rk._vop2_port_of(back, encoder)}")
+        assert port["rockchip,plane-mask"] == struct.pack(">I", mask), \
+            f"{encoder}: VOP2 plane mask not readable back"
     print(f"  wrote {a.out}: header + {sectors} sectors ({SECTOR + len(blob)} bytes)")
-    print("  verified: kernel round-trips, bootargs and OP-TEE reservation read back")
+    print("  verified: kernel round-trips, bootargs, OP-TEE reservation and VOP2 planes read back")
     return 0
 
 

@@ -246,10 +246,17 @@ def fdt_walk(dtb: bytes):
             break
 
 
+def _fdt_is(path: tuple, node: str) -> bool:
+    """`node` names the path's last component, or with slashes its last few:
+    `port@1` alone is ambiguous where every encoder has one."""
+    parts = tuple(node.split("/"))
+    return path[-len(parts):] == parts
+
+
 def fdt_find_prop(dtb: bytes, node: str, prop: str) -> tuple[int, int]:
     """Return (offset, length) of `prop`'s value in the first node named `node`."""
     for event in fdt_walk(dtb):
-        if event[0] == "prop" and event[1][-1:] == (node,) and event[2] == prop:
+        if event[0] == "prop" and _fdt_is(event[1], node) and event[2] == prop:
             return event[3], event[4]
     raise KeyError(f"{node}/{prop} not found")
 
@@ -260,7 +267,7 @@ def fdt_node_props(dtb: bytes, node: str) -> "dict[str, bytes]":
     for event in fdt_walk(dtb):
         kind, path = event[0], event[1]
         if target is None:
-            if kind == "node" and path[-1] == node:
+            if kind == "node" and _fdt_is(path, node):
                 target = path
             continue
         if path[:len(target)] != target:              # left the node
@@ -327,7 +334,7 @@ def fdt_add_props(dtb: bytes, node: str,
 
     # Just past this node's FDT_BEGIN_NODE.
     insert_at = next(e[2] for e in fdt_walk(dtb)
-                     if e[0] == "node" and e[1][-1] == node)
+                     if e[0] == "node" and _fdt_is(e[1], node))
 
     strings = bytearray(dtb[off_strings:off_strings + size_strings])
     tokens = bytearray()
@@ -433,6 +440,52 @@ def add_optee_reservation(dtb: bytes) -> bytes:
     reg = struct.pack(">QQ", OPTEE_BASE, OPTEE_SIZE)
     return fdt_add_subnode(dtb, "reserved-memory", f"optee@{OPTEE_BASE:x}",
                            [("reg", reg), ("no-map", b"")])
+
+
+# VOP2 windows by physical id (the vendor dt-bindings). On the RK3566, Cluster1,
+# Esmart1 and Smart1 are mirrors: they only work once their main window is
+# enabled, so the panel needs the mains. The vendor U-Boot writes this split
+# into the kernel's tree at boot (rk3568_assign_plane_mask: the first display
+# that cannot be hot-plugged is the main one); without it the kernel falls back
+# to a default that gives the DSI port the mirrors, and NextUI draws nothing.
+VOP2_NODE = "vop@fe040000"
+VOP2_MAIN = (0x15, 4)      # Cluster0, Esmart0, Smart0; primary Smart0
+VOP2_MIRROR = (0x2a, 5)    # Cluster1, Esmart1, Smart1; primary Smart1
+VOP2_DISPLAYS = (("dsi@fe060000", VOP2_MAIN), ("hdmi@fe0a0000", VOP2_MIRROR))
+
+
+def _vop2_port_of(dtb: bytes, encoder: str) -> str:
+    """The VOP port the encoder's enabled endpoint is wired to, e.g. `port@1`."""
+    nodes: "dict[tuple, dict[str, bytes]]" = {}
+    for event in fdt_walk(dtb):
+        if event[0] == "prop":
+            nodes.setdefault(event[1], {})[event[2]] = dtb[event[3]:event[3] + event[4]]
+    remotes = {props["remote-endpoint"] for path, props in nodes.items()
+               if encoder in path and "remote-endpoint" in props
+               and props.get("status", b"okay\0") == b"okay\0"}
+    ports = {path[-2] for path, props in nodes.items()
+             if VOP2_NODE in path and props.get("phandle") in remotes}
+    if len(ports) != 1:
+        raise ValueError(f"{encoder}: wired to VOP ports {sorted(ports)}, expected one")
+    return ports.pop()
+
+
+def set_vop2_plane_masks(dtb: bytes) -> bytes:
+    """Assign VOP2 windows as the vendor U-Boot does, for the mainline path only."""
+    seen = set()
+    for encoder, (mask, primary) in VOP2_DISPLAYS:
+        port = _vop2_port_of(dtb, encoder)
+        if port in seen:
+            raise ValueError(f"{encoder} shares {port} with another display")
+        seen.add(port)
+        node = f"{VOP2_NODE}/ports/{port}"
+        if "rockchip,plane-mask" in fdt_node_props(dtb, node):
+            raise ValueError(f"{node} already assigns planes; this would not override it")
+        dtb = fdt_add_props(dtb, node, [
+            ("rockchip,plane-mask", struct.pack(">I", mask)),
+            ("rockchip,primary-plane", struct.pack(">I", primary)),
+        ])
+    return dtb
 
 
 # UHS modes the RK3566 sdmmc controller can drive, in ascending order, with the
