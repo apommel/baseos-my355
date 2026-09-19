@@ -166,7 +166,7 @@ BSP kernel with no published source, on a device with no console.
 
 > Done on 2026-09-19, and it took more than drawing: the panel came up at
 > 2.99 s, the backlight stayed off and NextUI erased the logo first (Part 3,
-> *The boot logo*). The logo now shows from 2.29 s.
+> *The boot logo*). The logo now shows from 2.15 s.
 
 Lean U-Boot + stock DTB + **no video at all**, drawing the splash from the kernel
 side with the `baseos-splash` fbsplash the rootfs already ships. Cost is cosmetic
@@ -232,10 +232,9 @@ From the build that was made and then removed (U-Boot v2026.07,
 
 `./build-all.sh` builds it, or `./build-uboot.sh` then `./build-image.sh`;
 `MY355_UBOOT=vendor` puts the vendor U-Boot back. It **boots**, and it reaches
-`Run /init` **1.47 s earlier** than the vendor path: 2.09–2.12 s against
-3.58 s, with NextUI starting at 2.69–2.73 s against 4.19–4.23 s (2026-09-19,
-four of five cold boots, the fifth an outlier in the kernel; U-Boot's own
-timings agree to 0.1 ms).
+`Run /init` **1.6 s earlier** than the vendor path: 1.95–1.98 s against
+3.58 s, with NextUI starting at 2.55–2.61 s against 4.19–4.23 s (2026-09-19,
+six warm reboots; U-Boot's own timings agree to 0.5 ms, and with cold boots).
 Everything below is measured on this unit and card unless marked otherwise.
 
 ## What the first build measured (2026-08-24 / 09-05)
@@ -290,25 +289,25 @@ zstd kernel, four with the SD clock fixed, then five with the early data cache,
 each set agreeing to 0.1 ms. The fuel gauge step (`my355 fg`, below) came
 between the last two.
 
-| stage | 816 MHz, gzip | 1104 MHz | zstd | SD clock | **early cache** | |
-|---|---|---|---|---|---|---|
-| → `board_init_f` | 45 ms | 45 | 45 | 45 | 45 | |
-| **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
-| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | |
-| `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | |
-| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | the kernel initialises the same card, SDR104 tuning included, in 75–205 ms ([boot time](boot-time.md), *The SD bus*). Why the clock fix also took 87 ms off is not established |
-| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
-| debug log save | 8 ms | 8 | 8 | 7 | 7 | the debug build's whole cost |
-| **decompress** | 608 ms | 447 | 347 | 348 | 347 | gzip, then zstd |
-| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | 12 | |
-| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | 1,791 | **1,274** | |
+| stage | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | **block cache** | |
+|---|---|---|---|---|---|---|---|
+| → `board_init_f` | 45 ms | 45 | 45 | 45 | 45 | 45 | |
+| **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | 40 | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
+| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | 59 | |
+| `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | 16 | |
+| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | **53** | 184 ms of the 202 was the partition scan (*Card init*, below); the kernel initialises the same card, SDR104 tuning included, in 75–205 ms ([boot time](boot-time.md), *The SD bus*). Why the clock fix also took 87 ms off is not established |
+| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 534 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
+| debug log save | 8 ms | 8 | 8 | 7 | 7 | 7 | the debug build's whole cost |
+| **decompress** | 608 ms | 447 | 347 | 348 | 347 | 347 | gzip, then zstd |
+| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | 12 | 12 | |
+| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | 1,791 | 1,274 | **1,124** | |
 
-| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | SD clock | **early cache** |
-|---|---|---|---|---|---|---|
-| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | 1.837 | **1.320** |
-| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | 2.663 | **2.09–2.12** |
-| `nextui.elf` start | 4.19–4.23 s | | | | 3.26–3.27 | **2.69–2.73** |
-| first NextUI frame | — | | | | 4.09–4.10 | **3.53–3.57** |
+| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | **block cache** |
+|---|---|---|---|---|---|---|---|
+| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | 1.837 | 1.320 | **1.171** |
+| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | 2.663 | 2.09–2.12 | **1.95–1.98** |
+| `nextui.elf` start | 4.19–4.23 s | | | | 3.26–3.27 | 2.69–2.73 | **2.55–2.61** |
+| first NextUI frame | — | | | | 4.09–4.10 | 3.53–3.57 | **3.16–3.19** |
 
 The first frame is timed by polling the DRM state (`MY355_DIAG=1`, below),
 because this path has no kernel marker for it. The vendor path's, `Freeing
@@ -428,6 +427,23 @@ The next doubling is SDR50: 100 MHz at 1.8 V, no tuning needed. It needs the
 `PMU_GRF_IO_VSEL` once, at probe), and it hands the kernel a card already at
 1.8 V. Not attempted.
 
+## Card init: the partition scan
+
+`mmc dev 1` took 202 ms, against ~77 ms for the kernel on the same card. The
+card was not the cause. With `patches-diag/9002` (2026-09-19), init proper
+took 40 ms and the card was ready at the first ACMD41 poll. The other 184 ms
+came after it: probing the block device runs `part_init`, then
+`part_create_block_devices` looks up each of the 128 GPT entry slots, and each
+lookup re-reads the 20-block entry array at 1.19 ms. U-Boot's block cache
+keeps reads of up to 8 blocks only, so none of them hit.
+
+`blkcache configure 32 32` in the boot script, before `mmc dev 1`, lets the
+cache hold the array (32 blocks covers a full 128-entry one; at most 512 KiB
+of the 32 MiB heap). `mmc dev 1` is 53 ms, the scan's lookups 13 ms, and
+`start_kernel` moved 1,274 → 1,124 ms, which carried through to `Run /init`
+and the first frame. `blkcache` only adds and reads cache entries; a `mmc
+write` (the debug log) invalidates them.
+
 ## Early init: the data cache before relocation
 
 U-Boot's own init took 570 ms before relocation and 59 ms after it. A build
@@ -537,7 +553,7 @@ One cold boot, 2026-09-19:
 |---|---|---|
 | logo drawn (`rcS`) | 2.13 s | ~1.0 s, by U-Boot |
 | backlight on | 2.27 s | with the logo |
-| **logo on the panel** (`dw_mipi_dsi_bridge_enable`) | **2.43 s**, was 2.99; 2.29 s since (below) | ~1.0 s |
+| **logo on the panel** (`dw_mipi_dsi_bridge_enable`) | **2.43 s**, was 2.99; 2.15 s since (below) | ~1.0 s |
 | NextUI sets its brightness | 2.96 s | |
 | first NextUI frame | 3.56 s | 5.72–5.75 s |
 
@@ -553,7 +569,8 @@ three fixes, each found on the device with `baseos-frameprobe` (below):
   `rkbootimg.set_panel_delays` sets 160/200/200 to 0/20/0: the link streams at
   2.43 s against 2.99. The init sequence's 250 ms after sleep-out (DCS
   `0x11`) is now 120 ms, the usual requirement: 2.29 s in 12 warm boots
-  (2.286–2.311 s), and cold boots showed a clean image each time.
+  (2.286–2.311 s), and cold boots showed a clean image each time. 2.15 s
+  since the block cache took 150 ms off U-Boot.
 - **The backlight.** U-Boot never enables its PWM, so `pwm-backlight` probes
   it off. The panel enable that would light it comes after NextUI's `launch.sh`
   has unbound the driver, so nothing lit it before NextUI's own brightness.
@@ -659,7 +676,7 @@ every fragment line survives `olddefconfig`, and builds with
 * `0005` — the data cache before relocation (above).
 
 `0004` and `0005` are the two worth sending upstream. `tools/uboot/patches-diag/`
-holds the diagnostics-only patch `MY355_DIAG=1` adds on top.
+holds the diagnostics-only patches `MY355_DIAG=1` adds on top.
 
 ## Measuring it
 
@@ -690,6 +707,12 @@ what these measurements needed and a release does not:
   the marks made after `reserve_bootstage()`; without that the relocated
   bootstage block overran U-Boot's relocated device tree and the unit hung
   after relocation, dark, before the boot script (2026-09-19).
+- U-Boot: a mark at each step of `mmc dev 1` and around the partition scan,
+  the ACMD41 poll count, and every block read's duration in the console
+  record (`patches-diag/9002`, *Card init*).
+- Writing ~150 records into the kernel's tree costs **~120 ms after the
+  `start_kernel` mark**: compare the first printk, not the hand-off, against a
+  build without it.
 - rootfs: `baseos-frameprobe`, started by `/etc/init.d/dev`, which polls the DRM
   state every 20 ms for a plane scanning out a `nextui.elf` framebuffer and
   writes `/run/boot-first-frame`. The frame figure is an upper bound: the
@@ -717,13 +740,17 @@ the charge LED; how to read them is in [diagnostics](diagnostics.md).
    BaseOS, in the NextUI release users will run. Without it the `rcS` logo is
    erased before the panel shows it.
 
-**Speed.** U-Boot now takes 1.27 s, of which 0.54 s is the read, 0.35 s
-decompression and 0.20 s card init.
+**Speed.** U-Boot now takes 1.12 s, of which 0.54 s is the read, 0.35 s
+decompression and 0.14 s init before the boot script.
 
-4. **The read**, 536 ms: SDR50 would halve it (above).
-5. **Decompression**, 347 ms: at the CPU clock the vendor kernel allows.
-6. **Card init**, 202 ms against the kernel's 90–220 ms; and whether the state
-   U-Boot leaves the card in costs the kernel its variable detection time.
+4. **The read**, 534 ms: SDR50 would halve it (above), and a faster read
+   makes LZ4 worth measuring against zstd.
+5. **Decompression**, 347 ms: at the CPU clock the vendor kernel allows. A
+   faster clock would have to come back down to 1104 MHz before the hand-off
+   (*The CPU clock*).
+6. **Card init**, 53 ms: `mmc_go_idle` 11 ms and `sd_select_mode_and_width`
+   16 ms are the largest steps left, and the partition scan's 128 cached
+   lookups 13 ms.
 
 **Upkeep:**
 
@@ -733,11 +760,11 @@ decompression and 0.20 s card init.
    `FG_INIT` is set.
 9. A Flip control tree, for correctness: the RK8600, and none of quartz64-a's
    Ethernet, PCIe and USB.
-10. A U-Boot boot logo (*The boot logo*, above), if 2.29 s is not enough.
+10. A U-Boot boot logo (*The boot logo*, above), if 2.15 s is not enough.
 11. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
-the early boot logo (no VOP2 driver; `rcS` draws one at 2.29 s against ~1.0 s), the
+the early boot logo (no VOP2 driver; `rcS` draws one at 2.15 s against ~1.0 s), the
 low-battery guard and charge animation, the `.hdmi` device tree variant, and
 `androidboot.serialno` (`usb-gadget-adb` falls back to the machine id). It also
 removes `Freeing drm_logo memory`, the first-frame marker in

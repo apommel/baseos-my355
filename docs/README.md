@@ -49,5 +49,5 @@ stock, exactly as before.
 
 From there the card supplies a mainline U-Boot, the vendor kernel with a rewritten
 command line, and a BusyBox userland built on a measured subset of the stock
-libraries. Power-on to frontend hand-off is **2.23–2.26 s** (3.73 s with the vendor
+libraries. Power-on to frontend hand-off is **2.10–2.12 s** (3.73 s with the vendor
 U-Boot), against stock's 15.79 s.

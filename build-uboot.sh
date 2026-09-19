@@ -85,6 +85,10 @@ PREP="my355 cpu 1104; my355 mark cpu_set;"
 # trusts it and would otherwise mistake charging while off for a crash. If it
 # refuses, the kernel falls back to its own estimate.
 PREP="$PREP my355 fg; my355 mark fg_sync;"
+# Probing the card's block device binds one device per GPT entry slot, and each
+# of the 128 lookups re-reads the 20-block entry array: 184 ms, as the cache
+# only keeps reads of up to 8 blocks. 32 covers a full 128-entry array.
+PREP="$PREP blkcache configure 32 32;"
 # LOAD, `&&`-chained so a failure never reaches bootm with a stale buffer.
 # `boot` is found by name because an A/B update moves it, and its header must
 # carry both magic words before its length is trusted.
