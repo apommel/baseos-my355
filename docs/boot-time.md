@@ -33,6 +33,7 @@ On the mainline U-Boot path (the default since 2026-09-19;
 | first printk | 1.32 s | 2.85 s |
 | kernel → `Run /init` | **2.09–2.12 s** | 3.58 s |
 | frontend hand-off | 2.23–2.26 s | 3.72–3.74 s |
+| boot logo on the panel | 2.43 s (one boot) | ~1.0 s |
 | `nextui.elf` start | **2.69–2.73 s** | 4.19–4.23 s |
 | first NextUI frame | 3.53–3.57 s | (5.72–5.75 s, a different marker) |
 
@@ -166,8 +167,8 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 1. **Ship our own U-Boot — done, 1.47 s ahead, the default since 2026-09-19.**
    First printk **1.32 s** against 2.85 s, `Run /init`
-   **2.09–2.12 s** against 3.58 s, NextUI starting 1.5 s earlier (2026-09-19). It
-   costs the boot logo. What got it there, each measured on its own cold boots:
+   **2.09–2.12 s** against 3.58 s, NextUI starting 1.5 s earlier (2026-09-19). Its
+   boot logo reaches the panel at 2.43 s against ~1.0 s. What got it there, each measured on its own cold boots:
 
    | step | `Run /init` |
    |---|---|

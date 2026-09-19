@@ -20,7 +20,8 @@ be32() { printf '%d' "0x$(od -An -tx1 "$1" | tr -d ' \n')"; }
 # Seconds on the printk clock, the one the vendor figures in docs/boot-time.md
 # use. Userspace stamps are on the uptime clock, which starts later; the offset
 # comes from the root's jbd2 thread against its mount message, to 10 ms. The
-# first frame needs a MY355_DIAG=1 rootfs (baseos-frameprobe).
+# first frame needs a MY355_DIAG=1 rootfs (baseos-frameprobe). `panel` is when
+# the DSI link starts streaming: the boot logo's first moment on the glass.
 timeline() {
 	pk() { dmesg | awk -F'[][]' -v re="$1" '$0 ~ re {printf "%.3f", $2; exit}'; }
 	started() { cut -d')' -f2 "/proc/$1/stat" | awk '{printf "%.2f", $20 / 100}'; }
@@ -42,10 +43,11 @@ timeline() {
 	off=$(awk -v m="$mount" -v j="$jbd" 'BEGIN {printf "%.3f", m - j}')
 	at() { if [ -n "$1" ]; then awk -v u="$1" -v o="$off" 'BEGIN {printf "%.2f", u + o}'; else echo -; fi; }
 
-	printf 'uboot %s  printk %s  init %s  handoff %s  nextui %s  frame %s' "$uboot" \
-		"$(pk 'Booting Linux')" "$(pk 'Run /init')" \
+	printf 'uboot %s  printk %s  init %s  logo %s  handoff %s  nextui %s  panel %s  frame %s' \
+		"$uboot" "$(pk 'Booting Linux')" "$(pk 'Run /init')" \
+		"$(at "$(cat /run/boot-logo 2>/dev/null)")" \
 		"$(at "$(cat /run/boot-frontend-exec 2>/dev/null)")" "$(at "$nui")" \
-		"$(at "$(cat /run/boot-first-frame 2>/dev/null)")"
+		"$(pk 'dw_mipi_dsi_bridge_enable')" "$(at "$(cat /run/boot-first-frame 2>/dev/null)")"
 	printf '  (card %s ms' "$(awk -v a="$probe" -v b="$card" \
 		'BEGIN {if (a && b) printf "%.0f", (b - a) * 1000; else printf "-"}')"
 	dmesg | grep -q 'mmcblk1p3): recovery complete' && printf ', journal replayed'

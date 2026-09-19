@@ -488,6 +488,29 @@ def set_vop2_plane_masks(dtb: bytes) -> bytes:
     return dtb
 
 
+PANEL_NODE = "dsi@fe060000/panel@0"
+# Vendor value -> ours. reset/init only wait out power-on, which U-Boot now
+# does ~1.8 s earlier (no reset line here); enable holds the backlight, which
+# rcS lights. The init sequence's own 250 + 32 ms stay.
+PANEL_DELAYS = {"reset-delay-ms": (160, 0), "init-delay-ms": (200, 20),
+                "enable-delay-ms": (200, 0)}
+
+
+def set_panel_delays(dtb: bytes) -> bytes:
+    """Shorten the panel's power-up waits, for the mainline path only."""
+    props = fdt_node_props(dtb, PANEL_NODE)
+    if "reset-gpios" in props:
+        raise ValueError(f"{PANEL_NODE} has a reset line; reset-delay-ms is real")
+    out = bytearray(dtb)
+    for prop, (vendor, ours) in PANEL_DELAYS.items():
+        off, length = fdt_find_prop(dtb, PANEL_NODE, prop)
+        got = struct.unpack(">I", dtb[off:off + length])[0]
+        if length != 4 or got != vendor:
+            raise ValueError(f"{PANEL_NODE}/{prop} is {got}, expected {vendor}")
+        struct.pack_into(">I", out, off, ours)
+    return bytes(out)
+
+
 # UHS modes the RK3566 sdmmc controller can drive, in ascending order, with the
 # bus clock each one implies. Anything above SDR25 also needs max-frequency to
 # allow it and the I/O rail to be switchable to 1.8 V — both asserted below.

@@ -35,7 +35,7 @@ recovery.
 ```
 
 `./build-all.sh` runs the four builds and packages the release. The U-Boot is
-mainline, with no boot logo ([docs/uboot.md](docs/uboot.md) Part 3);
+mainline, and the boot logo comes from `rcS` ([docs/uboot.md](docs/uboot.md) Part 3);
 `MY355_UBOOT=vendor` builds the vendor path instead and skips `build-uboot.sh`.
 
 To derive the inputs
@@ -71,7 +71,7 @@ Build knobs:
 | `MY355_LOGO_SIZE`, `MY355_LOGO_ASSET` | boot logo, rebuilt into the resource image |
 | `MY355_UBOOT` | `mainline` (default), the U-Boot `build-uboot.sh` made, or `vendor` — [U-Boot](docs/uboot.md) |
 | `MY355_UBOOT_DEBUG` | `build-uboot.sh`: `1` (default) saves U-Boot's console to the card and signals stages on the charge LED; `0` for timing builds — [diagnostics](docs/diagnostics.md) |
-| `MY355_DIAG` | `1` to `build-uboot.sh` and `build-rootfs.sh`: boot-timing aids — a bootstage mark per U-Boot initcall, and a first-frame probe for `baseos-bootinfo timeline`. Not for release — [U-Boot](docs/uboot.md) |
+| `MY355_DIAG` | `1` to `build-uboot.sh` and `build-rootfs.sh`: boot-timing aids — a bootstage mark per U-Boot initcall, and a probe for the first frame (`baseos-bootinfo timeline`) and for what the panel shows (`/run/boot-display.log`). Not for release — [U-Boot](docs/uboot.md) |
 
 ## Debugging a device that cannot talk
 

@@ -1,8 +1,8 @@
 #!/bin/sh
 # Draw a compact status pill for exceptional boot work.
 #
-# Ordinary boots never invoke fbsplash, leaving the bootloader logo untouched
-# until the frontend draws its first frame.
+# Only rcS draws the full-screen logo, and only when the bootloader left none;
+# every later call overlays this pill and leaves the logo around it intact.
 
 SPLASH_BIN="${BASEOS_FBSPLASH:-/usr/bin/fbsplash}"
 

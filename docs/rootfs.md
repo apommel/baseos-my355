@@ -473,8 +473,16 @@ This device has no console, so `fbsplash` — built from `src/fbsplash.c`, stati
 freetype — is the only way to tell the owner anything.
 It reads panel geometry from the framebuffer and rotation from
 `/etc/baseos-release` (`BASEOS_PANEL_ROTATION_CCW=0`; the Flip's 640x480 panel is
-upright). `baseos-splash` wraps it, and ordinary boots never call it:
-the bootloader logo stays untouched until the frontend draws its first frame.
+upright). `baseos-splash` wraps it and only ever overlays a status pill.
+
+**The boot logo.** When the bootloader handed none to the kernel (no
+`logo,offset` in the display route: the mainline U-Boot path), `rcS` runs
+`fbsplash 0` in the background as soon as `/run` is mounted, lights the
+backlight, and mounts debugfs, where NextUI's `launch.sh` reads the
+backlight's duty to keep it lit. The logo reaches the panel when the kernel
+brings it up, at ~2.4 s ([U-Boot](uboot.md), *The boot logo*). On the vendor
+path, the vendor U-Boot's logo stays untouched until the frontend draws its
+first frame.
 
 `frontend-session` shows `INSERT SD CARD` when the left slot is empty and
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards

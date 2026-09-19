@@ -75,6 +75,9 @@ eval "$(python3 "$HERE/tools/mkfit.py" addresses)"
 # step is chained with && so a failure never reaches bootm with a stale buffer.
 # bootm only returns on failure; then the board powers itself off rather than
 # sit dark until the battery runs flat.
+# The panel's supply (gpio0 PC7), which the kernel only switches on at ~2.0 s:
+# powered from here, rkbootimg.py can drop the kernel's power-up waits.
+PANEL="gpio set A23;"
 # The core clock first, so the card read and the decompression run at it too.
 # `;` rather than &&: if it refuses, the boot carries on at 816 MHz.
 CPU="my355 cpu 1104; my355 mark cpu_set;"
@@ -102,10 +105,10 @@ if [ "$DEBUG" = 1 ]; then
   # What the card was actually driven at, and the CRU's drive/sample phases,
   # which U-Boot never programs (SDMMC0_CON0/1).
   CARDINFO="mmc info; md.l fdd20580 2"
-  BOOTCMD="gpio set A18; $CPU $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
+  BOOTCMD="$PANEL gpio set A18; $CPU $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
   BOOTCMD="$BOOTCMD env exists ok && bootm $MY355_FIT_ADDR; $SAVELOG; poweroff"
 else
-  BOOTCMD="$CPU $LOAD && bootm $MY355_FIT_ADDR; poweroff"
+  BOOTCMD="$PANEL $CPU $LOAD && bootm $MY355_FIT_ADDR; poweroff"
 fi
 
 FRAGMENTS="/frag/my355.config"

@@ -34,7 +34,7 @@ first frame at **5.74 s**. Stock takes 15.79 s and 31.50 s.
 
 Since 0.6.0, a mainline U-Boot replaces the vendor's, and the kernel prints its first line
 at 1.32 s instead of 2.85 s. NextUI shows its first frame at 3.53–3.57 s. The
-cost is the boot logo ([docs/uboot.md](docs/uboot.md)). Where the rest goes, and
+cost is a later boot logo, at 2.43 s instead of ~1.0 s ([docs/uboot.md](docs/uboot.md)). Where the rest goes, and
 what is left to try, is in [docs/boot-time.md](docs/boot-time.md).
 
 ## Building

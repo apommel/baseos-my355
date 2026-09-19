@@ -348,11 +348,14 @@ def cmd_boot(a) -> int:
     # Bootloader-specific, and only this path needs it (rkbootimg.add_optee_reservation).
     dtb = rk.add_optee_reservation(dtb)
     dtb = rk.set_vop2_plane_masks(dtb)
+    dtb = rk.set_panel_delays(dtb)
     print(f"  rk-kernel.dtb  {len(dtb)} bytes, OP-TEE reserved "
           f"at 0x{rk.OPTEE_BASE:x} ({rk.OPTEE_SIZE >> 20} MiB)")
     for encoder, (mask, primary) in rk.VOP2_DISPLAYS:
         print(f"      vop2: {encoder} on {rk._vop2_port_of(dtb, encoder)}, "
               f"planes 0x{mask:02x}, primary {primary}")
+    print("      panel: " + ", ".join(f"{p} {v} -> {o}"
+                                     for p, (v, o) in rk.PANEL_DELAYS.items()))
     if a.sd_uhs != "off":
         print(f"      sd: {rk.SD_SLOT0_NODE} += {', '.join(rk.SD_UHS_MODES[a.sd_uhs][0])}")
     print(f"      old: {old}")

@@ -25,6 +25,15 @@ grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 
 mark /run/boot-rcS-start
 
+# The boot logo and backlight, unless the vendor U-Boot handed its own logo to
+# the kernel (logo,offset). In the background: its pan waits for the panel.
+if [ ! -e /proc/device-tree/display-subsystem/route/route-dsi0/logo,offset ]; then
+	{ /usr/bin/fbsplash 0; mark /run/boot-logo; } &
+	echo 0 > /sys/class/backlight/backlight/bl_power 2>/dev/null
+fi
+# NextUI's launch.sh reads the backlight's duty here to keep the panel lit.
+/bin/mount -t debugfs -o nodev,noexec,nosuid debugfs /sys/kernel/debug
+
 # The vendor kernel restores rails from RK817 POWER_EN_SAVE1 on shutdown; if it
 # reads 0 that cuts vcc_1v8/vcc3v3_pmu and the device hangs. Nothing else sets it.
 if [ -w /sys/rk8xx/rk8xx_dbg ]; then

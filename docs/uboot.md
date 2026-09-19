@@ -155,7 +155,18 @@ full VOP2 support, does the drawing. A display-less U-Boot could in principle ju
 place the BMP and set two properties. But that contract has to be recovered from a
 BSP kernel with no published source, on a device with no console.
 
+> **Retracted (2026-09-19).** It is not a cheaper variant. The hand-off tells
+> the kernel the display is already running, and Rockchip's 5.10 display
+> drivers then skip bringing the panel up, so a logo staged by a U-Boot that
+> never lit the panel would stay dark. That is from Rockchip's public source,
+> not tested here. The contract itself is not RE either: the vendor U-Boot is
+> Rockchip's `next-dev` display stack, published (Part 3, *The boot logo*).
+
 ## The zero-RE option, if this is revisited
+
+> Done on 2026-09-19, and it took more than drawing: the panel came up at
+> 2.99 s, the backlight stayed off and NextUI erased the logo first (Part 3,
+> *The boot logo*). The logo now shows from 2.43 s.
 
 Lean U-Boot + stock DTB + **no video at all**, drawing the splash from the kernel
 side with the `baseos-splash` fbsplash the rootfs already ships. Cost is cosmetic
@@ -500,6 +511,75 @@ needed. Like stock, this skips the kernel's recalibration from resting voltage
 after 30 minutes off; doing it here needs the OCV table from the kernel's tree.
 It costs 13.5 ms of I2C.
 
+## The boot logo
+
+Mainline U-Boot has no VOP2 driver, so it draws nothing and the kernel brings
+the panel up itself. `rcS` then draws the BaseOS logo into `/dev/fb0`
+(`fbsplash 0`, the artwork the vendor path's logo is cropped from) and lights
+the backlight. It does neither when the tree carries `logo,offset`, which is
+the vendor U-Boot handing its own logo over.
+
+One cold boot, 2026-09-19:
+
+| | mainline | vendor path |
+|---|---|---|
+| logo drawn (`rcS`) | 2.13 s | ~1.0 s, by U-Boot |
+| backlight on | 2.27 s | with the logo |
+| **logo on the panel** (`dw_mipi_dsi_bridge_enable`) | **2.43 s**, was 2.99 | ~1.0 s |
+| NextUI sets its brightness | 2.96 s | |
+| first NextUI frame | 3.56 s | 5.72–5.75 s |
+
+So the logo is up for about 1.1 s, arriving 1.4 s after the vendor's. It took
+three fixes, each found on the device with `baseos-frameprobe` (below):
+
+- **The panel's waits.** The kernel switches the panel's supply on at 2.02 s,
+  then waits `reset-delay-ms` 160, `init-delay-ms` 200, the init sequence's own
+  250 + 32 and `enable-delay-ms` 200 before the DSI link streams a pixel. There
+  is no reset line, so the first two only wait out power-on. The boot script
+  now powers the panel first (`gpio set A23`, gpio0 PC7, `vcc3v3_lcd0_n`), and
+  `rkbootimg.set_panel_delays` sets 160/200/200 to 0/20/0: the link streams at
+  2.43 s against 2.99. The panel controller's 282 ms stay.
+- **The backlight.** U-Boot never enables its PWM, so `pwm-backlight` probes
+  it off. The panel enable that would light it comes after NextUI's `launch.sh`
+  has unbound the driver, so nothing lit it before NextUI's own brightness.
+  `rcS` lights it (`bl_power`) and mounts debugfs, where `launch.sh` reads the
+  duty it carries across the unbind.
+- **NextUI cleared it.** `.tmp_update/my355.sh` runs `cat /dev/zero >
+  /dev/fb0` at ~2.3 s to wipe stock's splash, so the logo was erased before the
+  panel ever showed it. On the vendor path the same line is harmless: that logo
+  sits in the reserved `drm-logo` memory, which the kernel scans out as its own
+  framebuffer, not `fb0`. NextUI now skips the clear on BaseOS.
+
+**No earlier from the kernel side.** The vendor kernel has neither a
+framebuffer console nor a kernel logo (`# CONFIG_FRAMEBUFFER_CONSOLE is not
+set`, `# CONFIG_LOGO is not set`), so no command-line option draws one. Its
+only logo path is taking over one a bootloader already has on the panel.
+Zlyme, on a mainline kernel, does what `rcS` does: an initramfs blits a splash
+into `/dev/fb0`, and it shows when the kernel lights the panel.
+
+**Earlier means U-Boot drawing it.** Not reverse engineering: the vendor
+binary's strings (`rockchip_vop2_init`, `rockchip,rk3568-video-phy`,
+`panel-init-sequence`, `rockchip,drm-logo`) are Rockchip's `next-dev` display
+stack, published at `rockchip-linux/u-boot`, `drivers/video/drm/`. Routes, in
+order of preference:
+
+1. The upstream VOP2 series (Dang Huynh and Ondrej Jirman, v6 of 2025-11,
+   ~1,100 lines for the VOP2; unmerged, its RK3566 window choice questioned in
+   review, DSI timing issues acknowledged), plus a panel driver for Rockchip's
+   `panel-init-sequence` binding and the kernel hand-off, both with
+   Rockchip's source as reference.
+2. Port Rockchip's stack: the exact code the vendor runs, hand-off included,
+   but several thousand lines against 2017 interfaces, carried forever.
+3. Replay the display registers dumped from a vendor-path boot. Least code,
+   most fragile, and worth having as ground truth for either of the above.
+
+Estimated 1,500–3,000 lines, tens of blind boots. The risks are hangs in
+display bring-up (save the log first; bound every wait), a wrong hand-off (the
+kernel re-initialises the panel, or a black NextUI as with the planes above),
+and clocks and power domains the kernel expects to inherit. The panel's own
+282 ms cost ~0.3 s of boot run in line, or tens of ms overlapped with the card
+read, for a logo at ~0.5–0.9 s.
+
 ## How this build works
 
 **The secure world is the vendor's.** `mkfit.py uboot` takes the stock FIT apart
@@ -512,8 +592,8 @@ scaling, so U-Boot stays the only variable. `CONFIG_TEXT_BASE` is the vendor's
 
 **The boot FIT.** `mkfit.py boot` packs the vendor kernel (zstd by default,
 round-trip checked) and `rk-kernel.dtb` with the same command line, SD flags and
-root as the vendor path, plus the OP-TEE reservation and the VOP2 plane
-assignment (above), both read back from the written FIT. No hash nodes: bootm
+root as the vendor path, plus the OP-TEE reservation, the VOP2 plane
+assignment and the panel's shorter waits (above), read back from the written FIT. No hash nodes: bootm
 treats them as optional, and a hash over the kernel is the work this path exists
 to delete. A 512-byte header in front carries `MY355FIT` and the FIT's sector
 count.
@@ -568,11 +648,12 @@ the debug build costs 7 ms.
 `baseos-bootinfo timeline` prints one line per boot, on the printk clock:
 
 ```
-uboot 1.274  printk 1.320  init 2.093  handoff 2.23  nextui 2.69  frame 3.53  (card 90 ms)
+uboot 1.275  printk 1.322  init 2.121  logo 2.48  handoff 2.28  nextui 2.98  panel 2.433  frame 3.56  (card 87 ms)
 ```
 
-U-Boot's hand-off, the first printk, `Run /init`, the frontend hand-off,
-`nextui.elf`'s start, its first frame, and SD card detection, with a note when
+U-Boot's hand-off, the first printk, `Run /init`, `rcS`'s logo (when `fbsplash`
+returned: its pan waits for the panel), the frontend hand-off, `nextui.elf`'s
+start, the panel first showing an image, NextUI's first frame, and SD card detection, with a note when
 root needed a journal replay: the two known sources of kernel-phase variance.
 Userspace stamps are on the uptime clock and are moved onto printk's through
 the root's `jbd2` thread and its mount message, to 10 ms.
@@ -588,7 +669,9 @@ what these measurements needed and a release does not:
 - rootfs: `baseos-frameprobe`, started by `/etc/init.d/dev`, which polls the DRM
   state every 20 ms for a plane scanning out a `nextui.elf` framebuffer and
   writes `/run/boot-first-frame`. The frame figure is an upper bound: the
-  polling costs a little CPU during boot.
+  polling costs a little CPU during boot. `/run/boot-display.log` records each
+  change of the backlight PWM and of whose framebuffer the panel's port scans
+  out, on the uptime clock.
 
 ## Bring-up without a UART
 
@@ -611,10 +694,11 @@ U-Boot now takes 1.27 s, of which 0.54 s is the read, 0.35 s decompression and
    `FG_INIT` is set. HDMI while docked, with the plane split above.
 6. A Flip control tree, for correctness: the RK8600, and none of quartz64-a's
    Ethernet, PCIe and USB.
-7. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
+7. A U-Boot boot logo (*The boot logo*, above), if 2.43 s is not enough.
+8. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19: the
-boot logo (no VOP2 driver; the panel is dark until the frontend draws), the
+early boot logo (no VOP2 driver; `rcS` draws one at 2.43 s against ~1.0 s), the
 low-battery guard and charge animation, the `.hdmi` device tree variant, and
 `androidboot.serialno` (`usb-gadget-adb` falls back to the machine id). It also
 removes `Freeing drm_logo memory`, the first-frame marker in

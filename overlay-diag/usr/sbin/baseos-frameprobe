@@ -6,17 +6,33 @@
 # path's is `Freeing drm_logo memory`), so poll the DRM state for a plane on a
 # CRTC scanning out a framebuffer nextui.elf allocated. Every 20 ms, up to 15 s:
 # the result is an upper bound, and the polling itself costs a little CPU.
+#
+# Along the way, /run/boot-display.log records each change in what the panel
+# shows: the backlight PWM, and which process's framebuffer the DSI port
+# (video_port1) scans out.
 
 grep -q ' /sys/kernel/debug ' /proc/mounts || mount -t debugfs none /sys/kernel/debug
-i=0
+i=0 last= frame=
 while [ $i -lt 750 ]; do
 	read -r up _ < /proc/uptime
-	if awk '/^plane/ {c = 0} /crtc=video_port/ {c = 1}
-		/allocated by = nextui.elf/ && c {f = 1} END {exit !f}' \
-		/sys/kernel/debug/dri/0/state 2>/dev/null; then
-		echo "$up" > /run/boot-first-frame
-		exit 0
+	now=$(awk '
+		FILENAME ~ /pwm$/ && /pwm-0/ {
+			bl = ($0 ~ /enabled/ ? "on" : "off"); sub(/.*duty: /, ""); sub(/ ns.*/, ""); bl = bl "/" $0 }
+		FILENAME ~ /state$/ && /^plane/ { c = 0 }
+		FILENAME ~ /state$/ && /crtc=video_port1/ { c = 1 }
+		FILENAME ~ /state$/ && c && /^\tfb=/ { fb = $0; sub(/.*=/, "", fb) }
+		FILENAME ~ /state$/ && c && /allocated by = / { by = $0; sub(/.*= /, "", by); c = 0 }
+		END { printf "backlight %s  dsi fb %s (%s)", bl ? bl : "-", fb ? fb : "-", by ? by : "-" }' \
+		/sys/kernel/debug/pwm /sys/kernel/debug/dri/0/state 2>/dev/null)
+	if [ "$now" != "$last" ]; then
+		echo "$up $now" >> /run/boot-display.log
+		last=$now
 	fi
+	case "$now" in
+	*"(nextui.elf)"*) [ -n "$frame" ] || { frame=$up; echo "$up" > /run/boot-first-frame; } ;;
+	esac
+	# A second past the first frame, for the backlight settling after it.
+	[ -n "$frame" ] && awk -v u="$up" -v f="$frame" 'BEGIN {exit !(u > f + 1)}' && exit 0
 	usleep 20000
 	i=$((i + 1))
 done
