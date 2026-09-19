@@ -116,8 +116,13 @@ INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,ohci_platform
 #                full speed from cpufreq's probe (~0.58 s into the kernel) until
 #                the frontend picks its own; frontend-session drops to ondemand
 #                when there is none.
+#   usbcore.authorized_default=0
+#                USB drivers wait for rcS, which authorizes the devices. With
+#                rootwait, the root mount waits out any probe in flight, and the
+#                WiFi chip's takes ~0.3 s: it starts within ms of the card being
+#                ready, and about half the boots lost that race.
 DROP="earlycon="
-APPEND="rw init=/init quiet cpufreq.default_governor=performance${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
+APPEND="rw init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
 
 # The BaseOS wordmark. Size keeps the rebuilt resource image well under the
 # largest one proven to boot (tools/rkbootimg.py, RESOURCE_SAFE_BYTES).

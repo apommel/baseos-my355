@@ -121,6 +121,23 @@ went **1.52 s → 0.81 s**. WiFi and Bluetooth both still work; `alpu_init` is t
 one that could still surprise someone, since what the stock userland does with
 that chip is unknown — take it out of the list first if anything odd shows up.
 
+### The root mount and the WiFi chip
+
+With `rootwait` the kernel mounts root only once the card is there **and** no
+driver is mid-probe, polling every 5 ms. The RTL8733BU WiFi chip finishes
+enumerating on EHCI within a few ms of the card being ready (both ~2.19 s when
+card init takes its usual ~210 ms), and its probe then reads the chip's efuse
+over USB for ~0.3 s. Whichever the poll saw first decided the boot: in 11 of 20
+boots measured on 2026-09-19, root mounted at ~2.49 s instead of ~2.20 s, and
+everything after it moved by the same amount.
+
+`usbcore.authorized_default=0` keeps USB drivers from probing during kernel
+init, and `rcS` authorizes the devices in the background, which runs the WiFi
+probe beside userspace. A device still enumerating when `rcS` changes the
+default was allocated under the old one, so `rcS` sweeps for a second. In 12
+boots since, root mounted at 2.20–2.22 s (2.07–2.08 s when card init was fast) and
+`wlan0` came up every time. `/run/boot-usb` records the last authorization.
+
 ### The SD bus
 
 The vendor DTB declares `sd-uhs-sdr12`/`sdr25` on the boot slot and stops, which

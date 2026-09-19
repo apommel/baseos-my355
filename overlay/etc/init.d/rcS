@@ -47,6 +47,22 @@ fi
 
 /bin/hostname -F /etc/hostname
 
+# USB devices, left unauthorized by the kernel (usbcore.authorized_default=0 in
+# build-image.sh). A device still enumerating took the old default and shows up
+# up to ~0.15 s later, so sweep for a second. Backgrounded: each write runs that
+# device's probe, ~0.3 s for the WiFi chip.
+{
+	for f in /sys/bus/usb/devices/usb*/authorized_default; do echo 1 > "$f"; done
+	i=0
+	while [ $i -lt 20 ]; do
+		for f in /sys/bus/usb/devices/*/authorized; do
+			read -r a < "$f" && [ "$a" = 0 ] && echo 1 > "$f" && mark /run/boot-usb
+		done
+		usleep 50000
+		i=$((i + 1))
+	done
+} 2>/dev/null &
+
 # Loopback. Nothing here needs the network, but adbd binds a TCP listener during
 # start-up and treats the failure as fatal, so without `lo` there is no adb.
 /sbin/ifconfig lo 127.0.0.1 netmask 255.0.0.0 up 2>/dev/null

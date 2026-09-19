@@ -133,7 +133,9 @@ and Mali, WiFi and the panel are built in, so nothing is `insmod`ed here
 ([hardware](hardware.md)).
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed,
-**loopback**, the first-boot card expansion, the frontend card, any pending system
+**loopback**, USB authorization in the background (the kernel holds USB drivers
+back so the WiFi probe cannot delay the root mount — [boot time](boot-time.md)),
+the first-boot card expansion, the frontend card, any pending system
 update, and the USB gadget in the background. Of the two update hooks,
 `baseos-update boot-check` after `/data` only runs when a trial is pending (a
 builtin file test). `apply` after the card mount costs a failed glob plus a
