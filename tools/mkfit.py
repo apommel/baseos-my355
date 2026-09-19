@@ -355,7 +355,8 @@ def cmd_boot(a) -> int:
         print(f"      vop2: {encoder} on {rk.vop2_port_of(dtb, encoder)}, "
               f"planes 0x{mask:02x}, primary {primary}")
     print("      panel: " + ", ".join(f"{p} {v} -> {o}"
-                                     for p, (v, o) in rk.PANEL_DELAYS.items()))
+                                     for p, (v, o) in rk.PANEL_DELAYS.items())
+          + f", sleep-out {rk.PANEL_SLEEP_OUT[0][1]} -> {rk.PANEL_SLEEP_OUT[1][1]} ms")
     if a.sd_uhs != "off":
         print(f"      sd: {rk.SD_SLOT0_NODE} += {', '.join(rk.SD_UHS_MODES[a.sd_uhs][0])}")
     print(f"      old: {old}")

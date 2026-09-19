@@ -491,9 +491,12 @@ def set_vop2_plane_masks(dtb: bytes) -> bytes:
 PANEL_NODE = "dsi@fe060000/panel@0"
 # Vendor value -> ours. reset/init only wait out power-on, which U-Boot now
 # does ~1.8 s earlier (no reset line here); enable holds the backlight, which
-# rcS lights. The init sequence's own 250 + 32 ms stay.
+# rcS lights.
 PANEL_DELAYS = {"reset-delay-ms": (160, 0), "init-delay-ms": (200, 20),
                 "enable-delay-ms": (200, 0)}
+# The init sequence opens with sleep-out (DCS 0x11), then waits 250 ms; 120 ms
+# is the usual requirement. Bytes: type, delay, length, command.
+PANEL_SLEEP_OUT = (bytes([0x05, 250, 0x01, 0x11]), bytes([0x05, 120, 0x01, 0x11]))
 
 
 def set_panel_delays(dtb: bytes) -> bytes:
@@ -508,6 +511,11 @@ def set_panel_delays(dtb: bytes) -> bytes:
         if length != 4 or got != vendor:
             raise ValueError(f"{PANEL_NODE}/{prop} is {got}, expected {vendor}")
         struct.pack_into(">I", out, off, ours)
+    off, _ = fdt_find_prop(dtb, PANEL_NODE, "panel-init-sequence")
+    vendor, ours = PANEL_SLEEP_OUT
+    if dtb[off:off + 4] != vendor:
+        raise ValueError(f"{PANEL_NODE}: init sequence does not open with a 250 ms sleep-out")
+    out[off:off + 4] = ours
     return bytes(out)
 
 
