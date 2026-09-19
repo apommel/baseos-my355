@@ -100,6 +100,12 @@ LOAD="$LOAD && setexpr.l m *$MY355_HDR_ADDR && test \${m} = $MY355_HDR_MAGIC0"
 LOAD="$LOAD && setexpr.l m *$(printf '%x' $((0x$MY355_HDR_ADDR + 4))) && test \${m} = $MY355_HDR_MAGIC1"
 LOAD="$LOAD && setexpr.l n *$MY355_HDR_COUNT_ADDR && setexpr fs \${bs} + 1"
 LOAD="$LOAD && mmc read $MY355_FIT_ADDR \${fs} \${n} && my355 mark fit_read"
+# bootm in its steps, to decompress at 1800 MHz: the kernel must not inherit
+# more than 1104 (my355 cpu), so a failed return to it stops the boot. A failed
+# raise only leaves decompression at 1104.
+BOOT="env exists ok && my355 cpu 1800; env exists ok && bootm start $MY355_FIT_ADDR"
+BOOT="$BOOT && bootm loados && my355 mark decompressed && my355 cpu 1104"
+BOOT="$BOOT && bootm prep && bootm go"
 if [ "$DEBUG" = 1 ]; then
   # The last 64 KiB of the active `boot` slot, located from the partition itself;
   # `lg` exists only once `part` found it, so a failure before then writes nothing.
@@ -113,9 +119,9 @@ if [ "$DEBUG" = 1 ]; then
   # read. Saving the log is kept off the boot path's && chain so that a failed
   # write can never stop the boot; it runs again after a failed bootm.
   BOOTCMD="$PANEL gpio set A18; $PREP $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
-  BOOTCMD="$BOOTCMD env exists ok && bootm $MY355_FIT_ADDR; $SAVELOG; poweroff"
+  BOOTCMD="$BOOTCMD $BOOT; $SAVELOG; poweroff"
 else
-  BOOTCMD="$PANEL $PREP $LOAD && bootm $MY355_FIT_ADDR; poweroff"
+  BOOTCMD="$PANEL $PREP $LOAD && setenv ok 1; $BOOT; poweroff"
 fi
 
 FRAGMENTS="/frag/my355.config"

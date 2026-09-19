@@ -166,7 +166,7 @@ BSP kernel with no published source, on a device with no console.
 
 > Done on 2026-09-19, and it took more than drawing: the panel came up at
 > 2.99 s, the backlight stayed off and NextUI erased the logo first (Part 3,
-> *The boot logo*). The logo now shows from 2.15 s.
+> *The boot logo*). The logo now shows from 2.03 s.
 
 Lean U-Boot + stock DTB + **no video at all**, drawing the splash from the kernel
 side with the `baseos-splash` fbsplash the rootfs already ships. Cost is cosmetic
@@ -232,8 +232,8 @@ From the build that was made and then removed (U-Boot v2026.07,
 
 `./build-all.sh` builds it, or `./build-uboot.sh` then `./build-image.sh`;
 `MY355_UBOOT=vendor` puts the vendor U-Boot back. It **boots**, and it reaches
-`Run /init` **1.6 s earlier** than the vendor path: 1.95–1.98 s against
-3.58 s, with NextUI starting at 2.55–2.61 s against 4.19–4.23 s (2026-09-19,
+`Run /init` **1.7 s earlier** than the vendor path: 1.83–1.85 s against
+3.58 s, with NextUI starting at 2.43–2.47 s against 4.19–4.23 s (2026-09-19,
 six warm reboots; U-Boot's own timings agree to 0.5 ms, and with cold boots).
 Everything below is measured on this unit and card unless marked otherwise.
 
@@ -272,7 +272,7 @@ zstd's slowness was U-Boot's build flags, not zstd (below).
 | U-Boot may read the kernel at a fixed sector | **wrong** | an A/B update moves `boot` to its other half (`src/gptslot.c`: nothing in the boot chain references an address). That U-Boot would have booted the old kernel on the new rootfs |
 | U-Boot init ~0.91 s, SD read ~12.7 MB/s | **measured: 0.97 s, 12.0 MB/s** | bootstage, below. The inferred split had borrowed the vendor's inflate time |
 | zstd is slower than gzip on this SoC | **wrong** | U-Boot builds arm64 with `-mstrict-align`, and `ZSTD_LIB_MINIFY` defaults on; together 5.6x. Below |
-| SDR50 in U-Boot needs only `mmc_of_parse()` and two Kconfig lines | **incomplete** | U-Boot's io-domain driver sets `PMU_GRF_IO_VSEL` once, at probe; the 1.8 V switch never updates it. Not attempted |
+| SDR50 in U-Boot needs only `mmc_of_parse()` and two Kconfig lines | **incomplete** | also a 100 MHz clock, the io-domain following vqmmc, and a power-cycled hand-off, which neither U-Boot (a counted regulator) nor the vendor kernel (no control of `vcc_sd`) could do. Tried 2026-09-19 and shelved (*The SD clock*, below) |
 | U-Boot drives the card at 50 MHz, and 12.0 MB/s is what that allows | **wrong: 25 MHz** | the controller halves its input clock and mainline's RK3568 clock driver did not provide for it (below). Fixed: **23.8 MB/s** |
 
 **Zlyme** and **ROCKNIX** both boot this unit with mainline U-Boot v2026.01 on
@@ -289,25 +289,25 @@ zstd kernel, four with the SD clock fixed, then five with the early data cache,
 each set agreeing to 0.1 ms. The fuel gauge step (`my355 fg`, below) came
 between the last two.
 
-| stage | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | **block cache** | |
-|---|---|---|---|---|---|---|---|
-| → `board_init_f` | 45 ms | 45 | 45 | 45 | 45 | 45 | |
-| **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | 40 | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
-| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | 59 | |
-| `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | 16 | |
-| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | **53** | 184 ms of the 202 was the partition scan (*Card init*, below); the kernel initialises the same card, SDR104 tuning included, in 75–205 ms ([boot time](boot-time.md), *The SD bus*). Why the clock fix also took 87 ms off is not established |
-| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 534 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
-| debug log save | 8 ms | 8 | 8 | 7 | 7 | 7 | the debug build's whole cost |
-| **decompress** | 608 ms | 447 | 347 | 348 | 347 | 347 | gzip, then zstd |
-| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | 12 | 12 | |
-| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | 1,791 | 1,274 | **1,124** | |
+| stage | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | block cache | **1800 MHz decode** | |
+|---|---|---|---|---|---|---|---|---|
+| → `board_init_f` | 45 ms | 45 | 45 | 45 | 45 | 45 | 45 | |
+| **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | 40 | 40 | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
+| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | 59 | 59 | |
+| `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | 16 | 16 | |
+| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | **53** | 53 | 184 ms of the 202 was the partition scan (*Card init*, below); the kernel initialises the same card, SDR104 tuning included, in 75–205 ms ([boot time](boot-time.md), *The SD bus*). Why the clock fix also took 87 ms off is not established |
+| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 534 | 534 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
+| debug log save | 8 ms | 8 | 8 | 7 | 7 | 7 | 7 | the debug build's whole cost |
+| **decompress** | 608 ms | 447 | 347 | 348 | 347 | 347 | **236** | gzip, then zstd |
+| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | 12 | 12 | 14 | |
+| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | 1,791 | 1,274 | 1,124 | **1,004** | |
 
-| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | **block cache** |
-|---|---|---|---|---|---|---|---|
-| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | 1.837 | 1.320 | **1.171** |
-| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | 2.663 | 2.09–2.12 | **1.95–1.98** |
-| `nextui.elf` start | 4.19–4.23 s | | | | 3.26–3.27 | 2.69–2.73 | **2.55–2.61** |
-| first NextUI frame | — | | | | 4.09–4.10 | 3.53–3.57 | **3.16–3.19** |
+| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | block cache | **1800 MHz decode** |
+|---|---|---|---|---|---|---|---|---|
+| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | 1.837 | 1.320 | 1.171 | **1.053** |
+| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | 2.663 | 2.09–2.12 | 1.95–1.98 | **1.83–1.85** |
+| `nextui.elf` start | 4.19–4.23 s | | | | 3.26–3.27 | 2.69–2.73 | 2.55–2.61 | **2.43–2.47** |
+| first NextUI frame | — | | | | 4.09–4.10 | 3.53–3.57 | 3.16–3.19 | **2.93–2.98** |
 
 The first frame is timed by polling the DRM state (`MY355_DIAG=1`, below),
 because this path has no kernel marker for it. The vendor path's, `Freeing
@@ -346,13 +346,34 @@ started". Open.
 RK8600's ID, reads VSEL0 (712.5 mV + 12.5 mV per step, 6-bit, confirmed against
 the kernel's own reading), raises it to 900 mV only if it is lower, then sets
 `ARMCLK` and reads it back. On this unit the rail already sits at 1000 mV, so
-it only sets the clock. **Nothing above 1104 MHz**: the vendor kernel sets
-`vdd_cpu` to its `regulator-init-microvolt` of 900 mV when the regulator probes,
-before cpufreq, so a faster hand-off would be under-volted for that window.
+it only sets the clock. **The kernel never gets more than 1104 MHz**: the
+vendor kernel sets `vdd_cpu` to its `regulator-init-microvolt` of 900 mV when the
+regulator probes, before cpufreq, so a faster hand-off would be under-volted for
+that window.
 
 Inflate 608 → 447 ms, first printk 2.723 → 2.537 s. The kernel phase moved less
 than predicted (0.94 → 0.90 s) because it now waits on the SD card: detection
 took 212 ms on that boot against 90 ms on an earlier one.
+
+**Decompression at 1800 MHz (2026-09-19).** The boot script runs `bootm` in its
+steps: `my355 cpu 1800`, `bootm start` (finding the kernel and tree in the
+FIT), `bootm loados` (the decompression), then `my355 cpu 1104`, `bootm prep` and `bootm go`. A
+failed return to 1104 MHz stops the chain, and the board powers off rather than
+hand over a fast clock; a failed raise only leaves decompression at 1104.
+Voltages are the vendor OPP table's default column (L0), which covers every
+silicon bin: 1025 mV at 1416 MHz, 1100 at 1608, 1150 at 1800, against this
+unit's L3 bin at 925/1000/1050. U-Boot's clock tables stopped at 1416 MHz;
+patch `0006` adds Linux's 1608 and 1800 MHz rows.
+
+| decompression at | `fit_read` → `decompressed` | `start_kernel` |
+|---|---|---|
+| 1104 MHz | ~363 ms | 1,124 ms |
+| 1416 MHz | 297 ms | 1,058 ms |
+| **1800 MHz** | **243 ms** | **1,004 ms** |
+
+Near-linear in the clock. The window includes the debug log save (7 ms), the
+voltage ramp and `bootm start`; `prep` and `go` back at 1104 MHz take
+14 ms. The kernel then finds the RK860 and takes the rail over as before.
 
 ## zstd
 
@@ -422,10 +443,32 @@ what the SPL leaves (`SDMMC0_CON0/1` = `4`/`0`: drive 180°, sample 0°) is what
 Linux uses at these speeds, and the debug build logs both registers alongside
 `mmc info`.
 
-The next doubling is SDR50: 100 MHz at 1.8 V, no tuning needed. It needs the
-1.8 V switch, which U-Boot's io-domain driver does not follow (it sets
-`PMU_GRF_IO_VSEL` once, at probe), and it hands the kernel a card already at
-1.8 V. Not attempted.
+The next doubling is SDR50: 100 MHz at 1.8 V, no tuning needed. **Tried on
+2026-09-19 and shelved** (the code is kept aside, not in the tree). It took:
+`sd-uhs-sdr50` in place of `sd-uhs-sdr104` in U-Boot's tree (U-Boot's dw_mmc
+cannot tune), `mmc_of_parse()` in the Rockchip glue, a 100 MHz clock from the
+400 MHz source divided by the controller, and the pads' io-domain setting
+following vqmmc, which U-Boot's io-domain driver only writes at probe.
+
+On a warm reboot it worked: `Mode: UHS SDR50 (100MHz)` and the whole FIT read
+back. Three things stopped it:
+
+- **The hand-off.** Only a power cycle ends 1.8 V signalling, and the vendor
+  kernel cannot power the card: its `vcc_sd` names its pin `enable-gpio`,
+  which `regulator-fixed` does not read (stock shows it with no state). A card
+  U-Boot leaves off stays off, and one left at 1.8 V was not recovered.
+- **U-Boot cannot power-cycle the card.** `vcc3v3_sd` is counted: one reference
+  from `regulator-boot-on`, one per MMC power-on, and disabling returns
+  `-EBUSY` until all are dropped. The MMC core's own power cycle is a no-op,
+  so its fallback after a failed 1.8 V switch (power-cycle, retry at 3.3 V)
+  cannot work either.
+- **Cold boots failed in card init** (charge LED still lit, no log saved), for
+  a reason not established; the unrecoverable fallback turned that into a
+  power-off.
+
+A retry would first make the power cycle real (drop `regulator-boot-on` from
+`vcc3v3_sd` in U-Boot's tree only, and measure what a real power cycle costs
+card init), so that a failure falls back to 50 MHz with a log saved.
 
 ## Card init: the partition scan
 
@@ -553,7 +596,7 @@ One cold boot, 2026-09-19:
 |---|---|---|
 | logo drawn (`rcS`) | 2.13 s | ~1.0 s, by U-Boot |
 | backlight on | 2.27 s | with the logo |
-| **logo on the panel** (`dw_mipi_dsi_bridge_enable`) | **2.43 s**, was 2.99; 2.15 s since (below) | ~1.0 s |
+| **logo on the panel** (`dw_mipi_dsi_bridge_enable`) | **2.43 s**, was 2.99; 2.03 s since (below) | ~1.0 s |
 | NextUI sets its brightness | 2.96 s | |
 | first NextUI frame | 3.56 s | 5.72–5.75 s |
 
@@ -570,7 +613,8 @@ three fixes, each found on the device with `baseos-frameprobe` (below):
   2.43 s against 2.99. The init sequence's 250 ms after sleep-out (DCS
   `0x11`) is now 120 ms, the usual requirement: 2.29 s in 12 warm boots
   (2.286–2.311 s), and cold boots showed a clean image each time. 2.15 s
-  since the block cache took 150 ms off U-Boot.
+  since the block cache took 150 ms off U-Boot, 2.03 s since decompression
+  runs at 1800 MHz.
 - **The backlight.** U-Boot never enables its PWM, so `pwm-backlight` probes
   it off. The panel enable that would light it comes after NextUI's `launch.sh`
   has unbound the driver, so nothing lit it before NextUI's own brightness.
@@ -639,10 +683,12 @@ is the work this path exists to delete. A 512-byte header in front carries `MY35
 count.
 
 **The boot script**, generated by `build-uboot.sh`: power the panel,
-`my355 cpu 1104`, `my355 fg`, `mmc dev 1`, then `part start`/`part size` to
-find `boot` **by name**, read the header, check both magic words, read exactly
-the FIT, `bootm`. The steps before the card are allowed to fail; every step
-from `mmc dev 1` on is `&&`-chained, and a failed `bootm` ends in `poweroff`
+`my355 cpu 1104`, `my355 fg`, `blkcache configure`, `mmc dev 1`, then `part
+start`/`part size` to find `boot` **by name**, read the header, check both magic
+words, read exactly the FIT, then `bootm` in its steps with the decompression
+at 1800 MHz (*The CPU clock*). The steps before the card are allowed to fail;
+every step from `mmc dev 1` on is `&&`-chained, and a failed `bootm`, or a
+clock that will not come back to 1104 MHz, ends in `poweroff`
 rather than a dark screen until the battery is flat. No scan, no filesystem, no environment.
 
 | DRAM | holds |
@@ -674,8 +720,9 @@ every fragment line survives `olddefconfig`, and builds with
 * `0003` — unaligned access for the decompressors (above).
 * `0004` — the SD clock at the rate asked for (above).
 * `0005` — the data cache before relocation (above).
+* `0006` — the RK3568's 1608 and 1800 MHz CPU rates (*The CPU clock*).
 
-`0004` and `0005` are the two worth sending upstream. `tools/uboot/patches-diag/`
+`0004`, `0005` and `0006` are the ones worth sending upstream. `tools/uboot/patches-diag/`
 holds the diagnostics-only patches `MY355_DIAG=1` adds on top.
 
 ## Measuring it
@@ -740,31 +787,30 @@ the charge LED; how to read them is in [diagnostics](diagnostics.md).
    BaseOS, in the NextUI release users will run. Without it the `rcS` logo is
    erased before the panel shows it.
 
-**Speed.** U-Boot now takes 1.12 s, of which 0.54 s is the read, 0.35 s
+**Speed.** U-Boot now takes 1.00 s, of which 0.53 s is the read, 0.24 s
 decompression and 0.14 s init before the boot script.
 
-4. **The read**, 534 ms: SDR50 would halve it (above), and a faster read
-   makes LZ4 worth measuring against zstd.
-5. **Decompression**, 347 ms: at the CPU clock the vendor kernel allows. A
-   faster clock would have to come back down to 1104 MHz before the hand-off
-   (*The CPU clock*).
+4. **The read**, 534 ms: SDR50 would halve it, but was shelved (above); a
+   faster read would also make LZ4 worth measuring against zstd.
+5. **Decompression**, 236 ms at 1800 MHz (*The CPU clock*). LZ4 would decode
+   faster still, but is larger to read: worth it once the read is faster.
 6. **Card init**, 53 ms: `mmc_go_idle` 11 ms and `sd_select_mode_and_width`
    16 ms are the largest steps left, and the partition scan's 128 cached
    lookups 13 ms.
 
 **Upkeep:**
 
-7. **`0004` and `0005` upstream.**
+7. **`0004`, `0005` and `0006` upstream.**
 8. The fuel gauge: its 13.5 ms (about 30 single-register transfers; bulk reads
    would cut them), and the resting-voltage recalibration the kernel skips once
    `FG_INIT` is set.
 9. A Flip control tree, for correctness: the RK8600, and none of quartz64-a's
    Ethernet, PCIe and USB.
-10. A U-Boot boot logo (*The boot logo*, above), if 2.15 s is not enough.
+10. A U-Boot boot logo (*The boot logo*, above), if 2.03 s is not enough.
 11. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
-the early boot logo (no VOP2 driver; `rcS` draws one at 2.15 s against ~1.0 s), the
+the early boot logo (no VOP2 driver; `rcS` draws one at 2.03 s against ~1.0 s), the
 low-battery guard and charge animation, the `.hdmi` device tree variant, and
 `androidboot.serialno` (`usb-gadget-adb` falls back to the machine id). It also
 removes `Freeing drm_logo memory`, the first-frame marker in

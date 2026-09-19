@@ -70,7 +70,7 @@ at power-on only matters for timing boots.
 | dark, LED never lit | U-Boot died during its own init, before the boot script — the one blind case; the last change is the suspect |
 | dark, LED stays lit | stuck finding or reading the `boot` FIT: read the log |
 | dark, LED lit then off | the FIT was read; the hang is in `bootm` or the kernel: read the log |
-| the device switches itself off | `bootm` refused the FIT, or the read failed; the log says which |
+| the device switches itself off | `bootm` refused the FIT, the read failed, or the CPU clock would not come back to 1104 MHz after decompression; the log says which |
 | adb up, frontend running, panel black with the backlight on | the kernel's tree lacks the VOP2 plane assignment: dmesg says `use default plane mask` |
 | battery far from what its voltage says | the fuel gauge was not reconciled: dmesg lacks `rk817-bat: initialized yet..`; the log's `my355 fg:` line says why |
 

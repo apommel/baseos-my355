@@ -65,8 +65,9 @@ still growing. The first build to boot (2026-09-05) was 0.16 s slower, because
 it handed the kernel 816 MHz where the vendor hands 1104. Matching that,
 decoding zstd, driving the card at the 50 MHz it only claimed to use and
 turning the data cache on before relocation and letting the block cache hold
-the GPT, it reaches `Run /init` **1.6 s** ahead (2026-09-19). It costs the early boot logo — mainline U-Boot has no VOP2
-driver, so `rcS` draws it, on the panel at 2.15 s against ~1.0 s — and the
+the GPT, and decompressing at 1800 MHz, it reaches `Run /init` **1.7 s** ahead
+(2026-09-19). It costs the early boot logo — mainline U-Boot has no VOP2
+driver, so `rcS` draws it, on the panel at 2.03 s against ~1.0 s — and the
 low-battery guard. And it has to do by hand what the vendor kernel silently
 relied on the vendor U-Boot for: the OP-TEE reservation, the display plane
 assignment (without it the panel stays black under NextUI) and the fuel gauge

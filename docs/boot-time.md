@@ -12,19 +12,19 @@ in the arch counter.
 
 On the mainline U-Boot path, the default since 2026-09-19 and still
 experimental ([U-Boot](uboot.md) Part 3). Six warm reboots on 2026-09-19,
-after the block cache, WiFi and tuning fixes. U-Boot's own timings match
+after the block cache, 1800 MHz decompression, WiFi and tuning fixes. U-Boot's own timings match
 cold boots; the kernel phase has only been re-measured warm ([U-Boot](uboot.md), *Where U-Boot's time goes*).
 
 | phase | at power-on | source |
 |---|---|---|
 | bootrom + DDR + SPL + BL31 | 0.39 s | [boot chain](boot-chain.md) |
-| **mainline U-Boot hands off** | **1.12 s** | bootstage `start_kernel` |
-| first printk | 1.17 s | dmesg |
-| kernel → `Run /init` | **1.95–1.98 s** | dmesg |
-| **frontend hand-off — `exec updater`** | **2.10–2.12 s** | `/run/boot-frontend-exec` |
-| boot logo on the panel | 2.14–2.15 s | `dw_mipi_dsi_bridge_enable` |
-| `nextui.elf` start | **2.55–2.61 s** | `/proc/<pid>/stat` |
-| **first NextUI frame** | **3.16–3.19 s** | `baseos-frameprobe` (`MY355_DIAG=1`) |
+| **mainline U-Boot hands off** | **1.00 s** | bootstage `start_kernel` |
+| first printk | 1.05 s | dmesg |
+| kernel → `Run /init` | **1.83–1.85 s** | dmesg |
+| **frontend hand-off — `exec updater`** | **1.97–2.00 s** | `/run/boot-frontend-exec` |
+| boot logo on the panel | 2.03 s | `dw_mipi_dsi_bridge_enable` |
+| `nextui.elf` start | **2.43–2.47 s** | `/proc/<pid>/stat` |
+| **first NextUI frame** | **2.93–2.98 s** | `baseos-frameprobe` (`MY355_DIAG=1`) |
 
 `baseos-bootinfo timeline` prints these for any boot; the first frame needs a
 `MY355_DIAG=1` rootfs ([U-Boot](uboot.md), *Measuring it*).
@@ -200,9 +200,9 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 ## What is left
 
-**Our own U-Boot — done, 1.6 s ahead, the default since 2026-09-19.** First
-printk **1.17 s** against 2.85 s, `Run /init` **1.95–1.98 s** against 3.58 s,
-NextUI starting 1.6 s earlier. Its boot logo reaches the panel at 2.15 s
+**Our own U-Boot — done, 1.7 s ahead, the default since 2026-09-19.** First
+printk **1.05 s** against 2.85 s, `Run /init` **1.83–1.85 s** against 3.58 s,
+NextUI starting 1.7 s earlier. Its boot logo reaches the panel at 2.03 s
 against ~1.0 s. What got it there, each step measured on its own boots (cold
 up to the data cache, warm after):
 
@@ -213,13 +213,14 @@ up to the data cache, warm after):
 | zstd kernel, decoded in 347 ms against gzip's 447 | 3.24 s |
 | SD card actually at 50 MHz: mainline's RK3568 clock driver ran it at 25 | 2.66 s |
 | data cache on before relocation: early init 570 → 40 ms | 2.09–2.12 s |
-| **block cache holding the GPT**: `mmc dev 1` 202 → 53 ms | **1.95–1.98 s** |
+| block cache holding the GPT: `mmc dev 1` 202 → 53 ms | 1.95–1.98 s |
+| **decompression at 1800 MHz**, back to 1104 before the hand-off: 347 → 236 ms | **1.83–1.85 s** |
 
 zstd was first measured 1.60 s *slower* than gzip; the cause was U-Boot's
 `-mstrict-align` and `ZSTD_LIB_MINIFY`, not zstd.
 
-What is left of U-Boot's 1.12 s is the read (0.54 s at 23.8 MB/s),
-decompression (0.35 s) and init before the boot script (0.14 s). The order to take them in is
+What is left of U-Boot's 1.00 s is the read (0.53 s at 23.8 MB/s),
+decompression (0.24 s) and init before the boot script (0.14 s). The order to take them in is
 [U-Boot](uboot.md), *Next, in order*.
 
 On the vendor U-Boot only:
@@ -233,7 +234,7 @@ On the vendor U-Boot only:
 **Retracted:** "projected with our own U-Boot and zstd: pre-kernel 1.3–1.8 s,
 first frame under 5 s". It assumed the vendor U-Boot's 1.21 s was mostly
 removable work and priced a zstd decode nobody had run; both were measured
-wrong ([U-Boot](uboot.md)). The pre-kernel time reached 1.17 s anyway, by other
+wrong ([U-Boot](uboot.md)). The pre-kernel time reached 1.05 s anyway, by other
 means.
 
 ## Stock, for comparison

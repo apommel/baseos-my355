@@ -40,7 +40,7 @@ new file mode 100644
 index 00000000..e92ba588
 --- /dev/null
 +++ b/cmd/my355.c
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,293 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * BaseOS my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
@@ -125,12 +125,17 @@ index 00000000..e92ba588
 +#define RK8600_RAMP_UV_PER_US	2300
 +
 +/*
-+ * The vendor OPP table's voltage per rate. Nothing above 1104 MHz: the vendor
-+ * kernel sets vdd_cpu to 900 mV when its regulator probes, before cpufreq.
++ * The vendor OPP table's voltage per rate, from its default column (L0), which
++ * covers every silicon bin. Above 1104 MHz only for decompression: the vendor
++ * kernel sets vdd_cpu to 900 mV when its regulator probes, before cpufreq, so
++ * the boot script brings the clock back down before the hand-off.
 + */
 +static const struct { ulong mhz; int uv; } my355_opps[] = {
 +	{ 816, 850000 },
 +	{ 1104, 900000 },
++	{ 1416, 1025000 },
++	{ 1608, 1100000 },
++	{ 1800, 1150000 },
 +};
 +
 +static int do_my355_cpu(struct cmd_tbl *cmdtp, int flag, int argc,
