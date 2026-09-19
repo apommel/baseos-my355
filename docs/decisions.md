@@ -65,7 +65,12 @@ still growing. The first build to boot (2026-09-05) was 0.16 s slower, because
 it handed the kernel 816 MHz where the vendor hands 1104. Matching that,
 decoding zstd, and driving the card at the 50 MHz it only claimed to use, it
 reaches `Run /init` **0.92 s** ahead (2026-09-18). It costs the boot logo —
-mainline U-Boot has no VOP2 driver — and the low-battery guard.
+mainline U-Boot has no VOP2 driver — and the low-battery guard. And it has to
+do by hand what the vendor kernel silently relied on the vendor U-Boot for:
+the OP-TEE reservation, the display plane assignment (without it the panel
+stays black under NextUI) and the fuel gauge bookkeeping (without it the
+battery reads 0% when full). Each was found by its failure, so there may be a
+fourth.
 
 So it is built behind `MY355_UBOOT=mainline` and ships only if it measures faster
 end to end with those costs accepted. It replaces U-Boot proper and nothing else:

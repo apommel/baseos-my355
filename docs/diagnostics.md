@@ -69,6 +69,8 @@ at power-on only matters for timing boots.
 | dark, LED stays lit | stuck finding or reading the `boot` FIT: read the log |
 | dark, LED lit then off | the FIT was read; the hang is in `bootm` or the kernel: read the log |
 | the device switches itself off | `bootm` refused the FIT, or the read failed; the log says which |
+| adb up, frontend running, panel black with the backlight on | the kernel's tree lacks the VOP2 plane assignment: dmesg says `use default plane mask` |
+| battery far from what its voltage says | the fuel gauge was not reconciled: dmesg lacks `rk817-bat: initialized yet..`; the log's `my355 fg:` line says why |
 
 **U-Boot's console output** is recorded and written to the last 64 KiB of the
 active `boot` partition just before hand-off, and again if the hand-off fails.
@@ -85,7 +87,8 @@ the 2026-08-24 failure would have had. A failed `bootm` returns, and the second
 save then captures its error. Before the save, the debug script also logs
 `mmc info` and `SDMMC0_CON0/1`, the card's drive and sample phases; `Bus Speed`
 there is what U-Boot asked for, which until patch `0004` was twice what the card
-got ([U-Boot](uboot.md)). `baseos-bootinfo` alone prints U-Boot's bootstage
+got ([U-Boot](uboot.md)). `my355 fg:` records the battery state it found
+and handed on. `baseos-bootinfo` alone prints U-Boot's bootstage
 timings on any mainline boot that reached userspace.
 
 ## Failure signatures

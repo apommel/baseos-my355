@@ -73,6 +73,10 @@ eval "$(python3 "$HERE/tools/mkfit.py" addresses)"
 # The core clock first, so the card read and the decompression run at it too.
 # `;` rather than &&: if it refuses, the boot carries on at 816 MHz.
 CPU="my355 cpu 1104; my355 mark cpu_set;"
+# The fuel gauge bookkeeping the vendor U-Boot does each boot; the kernel
+# trusts it and would otherwise mistake charging while off for a crash.
+# `;` too: if it refuses, the kernel falls back to its own estimate.
+CPU="$CPU my355 fg; my355 mark fg_sync;"
 LOAD="mmc dev 1 && my355 mark mmc_ready"
 LOAD="$LOAD && part start mmc 1 boot bs && part size mmc 1 boot bz"
 LOAD="$LOAD && setexpr lg \${bs} + \${bz} && setexpr lg \${lg} - $MY355_LOG_SECTORS"
