@@ -65,24 +65,26 @@ still growing. The first build to boot (2026-09-05) was 0.16 s slower, because
 it handed the kernel 816 MHz where the vendor hands 1104. Matching that,
 decoding zstd, driving the card at the 50 MHz it only claimed to use and
 turning the data cache on before relocation and letting the block cache hold
-the GPT, and decompressing at 1800 MHz, it reaches `Run /init` **1.7 s** ahead
-(2026-09-19). It costs the early boot logo — mainline U-Boot has no VOP2
-driver, so `rcS` draws it, on the panel at 2.03 s against ~1.0 s — and the
-low-battery guard. And it has to do by hand what the vendor kernel silently
-relied on the vendor U-Boot for: the OP-TEE reservation, the display plane
-assignment (without it the panel stays black under NextUI) and the fuel gauge
-bookkeeping (without it the battery reads 0% when full). Each was found by its
-failure, so there may be a fourth.
+the GPT, decompressing at 1800 MHz and giving it the Flip's own control tree, it
+reaches `Run /init` **1.8 s** ahead (2026-09-19). It costs the early boot logo
+— mainline U-Boot has no VOP2 driver, so `rcS` draws it, on the panel at
+2.00 s against ~1.0 s — and the low-battery guard. And it has to do by hand
+what the vendor kernel silently relied on the vendor U-Boot for: the OP-TEE
+reservation, the display plane assignment (without it the panel stays black
+under NextUI) and the fuel gauge bookkeeping (without it the battery reads 0%
+when full). Each was found by its failure, so there may be a fourth.
 
 It measured faster end to end — NextUI's first frame 3.53–3.57 s, where the
 vendor path frees its logo at 5.72–5.75 s — and on 2026-09-19 it became the
 default with those costs accepted; `MY355_UBOOT=vendor` still builds the vendor
 path. It is still experimental: no release has shipped it. It replaces U-Boot
 proper and nothing else: BL31, OP-TEE and the SPL's control tree stay the
-vendor's, byte-for-byte. Its five U-Boot patches are ours to carry: a
-boot-script helper command, room for the bootstage report, unaligned access for
-the decompressors, the RK3568 SD clock (an upstream bug) and the data cache
-before relocation. The last two are the ones to send upstream.
+vendor's, byte-for-byte. Its six U-Boot patches and its control tree are ours
+to carry. The patches are a boot-script helper command, room for the bootstage
+report, unaligned access for the decompressors, the RK3568 SD clock (an upstream
+bug), the data cache before relocation and the RK3568's 1608 and 1800 MHz CPU
+rates. The last three are the ones to send upstream. The control tree is the
+Flip's, not quartz64-a's, whose IO-domain map was wrong for this board.
 
 Tuning the vendor U-Boot from its device tree was tried and measured at 22 ms.
 All in [U-Boot](uboot.md).

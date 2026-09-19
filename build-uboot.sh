@@ -169,6 +169,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
     done
   fi
   cd "$SRC"
+  # Copied every build, not patched in once, so an edit is always picked up.
+  cp /frag/dts/*.dts arch/arm/dts/
 
   export CROSS_COMPILE="$CROSS"
   # Same inputs, same FIT: "did the bootloader change?" is a checksum question.
