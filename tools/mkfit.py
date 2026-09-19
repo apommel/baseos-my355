@@ -358,7 +358,8 @@ def cmd_boot(a) -> int:
                                      for p, (v, o) in rk.PANEL_DELAYS.items())
           + f", sleep-out {rk.PANEL_SLEEP_OUT[0][1]} -> {rk.PANEL_SLEEP_OUT[1][1]} ms")
     if a.sd_uhs != "off":
-        print(f"      sd: {rk.SD_SLOT0_NODE} += {', '.join(rk.SD_UHS_MODES[a.sd_uhs][0])}")
+        print(f"      sd: {rk.SD_SLOT0_NODE} += {', '.join(rk.SD_UHS_MODES[a.sd_uhs][0])}, "
+              f"{rk.SD_TUNING_PHASES} tuning steps")
     print(f"      old: {old}")
     print(f"      new: {new}")
 

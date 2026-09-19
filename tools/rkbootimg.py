@@ -528,6 +528,14 @@ SD_UHS_MODES = {
 }
 
 
+# SDR104 tuning steps across 360 degrees (the driver's default is 360). A test
+# read at a phase on the edge of the card's bad window can wait out the
+# controller's whole ~113 ms data timeout; fewer steps land there less often
+# (13 of 16 boots at 360, 6 of 22 at 36). 10 degrees is still finer than the
+# 20 the driver skips after every bad phase.
+SD_TUNING_PHASES = 36
+
+
 def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
     """Raise the SD slot's ceiling from the vendor's SDR25 to `mode`.
 
@@ -545,7 +553,10 @@ def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
     if maxfreq < needed:
         raise ValueError(f"{node}: max-frequency is {maxfreq}, but {mode} "
                          f"needs {needed}; raising it is a separate decision")
-    return fdt_add_props(dtb, node, [(f, b"") for f in flags])
+    if "rockchip,desired-num-phases" in props:
+        raise ValueError(f"{node} already sets its tuning steps")
+    return fdt_add_props(dtb, node, [(f, b"") for f in flags] + [
+        ("rockchip,desired-num-phases", struct.pack(">I", SD_TUNING_PHASES))])
 
 
 def set_bootargs(dtb: bytes, new_args: str) -> bytes:
@@ -687,7 +698,7 @@ def cmd_setargs(a) -> int:
         else:
             entries.append((name, data))
     if a.sd_uhs != "off":
-        added = ", ".join(SD_UHS_MODES[a.sd_uhs][0])
+        added = ", ".join(SD_UHS_MODES[a.sd_uhs][0]) + f", {SD_TUNING_PHASES} tuning steps"
         print(f"  sd: {SD_SLOT0_NODE} += {added} "
               f"(vendor stops at SDR25 = 50 MHz; slot 1 left alone)")
 
