@@ -32,7 +32,7 @@ not deleted, in [history](history.md).
 | | |
 |---|---|
 | [decisions](decisions.md) | The choices the port rests on, and what is still open. |
-| [U-Boot](uboot.md) | Tuning it (tried, 22 ms) and replacing it with mainline (under evaluation). |
+| [U-Boot](uboot.md) | Tuning it (tried, 22 ms) and replacing it with mainline (the default, experimental). |
 | [history](history.md) | Experiments, SPL disassembly, superseded measurements, every retracted theory. |
 
 ## The short version
@@ -43,9 +43,9 @@ are never muxed. A preloader with a working `/pinctrl` can, and it looks up a GP
 partition named `uboot` and reads a U-Boot FIT from its first sector.
 
 So BaseOS patches **2 MiB of internal NAND** — the user's own preloader, in
-place, from a card, with a backup written first — and leaves stock U-Boot, the
-kernel and the stock rootfs untouched. Card in: BaseOS. Card out: stock, exactly
-as before.
+place, from a card, with a backup written first — and leaves the stock U-Boot in
+NAND, the kernel and the stock rootfs untouched. Card in: BaseOS. Card out:
+stock, exactly as before.
 
 From there the card supplies a mainline U-Boot, the vendor kernel with a rewritten
 command line, and a BusyBox userland built on a measured subset of the stock

@@ -352,7 +352,7 @@ def cmd_boot(a) -> int:
     print(f"  rk-kernel.dtb  {len(dtb)} bytes, OP-TEE reserved "
           f"at 0x{rk.OPTEE_BASE:x} ({rk.OPTEE_SIZE >> 20} MiB)")
     for encoder, (mask, primary) in rk.VOP2_DISPLAYS:
-        print(f"      vop2: {encoder} on {rk._vop2_port_of(dtb, encoder)}, "
+        print(f"      vop2: {encoder} on {rk.vop2_port_of(dtb, encoder)}, "
               f"planes 0x{mask:02x}, primary {primary}")
     print("      panel: " + ", ".join(f"{p} {v} -> {o}"
                                      for p, (v, o) in rk.PANEL_DELAYS.items()))
@@ -428,7 +428,7 @@ def cmd_boot(a) -> int:
     assert rk.fdt_node_props(back, f"optee@{rk.OPTEE_BASE:x}")["no-map"] == b"", \
         "OP-TEE reservation not readable back"
     for encoder, (mask, _primary) in rk.VOP2_DISPLAYS:
-        port = rk.fdt_node_props(back, f"{rk.VOP2_NODE}/ports/{rk._vop2_port_of(back, encoder)}")
+        port = rk.fdt_node_props(back, f"{rk.VOP2_NODE}/ports/{rk.vop2_port_of(back, encoder)}")
         assert port["rockchip,plane-mask"] == struct.pack(">I", mask), \
             f"{encoder}: VOP2 plane mask not readable back"
     print(f"  wrote {a.out}: header + {sectors} sectors ({SECTOR + len(blob)} bytes)")

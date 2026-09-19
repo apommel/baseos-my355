@@ -126,8 +126,8 @@ MY355_LOGO_ASSET="${MY355_LOGO_ASSET:-$HERE/assets/bootlogo.bmp}"
 python3 "$HERE/tools/mkbootlogo.py" "$MY355_LOGO_ASSET" \
   "$WORK/baseos-logo.bmp" --size "$MY355_LOGO_SIZE" --preview
 
-# In Alpine so the gzip encoder (libdeflate) comes pinned with the release rather
-# than from whatever the host has installed.
+# In Alpine so the gzip (libdeflate) and zstd encoders come pinned with the
+# release rather than from whatever the host has installed.
 if [ "$UBOOT" = vendor ]; then
   echo "== repointing the vendor boot image at the card =="
   set -- rkbootimg.py setargs --logo /work/baseos-logo.bmp --compress-kernel "$COMPRESS"

@@ -454,7 +454,7 @@ VOP2_MIRROR = (0x2a, 5)    # Cluster1, Esmart1, Smart1; primary Smart1
 VOP2_DISPLAYS = (("dsi@fe060000", VOP2_MAIN), ("hdmi@fe0a0000", VOP2_MIRROR))
 
 
-def _vop2_port_of(dtb: bytes, encoder: str) -> str:
+def vop2_port_of(dtb: bytes, encoder: str) -> str:
     """The VOP port the encoder's enabled endpoint is wired to, e.g. `port@1`."""
     nodes: "dict[tuple, dict[str, bytes]]" = {}
     for event in fdt_walk(dtb):
@@ -474,7 +474,7 @@ def set_vop2_plane_masks(dtb: bytes) -> bytes:
     """Assign VOP2 windows as the vendor U-Boot does, for the mainline path only."""
     seen = set()
     for encoder, (mask, primary) in VOP2_DISPLAYS:
-        port = _vop2_port_of(dtb, encoder)
+        port = vop2_port_of(dtb, encoder)
         if port in seen:
             raise ValueError(f"{encoder} shares {port} with another display")
         seen.add(port)

@@ -49,7 +49,7 @@ case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 CLEAN=0
 case "${1:-}" in
   --clean) CLEAN=1 ;;
-  -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
   "") ;;
   *) echo "unknown option: $1" >&2; exit 2 ;;
 esac
@@ -70,21 +70,24 @@ fi
 # The DRAM map and header layout come from the tool that writes the boot FIT.
 eval "$(python3 "$HERE/tools/mkfit.py" addresses)"
 
-# The boot script. `boot` is found by name because an A/B update moves it, its
-# header must carry both magic words before its length is trusted, and every
-# step is chained with && so a failure never reaches bootm with a stale buffer.
-# bootm only returns on failure; then the board powers itself off rather than
-# sit dark until the battery runs flat.
+# The boot script: PANEL and PREP may fail, LOAD may not, then bootm. bootm
+# only returns on failure; then the board powers itself off rather than sit
+# dark until the battery runs flat.
+#
 # The panel's supply (gpio0 PC7), which the kernel only switches on at ~2.0 s:
 # powered from here, rkbootimg.py can drop the kernel's power-up waits.
 PANEL="gpio set A23;"
-# The core clock first, so the card read and the decompression run at it too.
-# `;` rather than &&: if it refuses, the boot carries on at 816 MHz.
-CPU="my355 cpu 1104; my355 mark cpu_set;"
+# PREP is `;`-separated: the boot survives each step refusing.
+# The core clock before the card, so the read and the decompression run at it
+# too. If it refuses, the boot carries on at 816 MHz.
+PREP="my355 cpu 1104; my355 mark cpu_set;"
 # The fuel gauge bookkeeping the vendor U-Boot does each boot; the kernel
-# trusts it and would otherwise mistake charging while off for a crash.
-# `;` too: if it refuses, the kernel falls back to its own estimate.
-CPU="$CPU my355 fg; my355 mark fg_sync;"
+# trusts it and would otherwise mistake charging while off for a crash. If it
+# refuses, the kernel falls back to its own estimate.
+PREP="$PREP my355 fg; my355 mark fg_sync;"
+# LOAD, `&&`-chained so a failure never reaches bootm with a stale buffer.
+# `boot` is found by name because an A/B update moves it, and its header must
+# carry both magic words before its length is trusted.
 LOAD="mmc dev 1 && my355 mark mmc_ready"
 LOAD="$LOAD && part start mmc 1 boot bs && part size mmc 1 boot bz"
 LOAD="$LOAD && setexpr lg \${bs} + \${bz} && setexpr lg \${lg} - $MY355_LOG_SECTORS"
@@ -99,16 +102,16 @@ if [ "$DEBUG" = 1 ]; then
   SAVELOG="env exists lg && mw.b $MY355_LOG_ADDR 0 $MY355_LOG_BYTES"
   SAVELOG="$SAVELOG && my355 log $MY355_LOG_ADDR $MY355_LOG_BYTES"
   SAVELOG="$SAVELOG && mmc write $MY355_LOG_ADDR \${lg} $MY355_LOG_SECTORS"
-  # gpio0 PC2, the charge LED: lit once init is done, dark once the kernel is
-  # read. Saving the log is kept off the boot path's && chain so that a failed
-  # write can never stop the boot; it runs again after a failed bootm.
   # What the card was actually driven at, and the CRU's drive/sample phases,
   # which U-Boot never programs (SDMMC0_CON0/1).
   CARDINFO="mmc info; md.l fdd20580 2"
-  BOOTCMD="$PANEL gpio set A18; $CPU $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
+  # gpio0 PC2, the charge LED: lit once init is done, dark once the kernel is
+  # read. Saving the log is kept off the boot path's && chain so that a failed
+  # write can never stop the boot; it runs again after a failed bootm.
+  BOOTCMD="$PANEL gpio set A18; $PREP $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
   BOOTCMD="$BOOTCMD env exists ok && bootm $MY355_FIT_ADDR; $SAVELOG; poweroff"
 else
-  BOOTCMD="$PANEL $CPU $LOAD && bootm $MY355_FIT_ADDR; poweroff"
+  BOOTCMD="$PANEL $PREP $LOAD && bootm $MY355_FIT_ADDR; poweroff"
 fi
 
 FRAGMENTS="/frag/my355.config"

@@ -35,11 +35,11 @@ recovery.
 ```
 
 `./build-all.sh` runs the four builds and packages the release. The U-Boot is
-mainline, and the boot logo comes from `rcS` ([docs/uboot.md](docs/uboot.md) Part 3);
-`MY355_UBOOT=vendor` builds the vendor path instead and skips `build-uboot.sh`.
+mainline, and the boot logo comes from `rcS` ([docs/uboot.md](docs/uboot.md)
+Part 3); `MY355_UBOOT=vendor` builds the vendor path instead and skips
+`build-uboot.sh`.
 
-To derive the inputs
-instead — needed to move onto a new vendor release — replace the first line with
+To derive the inputs instead — needed to move onto a new vendor release — replace the first line with
 `./prepare-stock.sh NAND_DIR`, whose three `mtd*.img` files are described in
 [docs/recovery.md](docs/recovery.md). It verifies the harvest is a
 **closed set**: every `DT_NEEDED` of every harvested ELF must resolve inside it, or
@@ -113,7 +113,7 @@ real payload against the real image, so `./build-all.sh` has to have run first.
 - The vendor kernel, U-Boot and BL31 stay byte-for-byte. Rebuilding one is a design
   decision, not an implementation detail — write it into
   [docs/decisions.md](docs/decisions.md) first. The one such decision so far is
-  the opt-in mainline U-Boot, which replaces U-Boot proper and nothing else.
+  the mainline U-Boot, which replaces U-Boot proper and nothing else.
 - Claims in `docs/` are *verified* (observed on hardware) or *inferred* (from
   binaries). Retracted ones are kept, not deleted, in
   [docs/history.md](docs/history.md).

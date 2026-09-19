@@ -4,10 +4,10 @@ A minimal Linux that boots the **Miyoo Flip** (Rockchip RK3566,
 `MIYOO RK3566 355 V10 Board`, NextUI platform id `my355`) as fast as the hardware
 allows, then hands off to a frontend. It has no interface of its own.
 
-The vendor kernel and BL31 stay **byte-for-byte** — the kernel is stored
-compressed on the card, and the build asserts it decompresses to the vendor image.
-U-Boot proper is mainline, built from source, and the userland is replaced, with a BusyBox init over a measured harvest of
-the stock glibc stack. The one change to internal NAND is a 2 MiB preloader patch
+The vendor kernel, BL31 and OP-TEE stay **byte-for-byte** — the kernel is
+stored compressed on the card, and the build asserts it decompresses to the
+vendor image. U-Boot proper is mainline, built from source, and the userland is
+replaced, with a BusyBox init over a measured harvest of the stock glibc stack. The one change to internal NAND is a 2 MiB preloader patch
 making the SPL try the SD card first — stock still boots when no BaseOS card is
 present.
 
@@ -32,10 +32,14 @@ first frame at **5.74 s**. Stock takes 15.79 s and 31.50 s.
 - **Vendor libraries on the boot card's ext4**, not the squashfs in SPI NAND.
   NextUI's `launch.sh` loads them in 0.89 s against 12.45 s on stock.
 
-Since 0.6.0, a mainline U-Boot replaces the vendor's, and the kernel prints its first line
-at 1.32 s instead of 2.85 s. NextUI shows its first frame at 3.53–3.57 s. The
-cost is a later boot logo, at 2.43 s instead of ~1.0 s ([docs/uboot.md](docs/uboot.md)). Where the rest goes, and
-what is left to try, is in [docs/boot-time.md](docs/boot-time.md).
+**Mainline U-Boot (after 0.6.0, experimental).** The figures above are 0.6.0,
+on the vendor U-Boot. The default build now replaces it with a mainline one:
+the kernel prints its first line at 1.32 s instead of 2.85 s, the frontend
+hand-off is at 2.23–2.26 s and NextUI's first frame at 3.53–3.57 s. The cost is
+a later boot logo, at 2.43 s instead of ~1.0 s, and the vendor U-Boot's
+low-battery guard ([docs/uboot.md](docs/uboot.md)). `MY355_UBOOT=vendor` builds
+the 0.6.0 path. Where the rest goes, and what is left to try, is in
+[docs/boot-time.md](docs/boot-time.md).
 
 ## Building
 

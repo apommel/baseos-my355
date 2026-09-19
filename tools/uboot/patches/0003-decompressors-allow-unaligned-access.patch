@@ -1,5 +1,12 @@
 Let the decompressors use unaligned access on arm64.
 
+arm64 U-Boot is built with -mstrict-align, which turns zstd's unaligned
+loads and 16-byte copies into byte operations: twice as slow on an RK3566.
+Build lib/zstd, lib/zlib and lib/xxhash without it, and clear SCTLR.A in
+image_decomp(). bootm decompresses after relocation, with the MMU on and
+DRAM mapped as Normal memory, where that bit is all that could forbid an
+unaligned access.
+
 diff --git a/boot/image.c b/boot/image.c
 index abac2c70..68bf556b 100644
 --- a/boot/image.c

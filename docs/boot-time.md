@@ -10,35 +10,41 @@ in the arch counter.
 
 ## Where a boot goes today
 
+On the mainline U-Boot path, the default since 2026-09-19 and still
+experimental ([U-Boot](uboot.md) Part 3). Four of five cold boots on
+2026-09-19; the fifth lost 0.42 s inside the kernel ([U-Boot](uboot.md),
+*Where U-Boot's time goes*).
+
 | phase | at power-on | source |
 |---|---|---|
 | bootrom + DDR + SPL + BL31 | 0.39 s | [boot chain](boot-chain.md) |
+| **mainline U-Boot hands off** | **1.27 s** | bootstage `start_kernel` |
+| first printk | 1.32 s | dmesg |
+| kernel → `Run /init` | **2.09–2.12 s** | dmesg |
+| **frontend hand-off — `exec updater`** | **2.23–2.26 s** | `/run/boot-frontend-exec` |
+| boot logo on the panel | 2.43 s (one boot) | `dw_mipi_dsi_bridge_enable` |
+| `nextui.elf` start | **2.69–2.73 s** | `/proc/<pid>/stat` |
+| **first NextUI frame** | **3.53–3.57 s** | `baseos-frameprobe` (`MY355_DIAG=1`) |
+
+`baseos-bootinfo timeline` prints these for any boot; the first frame needs a
+`MY355_DIAG=1` rootfs ([U-Boot](uboot.md), *Measuring it*).
+
+On the vendor U-Boot (`MY355_UBOOT=vendor`, as released in 0.6.0):
+
+| phase | at power-on | source |
+|---|---|---|
 | **vendor U-Boot, from the card** | **2.85 s** | first printk |
 | kernel → `Run /init` | 3.58 s | dmesg |
 | `rcS` | +0.06–0.07 s | `/run/boot-*` |
 | **frontend hand-off — `exec updater`** | **3.72–3.74 s** | `/run/boot-frontend-exec` |
+| boot logo on the panel | ~1.0 s | drawn by U-Boot |
 | `nextui.elf` start | 4.19–4.23 s | `/proc/<pid>/stat` |
 | **first NextUI frame** | **5.72–5.75 s** | `Freeing drm_logo memory` |
 
-Against stock's **15.79 s** to hand-off and **31.50 s** to a first frame, on the
-same unit and the same NextUI install. BaseOS boots from SD faster than stock
-boots from internal NAND.
-
-On the mainline U-Boot path (the default since 2026-09-19;
-[U-Boot](uboot.md) Part 3), four cold boots on 2026-09-19:
-
-| phase | at power-on | vendor path |
-|---|---|---|
-| mainline U-Boot hands off | **1.27 s** | — |
-| first printk | 1.32 s | 2.85 s |
-| kernel → `Run /init` | **2.09–2.12 s** | 3.58 s |
-| frontend hand-off | 2.23–2.26 s | 3.72–3.74 s |
-| boot logo on the panel | 2.43 s (one boot) | ~1.0 s |
-| `nextui.elf` start | **2.69–2.73 s** | 4.19–4.23 s |
-| first NextUI frame | 3.53–3.57 s | (5.72–5.75 s, a different marker) |
-
-`baseos-bootinfo timeline` prints this line for any boot; the first frame needs
-a `MY355_DIAG=1` rootfs ([U-Boot](uboot.md), *Measuring it*).
+The two first-frame figures come from different markers, so compare the paths
+on the earlier rows. Against stock's **15.79 s** to hand-off and **31.50 s** to
+a first frame, on the same unit and the same NextUI install, either path boots
+from SD faster than stock boots from internal NAND.
 
 Nothing of ours is left on the critical path except the system bus, which starts
 in the background; `adbd`, `ntpd` and WiFi all come up after the hand-off.
@@ -62,11 +68,12 @@ writes `/run/boot-frontend-exec`; both are `mark()` from
 `/usr/share/baseos/log.sh`, uptime readings taken with shell builtins, so they
 cost no fork.
 
-## Where the pre-kernel time goes
+## Where the pre-kernel time goes, on the vendor U-Boot
 
-Measured by padding a gzipped kernel payload out to the raw kernel's size, which
-holds the inflate work constant while the bytes read change (2026-08-22, when
-pre-kernel was 3.14 s):
+Mainline's own breakdown, from its bootstage records, is in [U-Boot](uboot.md)
+Part 3. On the vendor U-Boot it was measured by padding a gzipped kernel
+payload out to the raw kernel's size, which holds the inflate work constant
+while the bytes read change (2026-08-22, when pre-kernel was 3.14 s):
 
 | term | measured | share |
 |---|---|---|
@@ -165,35 +172,39 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 ## What is left
 
-1. **Ship our own U-Boot — done, 1.47 s ahead, the default since 2026-09-19.**
-   First printk **1.32 s** against 2.85 s, `Run /init`
-   **2.09–2.12 s** against 3.58 s, NextUI starting 1.5 s earlier (2026-09-19). Its
-   boot logo reaches the panel at 2.43 s against ~1.0 s. What got it there, each measured on its own cold boots:
+**Our own U-Boot — done, 1.47 s ahead, the default since 2026-09-19.** First
+printk **1.32 s** against 2.85 s, `Run /init` **2.09–2.12 s** against 3.58 s,
+NextUI starting 1.5 s earlier. Its boot logo reaches the panel at 2.43 s
+against ~1.0 s. What got it there, each step measured on its own cold boots:
 
-   | step | `Run /init` |
-   |---|---|
-   | first build, CPU left at 816 MHz | 3.65–3.67 s |
-   | CPU handed over at 1104 MHz, as the vendor does | 3.44 s |
-   | zstd kernel, decoded in 347 ms against gzip's 447 | 3.24 s |
-   | SD card actually at 50 MHz: mainline's RK3568 clock driver ran it at 25 | 2.66 s |
-   | **data cache on before relocation**: early init 570 → 40 ms | **2.09–2.12 s** |
+| step | `Run /init` |
+|---|---|
+| first build, CPU left at 816 MHz | 3.65–3.67 s |
+| CPU handed over at 1104 MHz, as the vendor does | 3.44 s |
+| zstd kernel, decoded in 347 ms against gzip's 447 | 3.24 s |
+| SD card actually at 50 MHz: mainline's RK3568 clock driver ran it at 25 | 2.66 s |
+| **data cache on before relocation**: early init 570 → 40 ms | **2.09–2.12 s** |
 
-   U-Boot reports its own bootstage timings; what is left of its 1.27 s is
-   the read (0.54 s at 23.8 MB/s), decompression (0.35 s) and card init
-   (0.20 s) — [U-Boot](uboot.md) Part 3.
-2. **zstd for the kernel — 87 ms, on the mainline path.** First measured
-   1.60 s *slower* than gzip; the cause was U-Boot's `-mstrict-align` and
-   `ZSTD_LIB_MINIFY`, not zstd. Fixed and tuned for decode speed on this SoC,
-   and included in (1).
-3. **Shrink what U-Boot reads.** The resource image is already rebuilt at
-   442 880 bytes against the stock 943 616. Dropping the charge artwork would
-   save another 176 KB, worth ~16 ms.
-4. **Tuning the vendor U-Boot from its device tree — tried, 22 ms, dropped.**
-   See [U-Boot](uboot.md).
+zstd was first measured 1.60 s *slower* than gzip; the cause was U-Boot's
+`-mstrict-align` and `ZSTD_LIB_MINIFY`, not zstd.
 
-**Retracted:** "projected with (1) and (2): pre-kernel 1.3–1.8 s, first frame
-under 5 s". It assumed the vendor U-Boot's 1.21 s was mostly removable work and
-priced a zstd decode nobody had run; both were measured wrong ([U-Boot](uboot.md)).
+What is left of U-Boot's 1.27 s is the read (0.54 s at 23.8 MB/s),
+decompression (0.35 s) and card init (0.20 s). The order to take them in is
+[U-Boot](uboot.md), *Next, in order*.
+
+On the vendor U-Boot only:
+
+- **Shrink what it reads.** The resource image is already rebuilt at 442 880
+  bytes against the stock 943 616. Dropping the charge artwork would save
+  another 176 KB, worth ~16 ms.
+- **Tuning it from its device tree — tried, 22 ms, dropped.** See
+  [U-Boot](uboot.md) Part 1.
+
+**Retracted:** "projected with our own U-Boot and zstd: pre-kernel 1.3–1.8 s,
+first frame under 5 s". It assumed the vendor U-Boot's 1.21 s was mostly
+removable work and priced a zstd decode nobody had run; both were measured
+wrong ([U-Boot](uboot.md)). The pre-kernel time reached 1.32 s anyway, by other
+means.
 
 ## Stock, for comparison
 

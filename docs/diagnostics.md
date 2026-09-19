@@ -53,10 +53,11 @@ busybox runs, ruling out the rootfs while the real bug was elsewhere.
 
 ## The mainline U-Boot path
 
-On the mainline U-Boot path (the default; [U-Boot](uboot.md) Part 3) U-Boot draws
-nothing: the panel stays dark until the kernel lights it and `rcS` draws the
-logo, at ~2.4 s, whether or not the boot worked.
-A debug build (`MY355_UBOOT_DEBUG=1`, the default) makes up for it two ways.
+On the mainline U-Boot path (the default; [U-Boot](uboot.md) Part 3) U-Boot
+draws nothing: the panel stays dark until the kernel lights it and `rcS` draws
+the logo at ~2.4 s, so a dark panel before then says nothing about whether the
+boot worked. A debug build (`MY355_UBOOT_DEBUG=1`, the default) makes up for it
+two ways.
 
 **The charge LED** (`gpio0 PC2`, off from reset until the kernel's
 `battery-charging` trigger claims it) marks U-Boot's stages. Keep the charger
@@ -96,9 +97,9 @@ the 2026-08-24 failure would have had. A failed `bootm` returns, and the second
 save then captures its error. Before the save, the debug script also logs
 `mmc info` and `SDMMC0_CON0/1`, the card's drive and sample phases; `Bus Speed`
 there is what U-Boot asked for, which until patch `0004` was twice what the card
-got ([U-Boot](uboot.md)). `my355 fg:` records the battery state it found
-and handed on. `baseos-bootinfo` alone prints U-Boot's bootstage
-timings on any mainline boot that reached userspace.
+got ([U-Boot](uboot.md)). `my355 fg:` records the battery state it found and
+handed on. `baseos-bootinfo` alone prints U-Boot's bootstage timings on any
+mainline boot that reached userspace.
 
 ## Failure signatures
 
