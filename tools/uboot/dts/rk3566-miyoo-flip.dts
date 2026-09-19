@@ -2,6 +2,10 @@
 /*
  * Miyoo Flip: U-Boot's control tree on the my355 path. Only what U-Boot uses,
  * with values from the vendor kernel's tree; the kernel still gets that tree.
+ *
+ * There is no rk3566-miyoo-flip-u-boot.dtsi: U-Boot falls back to
+ * rk3568-u-boot.dtsi (CONFIG_SYS_SOC), whose rk356x-u-boot.dtsi supplies the
+ * pre-relocation tags and the mmc1 = sdmmc0 alias `mmc dev 1` relies on.
  */
 
 /dts-v1/;

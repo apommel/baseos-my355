@@ -433,8 +433,14 @@ def cmd_boot(a) -> int:
         port = rk.fdt_node_props(back, f"{rk.VOP2_NODE}/ports/{rk.vop2_port_of(back, encoder)}")
         assert port["rockchip,plane-mask"] == struct.pack(">I", mask), \
             f"{encoder}: VOP2 plane mask not readable back"
+    soff, _ = rk.fdt_find_prop(back, rk.PANEL_NODE, "panel-init-sequence")
+    assert back[soff:soff + 4] == rk.PANEL_SLEEP_OUT[1], "panel sleep-out not readable back"
+    if a.sd_uhs != "off":
+        phases = rk.fdt_node_props(back, rk.SD_SLOT0_NODE)["rockchip,desired-num-phases"]
+        assert phases == struct.pack(">I", rk.SD_TUNING_PHASES), "SD tuning steps not readable back"
     print(f"  wrote {a.out}: header + {sectors} sectors ({SECTOR + len(blob)} bytes)")
-    print("  verified: kernel round-trips, bootargs, OP-TEE reservation and VOP2 planes read back")
+    print("  verified: kernel round-trips, bootargs, OP-TEE reservation, VOP2 planes, "
+          f"panel timings{' and SD tuning' if a.sd_uhs != 'off' else ''} read back")
     return 0
 
 

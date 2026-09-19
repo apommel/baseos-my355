@@ -4,17 +4,18 @@ Where the time goes from power-on, what each change was worth, and what is left.
 Superseded tables and the measurements that led here are in
 [history](history.md).
 
-Every figure is one or two cold boots on hardware with **USB unplugged at
-power-on** — a cable makes U-Boot run its charge animation first, and that lands
-in the arch counter.
+Figures are cold boots on hardware with **USB unplugged at power-on** — a
+cable makes the vendor U-Boot run its charge animation first, and that lands in
+the arch counter — unless marked *warm* (a reboot from BaseOS).
 
 ## Where a boot goes today
 
 On the mainline U-Boot path, the default since 2026-09-19 and still
-experimental ([U-Boot](uboot.md) Part 3). Five warm reboots on 2026-09-19,
-after the block cache, 1800 MHz decompression, the Flip control tree, WiFi and
-tuning fixes; the first frame is from six before the control tree. U-Boot's own timings match
-cold boots; the kernel phase has only been re-measured warm ([U-Boot](uboot.md), *Where U-Boot's time goes*).
+experimental ([U-Boot](uboot.md) Part 3). Five *warm* reboots on 2026-09-19,
+with every change on this page in place; the first frame is from the boots
+just before the Flip control tree. U-Boot's own timings match cold boots; the
+kernel phase has only been re-measured warm ([U-Boot](uboot.md), *Where
+U-Boot's time goes*).
 
 | phase | at power-on | source |
 |---|---|---|
@@ -136,8 +137,8 @@ everything after it moved by the same amount.
 init, and `rcS` authorizes the devices in the background, which runs the WiFi
 probe beside userspace. A device still enumerating when `rcS` changes the
 default was allocated under the old one, so `rcS` sweeps for a second. In 12
-boots since, root mounted at 2.20–2.22 s (2.07–2.08 s when card init was fast) and
-`wlan0` came up every time. `/run/boot-usb` records the last authorization.
+boots since, root mounted at 2.20–2.22 s (2.07–2.08 s when card init was fast)
+and `wlan0` came up every time. `/run/boot-usb` records the last authorization.
 
 ### The SD bus
 
@@ -222,8 +223,8 @@ zstd was first measured 1.60 s *slower* than gzip; the cause was U-Boot's
 `-mstrict-align` and `ZSTD_LIB_MINIFY`, not zstd.
 
 What is left of U-Boot's 0.98 s is the read (0.53 s at 23.8 MB/s),
-decompression (0.24 s) and init before the boot script (0.12 s). The order to take them in is
-[U-Boot](uboot.md), *Next, in order*.
+decompression (0.24 s) and init before the boot script (0.12 s). The order to
+take them in is [U-Boot](uboot.md), *Next, in order*.
 
 On the vendor U-Boot only:
 
@@ -236,7 +237,7 @@ On the vendor U-Boot only:
 **Retracted:** "projected with our own U-Boot and zstd: pre-kernel 1.3–1.8 s,
 first frame under 5 s". It assumed the vendor U-Boot's 1.21 s was mostly
 removable work and priced a zstd decode nobody had run; both were measured
-wrong ([U-Boot](uboot.md)). The pre-kernel time reached 1.05 s anyway, by other
+wrong ([U-Boot](uboot.md)). The pre-kernel time reached 1.03 s anyway, by other
 means.
 
 ## Stock, for comparison

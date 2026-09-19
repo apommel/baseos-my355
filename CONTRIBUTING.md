@@ -70,7 +70,7 @@ Build knobs:
 | `MY355_INITCALL_BLACKLIST` | built-in initcalls skipped by name; empty restores the vendor set. Worth 0.71 s — [boot time](docs/boot-time.md) |
 | `MY355_LOGO_SIZE`, `MY355_LOGO_ASSET` | boot logo, rebuilt into the resource image |
 | `MY355_UBOOT` | `mainline` (default), the U-Boot `build-uboot.sh` made, or `vendor` — [U-Boot](docs/uboot.md) |
-| `MY355_UBOOT_DEBUG` | `build-uboot.sh`: `1` (default) saves U-Boot's console to the card and signals stages on the charge LED; `0` for timing builds — [diagnostics](docs/diagnostics.md) |
+| `MY355_UBOOT_DEBUG` | `build-uboot.sh`: `0` (default) is the release build; `1` saves U-Boot's console to the card and signals stages on the charge LED, for bring-up and failed boots — [diagnostics](docs/diagnostics.md) |
 | `MY355_DIAG` | `1` to `build-uboot.sh` and `build-rootfs.sh`: boot-timing aids — a bootstage mark per U-Boot initcall and per card-init step, and a probe for the first frame (`baseos-bootinfo timeline`) and for what the panel shows (`/run/boot-display.log`). Not for release — [U-Boot](docs/uboot.md) |
 
 ## Debugging a device that cannot talk

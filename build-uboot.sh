@@ -13,9 +13,10 @@
 # and stock comes up; reverting is a re-flash (docs/uboot.md).
 #
 # Environment:
-#   MY355_UBOOT_DEBUG   1 (default): record the console and save it to the card,
-#                       and signal stages on the charge LED (docs/diagnostics.md).
-#                       0: neither, for timing builds.
+#   MY355_UBOOT_DEBUG   0 (default): the release build.
+#                       1: record the console and save it to the card, and
+#                       signal stages on the charge LED (docs/diagnostics.md).
+#                       7 ms slower; for bring-up and failed boots.
 #   MY355_DIAG          1: also a bootstage mark after every initcall, to break
 #                       U-Boot's own init down step by step (patches-diag/).
 #                       Not for release builds.
@@ -41,7 +42,7 @@ VENDOR_FIT="$WORK/prepared/uboot.img"
 OUT="$WORK/uboot-mainline.itb"
 META="$WORK/uboot-mainline.json"
 
-DEBUG="${MY355_UBOOT_DEBUG:-1}"
+DEBUG="${MY355_UBOOT_DEBUG:-0}"
 case "$DEBUG" in 0|1) ;; *) echo "MY355_UBOOT_DEBUG must be 0 or 1" >&2; exit 1 ;; esac
 DIAG="${MY355_DIAG:-0}"
 case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac

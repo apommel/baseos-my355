@@ -7,9 +7,9 @@ allows, then hands off to a frontend. It has no interface of its own.
 The vendor kernel, BL31 and OP-TEE stay **byte-for-byte** — the kernel is
 stored compressed on the card, and the build asserts it decompresses to the
 vendor image. U-Boot proper is mainline, built from source, and the userland is
-replaced, with a BusyBox init over a measured harvest of the stock glibc stack. The one change to internal NAND is a 2 MiB preloader patch
-making the SPL try the SD card first — stock still boots when no BaseOS card is
-present.
+replaced, with a BusyBox init over a measured harvest of the stock glibc stack.
+The one change to internal NAND is a 2 MiB preloader patch making the SPL try the
+SD card first — stock still boots when no BaseOS card is present.
 
 ## Startup time
 

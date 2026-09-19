@@ -55,9 +55,10 @@ busybox runs, ruling out the rootfs while the real bug was elsewhere.
 
 On the mainline U-Boot path (the default; [U-Boot](uboot.md) Part 3) U-Boot
 draws nothing: the panel stays dark until the kernel lights it and `rcS` draws
-the logo at ~2.4 s, so a dark panel before then says nothing about whether the
-boot worked. A debug build (`MY355_UBOOT_DEBUG=1`, the default) makes up for it
-two ways.
+the logo at ~2.0 s, so a dark panel before then says nothing about whether the
+boot worked. A debug build (`MY355_UBOOT_DEBUG=1`) makes up for it two ways.
+The default release build (`0`) has neither: a failed boot is dark, then off.
+Rebuild with `MY355_UBOOT_DEBUG=1` and flash it to see why.
 
 **The charge LED** (`gpio0 PC2`, off from reset until the kernel's
 `battery-charging` trigger claims it) marks U-Boot's stages. Keep the charger
@@ -88,8 +89,15 @@ necessarily the one that failed: a U-Boot that hangs in its own init saves
 nothing, and the previous boot's log is what reads back. Tell them apart from
 the same stock session: `dumpe2fs -h /dev/mmcblk2p3` gives root's `Last mount
 time`, and a failed boot that never reached the kernel leaves it older than the
-failure. Of the two LEDs only the charge LED is ours to read; the `work` LED is
-lit during U-Boot too, so it proves nothing about the kernel (2026-09-19).
+failure. A log identical to the last one read is stale too. Of the two LEDs
+only the charge LED is ours to read; the `work` LED is lit during U-Boot too,
+so it proves nothing about the kernel (2026-09-19).
+
+The card is the only place a log can go. A failure that leaves the card
+unusable, like the SDR50 attempts ([U-Boot](uboot.md), *The SD clock*), saves
+nothing, and DRAM is no way around it: a record left in memory across U-Boot's
+`reset` did not survive, and the boot looped (2026-09-19). Such failures need a
+UART.
 
 The first save happens before `bootm`, so a log that ends at the FIT read with
 no `bootm` error after it means the hang is in `bootm` or the kernel — the shape

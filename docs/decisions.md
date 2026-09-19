@@ -62,11 +62,11 @@ Replacing it needs no NAND write, because the card already carries the `uboot`
 partition, and it fails safe: a bad FIT sends the SPL on to stock in NAND. The
 1.2–1.7 s once projected for it is **refuted**; what it measures is smaller and
 still growing. The first build to boot (2026-09-05) was 0.16 s slower, because
-it handed the kernel 816 MHz where the vendor hands 1104. Matching that,
-decoding zstd, driving the card at the 50 MHz it only claimed to use and
-turning the data cache on before relocation and letting the block cache hold
-the GPT, decompressing at 1800 MHz and giving it the Flip's own control tree, it
-reaches `Run /init` **1.8 s** ahead (2026-09-19). It costs the early boot logo
+it handed the kernel 816 MHz where the vendor hands 1104. Seven changes later —
+that clock, a zstd kernel, the card driven at the 50 MHz it only claimed to use,
+the data cache on before relocation, the GPT held in the block cache,
+decompression at 1800 MHz and the Flip's own control tree — it reaches
+`Run /init` **1.8 s** ahead (2026-09-19, warm reboots). It costs the early boot logo
 — mainline U-Boot has no VOP2 driver, so `rcS` draws it, on the panel at
 2.00 s against ~1.0 s — and the low-battery guard. And it has to do by hand
 what the vendor kernel silently relied on the vendor U-Boot for: the OP-TEE
@@ -74,7 +74,7 @@ reservation, the display plane assignment (without it the panel stays black
 under NextUI) and the fuel gauge bookkeeping (without it the battery reads 0%
 when full). Each was found by its failure, so there may be a fourth.
 
-It measured faster end to end — NextUI's first frame 3.53–3.57 s, where the
+It measured faster end to end — NextUI's first frame 2.93–2.98 s, where the
 vendor path frees its logo at 5.72–5.75 s — and on 2026-09-19 it became the
 default with those costs accepted; `MY355_UBOOT=vendor` still builds the vendor
 path. It is still experimental: no release has shipped it. It replaces U-Boot
