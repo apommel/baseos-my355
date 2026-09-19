@@ -53,7 +53,7 @@ busybox runs, ruling out the rootfs while the real bug was elsewhere.
 
 ## The mainline U-Boot path
 
-With `MY355_UBOOT=mainline` ([U-Boot](uboot.md) Part 3) there is no logo either,
+On the mainline U-Boot path (the default; [U-Boot](uboot.md) Part 3) there is no logo,
 so the panel stays dark until the kernel draws whether or not the boot worked.
 A debug build (`MY355_UBOOT_DEBUG=1`, the default) makes up for it two ways.
 

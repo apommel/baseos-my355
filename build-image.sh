@@ -14,9 +14,9 @@
 #               identical, only the DTB's bootargs and logo are rewritten
 #
 # Environment:
-#   MY355_UBOOT      vendor (default): the stock U-Boot FIT verbatim, booting a
-#                    rewritten Android boot image. mainline: ./build-uboot.sh's
-#                    FIT, booting a FIT of the same kernel (docs/uboot.md).
+#   MY355_UBOOT      mainline (default): ./build-uboot.sh's FIT, booting a FIT
+#                    of the vendor kernel (docs/uboot.md). vendor: the stock
+#                    U-Boot FIT verbatim, booting a rewritten Android boot image.
 #   MY355_SD_UHS     boot slot UHS ceiling: off | sdr50 | sdr104 (default
 #                    sdr104; the vendor caps at sdr25 = 50 MHz = 22 MB/s)
 #   MY355_COMPRESS_KERNEL   vendor: gzip (default) | none
@@ -39,10 +39,10 @@ ROOTFS_TAR="$WORK/rootfs.tar"
 UBOOT_SRC="$PREPARED/uboot.img"
 BOOT_SRC="$PREPARED/boot.img"
 
-# U-Boot goes on the card verbatim and the kernel must stay byte-for-byte vendor.
+# The kernel must stay byte-for-byte vendor, and so must U-Boot on the vendor path.
 baseos_require_prepared "$PREPARED"
 
-UBOOT="${MY355_UBOOT:-vendor}"
+UBOOT="${MY355_UBOOT:-mainline}"
 case "$UBOOT" in
   vendor)
     UBOOT_IMG="$UBOOT_SRC"

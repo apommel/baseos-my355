@@ -56,7 +56,7 @@ SPI NAND, **not** sector 64 as on SD), emission of the `bootdev` ATAG, and a DDR
 blob BL31 accepts. Each is individually known; together they are a real piece of
 work, and every iteration is a preloader write.
 
-### The vendor U-Boot by default; mainline under evaluation
+### Mainline U-Boot by default
 
 Replacing it needs no NAND write, because the card already carries the `uboot`
 partition, and it fails safe: a bad FIT sends the SPL on to stock in NAND. The
@@ -73,8 +73,10 @@ stays black under NextUI) and the fuel gauge bookkeeping (without it the
 battery reads 0% when full). Each was found by its failure, so there may be a
 fourth.
 
-So it is built behind `MY355_UBOOT=mainline` and ships only if it measures faster
-end to end with those costs accepted. It replaces U-Boot proper and nothing else:
+It measured faster end to end — NextUI's first frame 3.53–3.57 s, where the
+vendor path frees its logo at 5.72–5.75 s — and on 2026-09-19 it became the
+default with those costs accepted; `MY355_UBOOT=vendor` still builds the vendor
+path. It replaces U-Boot proper and nothing else:
 BL31, OP-TEE and the SPL's control tree stay the vendor's, byte-for-byte. Its
 five U-Boot patches are ours to carry: a boot-script helper command, room for
 the bootstage report, unaligned access for the decompressors, the RK3568 SD

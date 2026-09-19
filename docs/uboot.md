@@ -3,8 +3,8 @@
 **Part 1**: tuning the vendor U-Boot — tried, measured at 22 ms, code removed.
 **Part 2**: replacing it — evaluated 2026-08-22 and shelved. **Part 3**: replacing
 it after all — a first build booted on 2026-09-05, and this one is rebuilt from
-what that taught, behind `MY355_UBOOT=mainline`; the vendor U-Boot stays the
-default. The decision is in [decisions](decisions.md); what each is worth is in
+what that taught, and the default since 2026-09-19; `MY355_UBOOT=vendor` builds
+the vendor path. The decision is in [decisions](decisions.md); what each is worth is in
 [boot time](boot-time.md).
 
 ---
@@ -217,11 +217,10 @@ From the build that was made and then removed (U-Boot v2026.07,
   [SD boot](boot-chain.md) did for the preloader swap. Stock's own BL31 is TF-A v2.3
   (Jun 2023), so an older rkbin BL31 is the fallback.
 
-# Part 3 — Mainline U-Boot, under evaluation (2026-09-18)
+# Part 3 — Mainline U-Boot, the default (2026-09-19)
 
-`./build-uboot.sh` then `MY355_UBOOT=mainline ./build-image.sh`. The default
-stays `vendor` until mainline is settled on the costs listed at the end. It
-**boots**, and it reaches `Run /init` **1.47 s earlier** than the vendor path:
+`./build-all.sh` builds it, or `./build-uboot.sh` then `./build-image.sh`;
+`MY355_UBOOT=vendor` puts the vendor U-Boot back. It **boots**, and it reaches `Run /init` **1.47 s earlier** than the vendor path:
 2.09–2.12 s against 3.58 s, with NextUI starting at 2.69–2.73 s against
 4.19–4.23 s (2026-09-19, four cold boots; U-Boot's own timings agree to 0.1 ms).
 Everything below is measured on this unit and card unless marked otherwise.
@@ -614,8 +613,8 @@ U-Boot now takes 1.27 s, of which 0.54 s is the read, 0.35 s decompression and
    Ethernet, PCIe and USB.
 7. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
-**What mainline gives up**, to be settled before it could become the default: the
-boot logo (no VOP2 driver; the panel is dark until the kernel draws), the
+**What mainline gives up**, accepted when it became the default on 2026-09-19: the
+boot logo (no VOP2 driver; the panel is dark until the frontend draws), the
 low-battery guard and charge animation, the `.hdmi` device tree variant, and
 `androidboot.serialno` (`usb-gadget-adb` falls back to the machine id). It also
 removes `Freeing drm_logo memory`, the first-frame marker in

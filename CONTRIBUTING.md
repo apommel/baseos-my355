@@ -27,20 +27,16 @@ recovery.
 
 ```sh
 ./fetch-prepared.sh                           # → work/my355/prepared/
+./build-uboot.sh                              # → work/my355/uboot-mainline.itb
 ./build-rootfs.sh                             # → work/my355/rootfs.tar
 ./build-image.sh                              # → work/my355/baseos-my355.img
 ./build-update.sh                             # → the .bosupd payload
 ./flash-card.sh diskN                         # macOS: the image → an SD card
 ```
 
-`./build-all.sh` runs all four and packages the release. To put a mainline
-U-Boot on the card instead of the vendor's — under evaluation, no boot logo
-([docs/uboot.md](docs/uboot.md) Part 3):
-
-```sh
-./build-uboot.sh                              # → work/my355/uboot-mainline.itb
-MY355_UBOOT=mainline ./build-image.sh
-```
+`./build-all.sh` runs the four builds and packages the release. The U-Boot is
+mainline, with no boot logo ([docs/uboot.md](docs/uboot.md) Part 3);
+`MY355_UBOOT=vendor` builds the vendor path instead and skips `build-uboot.sh`.
 
 To derive the inputs
 instead — needed to move onto a new vendor release — replace the first line with
@@ -69,11 +65,11 @@ Build knobs:
 
 | | |
 |---|---|
-| `MY355_COMPRESS_KERNEL` | `gzip` (default) or `none`; on the mainline U-Boot path `zstd` (default) or `gzip`. Worth 1.8 s — [boot time](docs/boot-time.md) |
+| `MY355_COMPRESS_KERNEL` | `zstd` (default) or `gzip`; on the vendor U-Boot path `gzip` (default) or `none`. Worth 1.8 s — [boot time](docs/boot-time.md) |
 | `MY355_SD_UHS` | boot-slot UHS ceiling: `sdr104` (default), `sdr50`, `off`. The vendor DTB caps at SDR25; measured 22.3 → 63.0 MB/s and 1.06 s off the boot — [boot time](docs/boot-time.md) |
 | `MY355_INITCALL_BLACKLIST` | built-in initcalls skipped by name; empty restores the vendor set. Worth 0.71 s — [boot time](docs/boot-time.md) |
 | `MY355_LOGO_SIZE`, `MY355_LOGO_ASSET` | boot logo, rebuilt into the resource image |
-| `MY355_UBOOT` | `vendor` (default) or `mainline`, the U-Boot `build-uboot.sh` made — [U-Boot](docs/uboot.md) |
+| `MY355_UBOOT` | `mainline` (default), the U-Boot `build-uboot.sh` made, or `vendor` — [U-Boot](docs/uboot.md) |
 | `MY355_UBOOT_DEBUG` | `build-uboot.sh`: `1` (default) saves U-Boot's console to the card and signals stages on the charge LED; `0` for timing builds — [diagnostics](docs/diagnostics.md) |
 | `MY355_DIAG` | `1` to `build-uboot.sh` and `build-rootfs.sh`: boot-timing aids — a bootstage mark per U-Boot initcall, and a first-frame probe for `baseos-bootinfo timeline`. Not for release — [U-Boot](docs/uboot.md) |
 

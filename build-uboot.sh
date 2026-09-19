@@ -7,7 +7,7 @@
 #                         OP-TEE and control device tree byte-for-byte
 #   uboot-mainline.json   what it was built with; build-image.sh checks it
 #
-# Then: MY355_UBOOT=mainline ./build-image.sh
+# Then: ./build-image.sh (MY355_UBOOT=mainline is the default)
 #
 # Nothing here touches NAND. If the FIT is broken the SPL moves on to SPI NAND
 # and stock comes up; reverting is a re-flash (docs/uboot.md).
@@ -229,4 +229,4 @@ EOF
 echo
 echo "  $(cat "$CACHE/version" 2>/dev/null)"
 echo "  $OUT  ($BYTES bytes)"
-echo "  next: MY355_UBOOT=mainline ./build-image.sh"
+echo "  next: ./build-image.sh"

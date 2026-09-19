@@ -24,7 +24,7 @@ Against stock's **15.79 s** to hand-off and **31.50 s** to a first frame, on the
 same unit and the same NextUI install. BaseOS boots from SD faster than stock
 boots from internal NAND.
 
-On the mainline U-Boot path (`MY355_UBOOT=mainline`, under evaluation;
+On the mainline U-Boot path (the default since 2026-09-19;
 [U-Boot](uboot.md) Part 3), four cold boots on 2026-09-19:
 
 | phase | at power-on | vendor path |
@@ -164,8 +164,8 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 ## What is left
 
-1. **Ship our own U-Boot — under evaluation, 1.47 s ahead.** Behind
-   `MY355_UBOOT=mainline`: first printk **1.32 s** against 2.85 s, `Run /init`
+1. **Ship our own U-Boot — done, 1.47 s ahead, the default since 2026-09-19.**
+   First printk **1.32 s** against 2.85 s, `Run /init`
    **2.09–2.12 s** against 3.58 s, NextUI starting 1.5 s earlier (2026-09-19). It
    costs the boot logo. What got it there, each measured on its own cold boots:
 

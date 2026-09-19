@@ -47,6 +47,7 @@ place, from a card, with a backup written first — and leaves stock U-Boot, the
 kernel and the stock rootfs untouched. Card in: BaseOS. Card out: stock, exactly
 as before.
 
-From there the card supplies the vendor U-Boot, the vendor kernel with a rewritten
+From there the card supplies a mainline U-Boot, the vendor kernel with a rewritten
 command line, and a BusyBox userland built on a measured subset of the stock
-libraries. Power-on to frontend hand-off is **3.73 s**, against stock's 15.79 s.
+libraries. Power-on to frontend hand-off is **2.23–2.26 s** (3.73 s with the vendor
+U-Boot), against stock's 15.79 s.
