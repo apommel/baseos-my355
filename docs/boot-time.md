@@ -22,7 +22,7 @@ experimental ([U-Boot](uboot.md) Part 3). Four of five cold boots on
 | first printk | 1.32 s | dmesg |
 | kernel → `Run /init` | **2.09–2.12 s** | dmesg |
 | **frontend hand-off — `exec updater`** | **2.23–2.26 s** | `/run/boot-frontend-exec` |
-| boot logo on the panel | 2.43 s (one boot) | `dw_mipi_dsi_bridge_enable` |
+| boot logo on the panel | 2.29–2.31 s | `dw_mipi_dsi_bridge_enable` |
 | `nextui.elf` start | **2.69–2.73 s** | `/proc/<pid>/stat` |
 | **first NextUI frame** | **3.53–3.57 s** | `baseos-frameprobe` (`MY355_DIAG=1`) |
 
@@ -154,6 +154,17 @@ the same 2.8x on everything read at runtime. The gain shows up largely in
 NextUI's own start, because every shared library it links lives in our rootfs on
 the boot card.
 
+**Tuning.** SDR104 makes the kernel tune the sample phase: it steps from 0° to
+270°, sends a tuning read at each step and skips 20° after a bad one. A read on
+the edge of the card's bad window (60–105° on this card) can get no data at all
+and wait out the controller's ~113 ms data timeout, which is most of the
+difference between card init at ~77 ms and at ~200 ms. At the vendor default of
+1° steps the edge was hit in 13 of 16 boots; `rockchip,desired-num-phases = 36`
+(10° steps, `rkbootimg.SD_TUNING_PHASES`) cut it to 6 of 22, both paths. The
+timeout itself is in the kernel's tuning code, out of reach. A fixed phase
+(`rockchip,use-v2-tuning`) would skip tuning altogether but suits only the card
+it was chosen for. All warm reboots, one card.
+
 Slot 1 **cannot follow**: its pins are GPIO2_A3–B0, in I/O domain `vccio4` on a
 fixed 3.3 V rail. Tried on 2026-09-16 — the card accepted the 1.8 V switch, the
 host could not follow, and `mmcblk2` never appeared. It stays at 50 MHz.
@@ -191,7 +202,7 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 **Our own U-Boot — done, 1.47 s ahead, the default since 2026-09-19.** First
 printk **1.32 s** against 2.85 s, `Run /init` **2.09–2.12 s** against 3.58 s,
-NextUI starting 1.5 s earlier. Its boot logo reaches the panel at 2.43 s
+NextUI starting 1.5 s earlier. Its boot logo reaches the panel at 2.29 s
 against ~1.0 s. What got it there, each step measured on its own cold boots:
 
 | step | `Run /init` |

@@ -36,7 +36,7 @@ first frame at **5.74 s**. Stock takes 15.79 s and 31.50 s.
 on the vendor U-Boot. The default build now replaces it with a mainline one:
 the kernel prints its first line at 1.32 s instead of 2.85 s, the frontend
 hand-off is at 2.23–2.26 s and NextUI's first frame at 3.53–3.57 s. The cost is
-a later boot logo, at 2.43 s instead of ~1.0 s, and the vendor U-Boot's
+a later boot logo, at 2.29 s instead of ~1.0 s, and the vendor U-Boot's
 low-battery guard ([docs/uboot.md](docs/uboot.md)). `MY355_UBOOT=vendor` builds
 the 0.6.0 path. Where the rest goes, and what is left to try, is in
 [docs/boot-time.md](docs/boot-time.md).

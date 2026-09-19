@@ -166,7 +166,7 @@ BSP kernel with no published source, on a device with no console.
 
 > Done on 2026-09-19, and it took more than drawing: the panel came up at
 > 2.99 s, the backlight stayed off and NextUI erased the logo first (Part 3,
-> *The boot logo*). The logo now shows from 2.43 s.
+> *The boot logo*). The logo now shows from 2.29 s.
 
 Lean U-Boot + stock DTB + **no video at all**, drawing the splash from the kernel
 side with the `baseos-splash` fbsplash the rootfs already ships. Cost is cosmetic
@@ -296,7 +296,7 @@ between the last two.
 | **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
 | post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | |
 | `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | |
-| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | the kernel initialises the same card, SDR104 tuning included, in 90–220 ms. Why the clock fix also took 87 ms off is not established |
+| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | the kernel initialises the same card, SDR104 tuning included, in 75–205 ms ([boot time](boot-time.md), *The SD bus*). Why the clock fix also took 87 ms off is not established |
 | **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
 | debug log save | 8 ms | 8 | 8 | 7 | 7 | the debug build's whole cost |
 | **decompress** | 608 ms | 447 | 347 | 348 | 347 | gzip, then zstd |
@@ -537,11 +537,12 @@ One cold boot, 2026-09-19:
 |---|---|---|
 | logo drawn (`rcS`) | 2.13 s | ~1.0 s, by U-Boot |
 | backlight on | 2.27 s | with the logo |
-| **logo on the panel** (`dw_mipi_dsi_bridge_enable`) | **2.43 s**, was 2.99 | ~1.0 s |
+| **logo on the panel** (`dw_mipi_dsi_bridge_enable`) | **2.43 s**, was 2.99; 2.29 s since (below) | ~1.0 s |
 | NextUI sets its brightness | 2.96 s | |
 | first NextUI frame | 3.56 s | 5.72–5.75 s |
 
-So the logo is up for about 1.1 s, arriving 1.4 s after the vendor's. It took
+So the logo is up for about 1.1 s (1.25 s since the shorter sleep-out),
+arriving 1.3–1.4 s after the vendor's. It took
 three fixes, each found on the device with `baseos-frameprobe` (below):
 
 - **The panel's waits.** The kernel switches the panel's supply on at 2.02 s,
@@ -550,7 +551,9 @@ three fixes, each found on the device with `baseos-frameprobe` (below):
   is no reset line, so the first two only wait out power-on. The boot script
   now powers the panel first (`gpio set A23`, gpio0 PC7, `vcc3v3_lcd0_n`), and
   `rkbootimg.set_panel_delays` sets 160/200/200 to 0/20/0: the link streams at
-  2.43 s against 2.99. The panel controller's 282 ms stay.
+  2.43 s against 2.99. The init sequence's 250 ms after sleep-out (DCS
+  `0x11`) is now 120 ms, the usual requirement: 2.29 s in 12 warm boots
+  (2.286–2.311 s), and cold boots showed a clean image each time.
 - **The backlight.** U-Boot never enables its PWM, so `pwm-backlight` probes
   it off. The panel enable that would light it comes after NextUI's `launch.sh`
   has unbound the driver, so nothing lit it before NextUI's own brightness.
@@ -561,6 +564,14 @@ three fixes, each found on the device with `baseos-frameprobe` (below):
   panel ever showed it. On the vendor path the same line is harmless: that logo
   sits in the reserved `drm-logo` memory, which the kernel scans out as its own
   framebuffer, not `fb0`. NextUI now skips the clear on BaseOS.
+
+**What binds the display at ~2.03 s.** The DSI host looks for its panel at
+1.73 s, before `panel-simple` has registered (link order), and defers. This
+5.10 kernel retries deferred devices only at `deferred_probe_initcall`, once
+every built-in driver has initialised, at ~2.02 s. Dropping the panel
+regulator's `vin-supply` (the PMIC's `vcc_3v3`, which the regulator also
+deferred on) was tried: bind 15 ms earlier, panel unchanged. Only a shorter
+driver-init phase would move it.
 
 **No earlier from the kernel side.** The vendor kernel has neither a
 framebuffer console nor a kernel logo (`# CONFIG_FRAMEBUFFER_CONSOLE is not
@@ -589,7 +600,7 @@ Estimated 1,500–3,000 lines, tens of blind boots. The risks are hangs in
 display bring-up (save the log first; bound every wait), a wrong hand-off (the
 kernel re-initialises the panel, or a black NextUI as with the planes above),
 and clocks and power domains the kernel expects to inherit. The panel's own
-282 ms cost ~0.3 s of boot run in line, or tens of ms overlapped with the card
+152 ms (120 + 32) cost ~0.2 s of boot run in line, or tens of ms overlapped with the card
 read, for a logo at ~0.5–0.9 s.
 
 ## How this build works
@@ -722,11 +733,11 @@ decompression and 0.20 s card init.
    `FG_INIT` is set.
 9. A Flip control tree, for correctness: the RK8600, and none of quartz64-a's
    Ethernet, PCIe and USB.
-10. A U-Boot boot logo (*The boot logo*, above), if 2.43 s is not enough.
+10. A U-Boot boot logo (*The boot logo*, above), if 2.29 s is not enough.
 11. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
-the early boot logo (no VOP2 driver; `rcS` draws one at 2.43 s against ~1.0 s), the
+the early boot logo (no VOP2 driver; `rcS` draws one at 2.29 s against ~1.0 s), the
 low-battery guard and charge animation, the `.hdmi` device tree variant, and
 `androidboot.serialno` (`usb-gadget-adb` falls back to the machine id). It also
 removes `Freeing drm_logo memory`, the first-frame marker in
