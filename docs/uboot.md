@@ -221,10 +221,10 @@ From the build that was made and then removed (U-Boot v2026.07,
 
 `./build-uboot.sh` then `MY355_UBOOT=mainline ./build-image.sh`. The default
 stays `vendor` until mainline is settled on the costs listed at the end. It
-**boots**, and it reaches `Run /init` **0.92 s earlier** than the vendor path:
-2.66 s against 3.58 s (2026-09-18; U-Boot's timings agree to 0.1 ms over four
-cold boots). Everything below is measured on this unit and card unless marked
-otherwise.
+**boots**, and it reaches `Run /init` **1.47 s earlier** than the vendor path:
+2.09–2.12 s against 3.58 s, with NextUI starting at 2.69–2.73 s against
+4.19–4.23 s (2026-09-19, four cold boots; U-Boot's own timings agree to 0.1 ms).
+Everything below is measured on this unit and card unless marked otherwise.
 
 ## What the first build measured (2026-08-24 / 09-05)
 
@@ -255,7 +255,9 @@ zstd's slowness was U-Boot's build flags, not zstd (below).
 |---|---|---|
 | The vendor U-Boot hands the kernel a CPU at 1104 MHz; mainline at 816 | **verified, fixed** | stock serial log: `CLK: (sync kernel. arm: enter 816000 KHz …)`, `armclk 1104000 KHz`; mainline `cru_rk3568.h`: `APLL_HZ (816 * MHz)`. Before cpufreq, the kernel took 0.788 s at 816 MHz against the 0.785 s the ratio predicts |
 | `vdd_cpu` is a TCS4525 at i2c0 `0x1c`, at 850 mV | **wrong** | the Flip has an **RK8600 at `0x40`** (i2cdump of `0x1c` is empty; Miyoo confirmed one SKU, per the wiki). It powers on at **1000 mV** (VSEL0 `0x97`, read by our U-Boot). The 850 mV was read from a running kernel after cpufreq had set it |
-| quartz64-a's control tree is correct for the Flip | **SD slot only** | right for `sdmmc0`'s rails and card detect, wrong for the CPU rail, and it describes Ethernet, PCIe and USB this board lacks — 287 ms of pre-relocation driver model (below) |
+| quartz64-a's control tree is correct for the Flip | **SD slot only** | right for `sdmmc0`'s rails and card detect, wrong for the CPU rail, and it describes Ethernet, PCIe and USB this board lacks |
+| its size is what makes early init slow (287 ms of driver model before relocation), so a Flip tree is the fix | **wrong** | the cost was reading any tree with the data cache off: cached, the same binding takes 9 ms (below). A Flip tree remains worth having for correctness, not speed |
+| early init is slow because instructions are fetched uncached | **wrong** | enabling the I-cache first thing in `board_init_f` moved no step by more than 0.5 ms: the SPL leaves it on |
 | U-Boot may read the kernel at a fixed sector | **wrong** | an A/B update moves `boot` to its other half (`src/gptslot.c`: nothing in the boot chain references an address). That U-Boot would have booted the old kernel on the new rootfs |
 | U-Boot init ~0.91 s, SD read ~12.7 MB/s | **measured: 0.97 s, 12.0 MB/s** | bootstage, below. The inferred split had borrowed the vendor's inflate time |
 | zstd is slower than gzip on this SoC | **wrong** | U-Boot builds arm64 with `-mstrict-align`, and `ZSTD_LIB_MINIFY` defaults on; together 5.6x. Below |
@@ -272,37 +274,46 @@ SPL loads a mainline `u-boot.itb`; they are not built for speed (Zlyme: "under
 
 Bootstage, debug build, USB unplugged, each change added to the one before:
 three cold boots at 816 MHz agreeing to 0.2 ms, one at 1104 MHz, one with the
-zstd kernel, then four with the SD clock fixed, agreeing to 0.1 ms.
+zstd kernel, four with the SD clock fixed, then five with the early data cache,
+each set agreeing to 0.1 ms. The fuel gauge step (`my355 fg`, below) came
+between the last two.
 
-| stage | 816 MHz, gzip | 1104 MHz | zstd | **SD clock** | |
-|---|---|---|---|---|---|
-| → `board_init_f` | 45 ms | 45 | 45 | 45 | |
-| **pre-relocation init** | 568 ms | 566 | 569 | **570** | caches are off until `initr_caches()` in `board_r`; `dm_f` alone is 287 ms binding quartz64-a's tree. The same work post-relocation (`dm_r`) takes 1.5 ms |
-| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | |
-| `my355 cpu 1104` | — | 2 | 2 | 2 | |
-| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | **202** | the kernel initialises the same card, SDR104 tuning included, in 90–220 ms. Why the clock fix also took 87 ms off is not established |
-| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | **536** | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
-| debug log save | 8 ms | 8 | 8 | 7 | the debug build's whole cost |
-| **decompress** | 608 ms | 447 | 347 | **348** | gzip, then zstd |
-| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | |
-| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | **1,791** | |
+| stage | 816 MHz, gzip | 1104 MHz | zstd | SD clock | **early cache** | |
+|---|---|---|---|---|---|---|
+| → `board_init_f` | 45 ms | 45 | 45 | 45 | 45 | |
+| **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
+| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | |
+| `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | |
+| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | the kernel initialises the same card, SDR104 tuning included, in 90–220 ms. Why the clock fix also took 87 ms off is not established |
+| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
+| debug log save | 8 ms | 8 | 8 | 7 | 7 | the debug build's whole cost |
+| **decompress** | 608 ms | 447 | 347 | 348 | 347 | gzip, then zstd |
+| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | 12 | |
+| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | 1,791 | **1,274** | |
 
-| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | **SD clock** |
-|---|---|---|---|---|---|
-| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | **1.837** |
-| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | **2.663** |
+| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | SD clock | **early cache** |
+|---|---|---|---|---|---|---|
+| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | 1.837 | **1.320** |
+| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | 2.663 | **2.09–2.12** |
+| `nextui.elf` start | 4.19–4.23 s | | | | 3.26–3.27 | **2.69–2.73** |
+| first NextUI frame | — | | | | 4.09–4.10 | **3.53–3.57** |
 
-`my355 fg` (2026-09-19, below) adds 13.5 ms after these: `start_kernel`
-1,803 ms.
+The first frame is timed by polling the DRM state (`MY355_DIAG=1`, below),
+because this path has no kernel marker for it. The vendor path's, `Freeing
+drm_logo memory` at 5.72–5.75 s, is not the same event, so the two are not
+compared.
 
-The kernel phase, 0.79–0.83 s, varies with SD card detection (88–219 ms from
+The kernel phase, 0.77–0.83 s, varies with SD card detection (88–219 ms from
 controller probe to `new ultra high speed SDR104`). One boot with the SD clock
 fixed reached `Run /init` at 3.050 s: its root needed an ext4 journal replay
 (`EXT4-fs (mmcblk1p3): recovery complete`) after an unclean shutdown, which
-is the root being mounted `rw` ([decisions](decisions.md)), not U-Boot.
+is the root being mounted `rw` ([decisions](decisions.md)), not U-Boot. One of
+the five early-cache boots lost 0.42 s the same way, in the kernel, with U-Boot
+unchanged; its log was gone before either cause could be checked, and
+`baseos-bootinfo timeline` now reports both.
 
-Bootstage and printk share the arch counter (hand-off at 1,791 ms, first printk
-at 1,837 ms), but its zero is **not** power-on: `board_init_f` reads 45 ms,
+Bootstage and printk share the arch counter (hand-off at 1,274 ms, first printk
+at 1,320 ms), but its zero is **not** power-on: `board_init_f` reads 45 ms,
 after a bootrom, DDR init, SPL and BL31 the docs put at 0.39 s. Comparisons
 between the two paths hold, because everything before U-Boot is identical on
 both; "power-on-relative" elsewhere in these docs means "since the counter
@@ -395,6 +406,60 @@ The next doubling is SDR50: 100 MHz at 1.8 V, no tuning needed. It needs the
 `PMU_GRF_IO_VSEL` once, at probe), and it hands the kernel a card already at
 1.8 V. Not attempted.
 
+## Early init: the data cache before relocation
+
+U-Boot's own init took 570 ms before relocation and 59 ms after it. A build
+with a bootstage mark after every initcall (`MY355_DIAG=1`, below) put nearly
+all of it in two steps:
+
+| step, before relocation | caches off | **data cache on** |
+|---|---|---|
+| `initf_dm` — bind driver model from the tree | 287.7 ms | **9.2** |
+| `serial_init` — probe the UART, and with it the CRU and pinctrl | 221.9 ms | **0.0** (7.2 in `console_init_f`) |
+| `print_resetinfo` | 21.8 ms | 0.7 |
+| the relocation itself (billed to `initr_trace`) | 12.5 ms | 0.5 |
+| everything else, ~60 steps | ~26 ms | ~23 |
+| **`board_init_f` → `board_init_r`** | **570 ms** | **40** |
+
+After relocation the same binding and probing (`initr_dm`) took 38 ms. The
+first suspect, uncached instruction fetches, was wrong: enabling the I-cache
+first thing in `board_init_f` moved nothing, so the SPL already leaves it on.
+The cause is data: with the MMU off, every load is a Device access straight to
+DRAM, and the flat device tree is read property by property, names compared
+byte by byte.
+
+Patch `0005` turns the MMU and data cache on in `arch_cpu_init()`, before
+driver model, and changes nothing else:
+
+- **The same memory map** as the rest of U-Boot: Rockchip's `rk3568_mem_map`,
+  DRAM Normal and cacheable, peripherals Device. Everything after relocation,
+  the card read and `bootm` included, already ran under it; now the 40 ms before
+  does too.
+- **The page tables** sit in a 64 KiB array in `.data` (`.bss` is not usable
+  before relocation): 66 KB more FIT to read, ~3 ms. If U-Boot's own estimate
+  of the tables it needs (`get_page_table_size()`) ever exceeds that, the early
+  cache is skipped and the boot proceeds as before, because a panic this early
+  would be invisible.
+- **The two transitions** are covered by existing code: `relocate_code()`
+  cleans the relocated copy when the data cache is on, and the patch's
+  `enable_caches()` flushes, disables and rebuilds the tables in the area
+  `arch_reserve_mmu()` reserved.
+- **Nothing does DMA** that early: the card is first touched after relocation.
+- **Precedent**: STM32MP1, STM32MP13x and STM32MP2 enable the data cache before
+  relocation in U-Boot proper the same way (`arch/arm/mach-stm32mp/`), as do
+  Layerscape and Versal.
+
+Verified 2026-09-19: five cold boots, a warm reboot, a cold boot with the
+charger attached; the charger-woken power-on (which should switch itself off
+again) is untested. Worth **530 ms**, carried unchanged to the first frame. A
+failure would look like the dark screen of the first diagnostics build: a hang
+before the boot script, which the SPL does not catch because the FIT is valid,
+recovered by re-flashing or from stock with the card in the left slot.
+
+It is the best candidate to send upstream with `0004`, generalised to Rockchip
+arm64. A Flip device tree stays worth doing for correctness (the RK8600, no
+phantom Ethernet, PCIe or USB), no longer for speed.
+
 ## What the kernel relied on the vendor U-Boot for
 
 The vendor U-Boot edits the kernel's world before hand-off, and the vendor
@@ -477,7 +542,7 @@ the boot script; `build-image.sh` refuses a U-Boot built against another.
 every fragment line survives `olddefconfig`, and builds with
 `SOURCE_DATE_EPOCH=0`: two builds of the same inputs give the same FIT.
 
-**Four patches** in `tools/uboot/patches/`:
+**Five patches** in `tools/uboot/patches/`:
 
 * `0001` — the `my355` command: `mark <name>` (a bootstage record from the boot
   script), `cpu <MHz>` and `fg` (above), and `log <addr> <max>` (the console
@@ -487,8 +552,11 @@ every fragment line survives `olddefconfig`, and builds with
   of ~30 records fitted and the earliest were lost; the tree is grown back by
   4 KiB inside a `CONFIG_SYS_FDT_PAD` raised to 24 KiB.
 * `0003` — unaligned access for the decompressors (above).
-* `0004` — the SD clock at the rate asked for (above); the one worth sending
-  upstream.
+* `0004` — the SD clock at the rate asked for (above).
+* `0005` — the data cache before relocation (above).
+
+`0004` and `0005` are the two worth sending upstream. `tools/uboot/patches-diag/`
+holds the diagnostics-only patch `MY355_DIAG=1` adds on top.
 
 ## Measuring it
 
@@ -498,6 +566,31 @@ writes into the kernel's tree at hand-off (`/proc/device-tree/bootstage`), and
 SD phase registers included. Build with `MY355_UBOOT_DEBUG=0` for timing boots;
 the debug build costs 7 ms.
 
+`baseos-bootinfo timeline` prints one line per boot, on the printk clock:
+
+```
+uboot 1.274  printk 1.320  init 2.093  handoff 2.23  nextui 2.69  frame 3.53  (card 90 ms)
+```
+
+U-Boot's hand-off, the first printk, `Run /init`, the frontend hand-off,
+`nextui.elf`'s start, its first frame, and SD card detection, with a note when
+root needed a journal replay: the two known sources of kernel-phase variance.
+Userspace stamps are on the uptime clock and are moved onto printk's through
+the root's `jbd2` thread and its mount message, to 10 ms.
+
+**`MY355_DIAG=1`**, given to both `build-uboot.sh` and `build-rootfs.sh`, adds
+what these measurements needed and a release does not:
+
+- U-Boot: a bootstage mark after every initcall (`patches-diag/9001`, 200
+  records), which is how early init was broken down above. It reserves room for
+  the marks made after `reserve_bootstage()`; without that the relocated
+  bootstage block overran U-Boot's relocated device tree and the unit hung
+  after relocation, dark, before the boot script (2026-09-19).
+- rootfs: `baseos-frameprobe`, started by `/etc/init.d/dev`, which polls the DRM
+  state every 20 ms for a plane scanning out a `nextui.elf` framebuffer and
+  writes `/run/boot-first-frame`. The frame figure is an upper bound: the
+  polling costs a little CPU during boot.
+
 ## Bring-up without a UART
 
 A debug build (`MY355_UBOOT_DEBUG=1`, the default) adds the console record and
@@ -505,17 +598,20 @@ the charge LED; how to read them is in [diagnostics](diagnostics.md).
 
 ## Next, in order
 
-1. **Pre-relocation init**, now the largest item at 570 ms with the caches off:
-   a Flip control tree with only the devices on the boot path, RK8600 included.
-2. **The read**, 536 ms: SDR50 would halve it (above).
-3. **Decompression**, 348 ms: at the CPU clock the vendor kernel allows.
-4. **Card init**, 202 ms against the kernel's 90–220 ms; and whether the state
+U-Boot now takes 1.27 s, of which 0.54 s is the read, 0.35 s decompression and
+0.20 s card init.
+
+1. **The read**, 536 ms: SDR50 would halve it (above).
+2. **Decompression**, 347 ms: at the CPU clock the vendor kernel allows.
+3. **Card init**, 202 ms against the kernel's 90–220 ms; and whether the state
    U-Boot leaves the card in costs the kernel its variable detection time.
-5. Cold boots with `MY355_UBOOT_DEBUG=0`, expected 7 ms faster; and `0004`
-   upstream.
-6. The fuel gauge: its 13.5 ms (about 30 single-register transfers; bulk reads
+4. **`0004` and `0005` upstream**; cold boots with `MY355_UBOOT_DEBUG=0`,
+   expected 7 ms faster.
+5. The fuel gauge: its 13.5 ms (about 30 single-register transfers; bulk reads
    would cut them), and the resting-voltage recalibration the kernel skips once
    `FG_INIT` is set. HDMI while docked, with the plane split above.
+6. A Flip control tree, for correctness: the RK8600, and none of quartz64-a's
+   Ethernet, PCIe and USB.
 7. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, to be settled before it could become the default: the

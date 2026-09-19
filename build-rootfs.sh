@@ -6,7 +6,8 @@
 #   2. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
 #   3. the stock harvest (work/my355/prepared/stock-harvest.tar) — glibc, Mali,
 #      SDL2, adbd, wpa_supplicant; a verified closure, see prepare-stock.sh
-#   4. overlay/ — init, inittab, rcS, the frontend session
+#   4. overlay/ — init, inittab, rcS, the frontend session, and with
+#      MY355_DIAG=1 overlay-diag/ on top: boot-timing probes, not for release
 #
 # fbsplash is built from src/fbsplash.c: this device has no console, so a status
 # message on the panel is the only way to say "insert a card" or "installing
@@ -31,8 +32,13 @@ printf '%s\n' "$BASEOS_BUILD" > "$WORK/build-id"
 baseos_require_prepared "$PREPARED"
 baseos_require_aarch64
 
+DIAG="${MY355_DIAG:-0}"
+case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
+[ "$DIAG" = 1 ] && echo "== MY355_DIAG=1: adding overlay-diag/ (not for release) =="
+
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
+  -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
   alpine:3.20 sh -euc '
@@ -96,12 +102,14 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # 4. The overlay wins over everything. cp -a carries the modes across, and
   #    every script in overlay/ is committed executable.
   cp -a /overlay/. "$R"/
+  if [ "$DIAG" = 1 ]; then cp -a /overlay-diag/. "$R"/; fi
 
   # All three from VERSION so they cannot drift. NextUI reads
   # /usr/miyoo/version for its About screen.
   {
     printf "BASEOS_VERSION=%s\n" "$BASEOS_VERSION"
     printf "BASEOS_BUILD=%s\n" "$BASEOS_BUILD"
+    if [ "$DIAG" = 1 ]; then printf "BASEOS_DIAG=1\n"; fi
   } >> "$R"/etc/baseos-release
   {
     printf "NAME=\"BaseOS\"\nID=baseos\n"

@@ -3,6 +3,7 @@
 #
 #   baseos-bootinfo          which U-Boot booted, and its bootstage timings
 #   baseos-bootinfo log      the console output a debug build saved to the card
+#   baseos-bootinfo timeline this boot's milestones, power-on to first frame
 #
 # Timings come from /proc/device-tree/bootstage, which U-Boot writes at hand-off
 # in arch-counter microseconds — power-on-relative, like the kernel's printk.
@@ -16,6 +17,41 @@ BS=/proc/device-tree/bootstage
 # A big-endian cell as a decimal.
 be32() { printf '%d' "0x$(od -An -tx1 "$1" | tr -d ' \n')"; }
 
+# Seconds on the printk clock, the one the vendor figures in docs/boot-time.md
+# use. Userspace stamps are on the uptime clock, which starts later; the offset
+# comes from the root's jbd2 thread against its mount message, to 10 ms. The
+# first frame needs a MY355_DIAG=1 rootfs (baseos-frameprobe).
+timeline() {
+	pk() { dmesg | awk -F'[][]' -v re="$1" '$0 ~ re {printf "%.3f", $2; exit}'; }
+	started() { cut -d')' -f2 "/proc/$1/stat" | awk '{printf "%.2f", $20 / 100}'; }
+
+	uboot=-
+	for rec in "$BS"/*/; do
+		[ "$(tr -d '\000' < "$rec/name" 2>/dev/null)" = start_kernel ] &&
+			uboot=$(awk -v t="$(be32 "$rec/mark")" 'BEGIN {printf "%.3f", t / 1e6}')
+	done
+	mount=$(pk 'EXT4-fs \\(mmcblk1p3\\): mounted')
+	probe=$(pk 'fe2b0000.dwmmc: Version')
+	card=$(pk 'mmc1: new')
+	for p in /proc/[0-9]*; do
+		case "$(cat "$p/comm" 2>/dev/null)" in
+		jbd2/mmcblk1p3*) jbd=$(started "${p#/proc/}") ;;
+		nextui.elf) nui=$(started "${p#/proc/}") ;;
+		esac
+	done
+	off=$(awk -v m="$mount" -v j="$jbd" 'BEGIN {printf "%.3f", m - j}')
+	at() { if [ -n "$1" ]; then awk -v u="$1" -v o="$off" 'BEGIN {printf "%.2f", u + o}'; else echo -; fi; }
+
+	printf 'uboot %s  printk %s  init %s  handoff %s  nextui %s  frame %s' "$uboot" \
+		"$(pk 'Booting Linux')" "$(pk 'Run /init')" \
+		"$(at "$(cat /run/boot-frontend-exec 2>/dev/null)")" "$(at "$nui")" \
+		"$(at "$(cat /run/boot-first-frame 2>/dev/null)")"
+	printf '  (card %s ms' "$(awk -v a="$probe" -v b="$card" \
+		'BEGIN {if (a && b) printf "%.0f", (b - a) * 1000; else printf "-"}')"
+	dmesg | grep -q 'mmcblk1p3): recovery complete' && printf ', journal replayed'
+	echo ')'
+}
+
 case "${1:-}" in
 log)
 	[ -b "$BOOT_PART" ] || { echo "no $BOOT_PART" >&2; exit 1; }
@@ -23,8 +59,11 @@ log)
 	dd if="$BOOT_PART" bs=512 skip=$((size - LOG_SECTORS)) count="$LOG_SECTORS" \
 		2>/dev/null | tr -d '\000'
 	exit 0 ;;
+timeline)
+	timeline
+	exit 0 ;;
 "") ;;
-*) echo "usage: baseos-bootinfo [log]" >&2; exit 2 ;;
+*) echo "usage: baseos-bootinfo [log|timeline]" >&2; exit 2 ;;
 esac
 
 if [ -r /proc/device-tree/chosen/u-boot,version ]; then

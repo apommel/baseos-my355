@@ -16,6 +16,9 @@
 #   MY355_UBOOT_DEBUG   1 (default): record the console and save it to the card,
 #                       and signal stages on the charge LED (docs/diagnostics.md).
 #                       0: neither, for timing builds.
+#   MY355_DIAG          1: also a bootstage mark after every initcall, to break
+#                       U-Boot's own init down step by step (patches-diag/).
+#                       Not for release builds.
 #
 # Usage: ./build-uboot.sh [--clean]
 set -eu
@@ -40,6 +43,8 @@ META="$WORK/uboot-mainline.json"
 
 DEBUG="${MY355_UBOOT_DEBUG:-1}"
 case "$DEBUG" in 0|1) ;; *) echo "MY355_UBOOT_DEBUG must be 0 or 1" >&2; exit 1 ;; esac
+DIAG="${MY355_DIAG:-0}"
+case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 
 CLEAN=0
 case "${1:-}" in
@@ -96,8 +101,8 @@ if [ "$DEBUG" = 1 ]; then
   # write can never stop the boot; it runs again after a failed bootm.
   # What the card was actually driven at, and the CRU's drive/sample phases,
   # which U-Boot never programs (SDMMC0_CON0/1).
-  DIAG="mmc info; md.l fdd20580 2"
-  BOOTCMD="gpio set A18; $CPU $LOAD && gpio clear A18 && setenv ok 1; $DIAG; $SAVELOG;"
+  CARDINFO="mmc info; md.l fdd20580 2"
+  BOOTCMD="gpio set A18; $CPU $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
   BOOTCMD="$BOOTCMD env exists ok && bootm $MY355_FIT_ADDR; $SAVELOG; poweroff"
 else
   BOOTCMD="$CPU $LOAD && bootm $MY355_FIT_ADDR; poweroff"
@@ -105,14 +110,19 @@ fi
 
 FRAGMENTS="/frag/my355.config"
 [ "$DEBUG" = 1 ] && FRAGMENTS="$FRAGMENTS /frag/my355-debug.config"
+[ "$DIAG" = 1 ] && FRAGMENTS="$FRAGMENTS /frag/my355-diag.config"
+# Applied in this order; the diagnostics go on top of the real patch set.
+PATCHES="patches/*.patch"
+[ "$DIAG" = 1 ] && PATCHES="$PATCHES patches-diag/*.patch"
 
-echo "== building U-Boot $UBOOT_VERSION ($UBOOT_DEFCONFIG, debug=$DEBUG) =="
+echo "== building U-Boot $UBOOT_VERSION ($UBOOT_DEFCONFIG, debug=$DEBUG, diag=$DIAG) =="
 echo "   bootcmd: $BOOTCMD"
 
 [ "$CLEAN" -eq 1 ] && rm -rf "$BUILD"
 # The extracted tree is cached and patched once, so a changed patch set must
 # force a fresh extraction or it would silently be missing from the build.
-cat "$HERE"/tools/uboot/patches/*.patch > "$CACHE/patches.cat"
+# shellcheck disable=SC2086
+(cd "$HERE/tools/uboot" && cat $PATCHES) > "$CACHE/patches.cat"
 PATCH_SUM="$(baseos_sha256 "$CACHE/patches.cat")"
 [ "$(cat "$CACHE/patches.sha256" 2>/dev/null || true)" = "$PATCH_SUM" ] || rm -rf "$BUILD"
 mkdir -p "$BUILD"
@@ -120,7 +130,7 @@ mkdir -p "$BUILD"
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$CACHE":/cache -v "$HERE/tools/uboot":/frag:ro \
   -e UBOOT_VERSION="$UBOOT_VERSION" -e UBOOT_DEFCONFIG="$UBOOT_DEFCONFIG" \
-  -e BOOTCMD="$BOOTCMD" -e FRAGMENTS="$FRAGMENTS" \
+  -e BOOTCMD="$BOOTCMD" -e FRAGMENTS="$FRAGMENTS" -e PATCHES="$PATCHES" \
   debian:bookworm-slim sh -euc '
   export DEBIAN_FRONTEND=noninteractive
   # An arm64 host builds natively; anything else cross-compiles.
@@ -135,7 +145,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   SRC="/cache/build/u-boot-${UBOOT_VERSION#v}"
   if [ ! -d "$SRC" ]; then
     tar -xf "/cache/u-boot-$UBOOT_VERSION.tar.gz" -C /cache/build
-    for p in /frag/patches/*.patch; do
+    # shellcheck disable=SC2086
+    for p in $(cd /frag && echo $PATCHES); do
+      p="/frag/$p"
       echo "  patch: $(basename "$p")"
       patch -p1 -d "$SRC" --batch --forward --quiet < "$p"
     done
@@ -199,7 +211,7 @@ BYTES=$(wc -c < "$OUT" | tr -d ' ')
 [ "$BYTES" -le "$ROOM" ] || { echo "the FIT is $BYTES bytes; the uboot slot holds $ROOM" >&2; exit 1; }
 
 BANNER="$(cat "$CACHE/version" 2>/dev/null || echo "U-Boot $UBOOT_VERSION")" \
-SHA="$(baseos_sha256 "$OUT")" BOOTCMD="$BOOTCMD" DEBUG="$DEBUG" TEXT_BASE="$TEXT_BASE" \
+SHA="$(baseos_sha256 "$OUT")" BOOTCMD="$BOOTCMD" DEBUG="$DEBUG" DIAG="$DIAG" TEXT_BASE="$TEXT_BASE" \
 UBOOT_VERSION="$UBOOT_VERSION" UBOOT_DEFCONFIG="$UBOOT_DEFCONFIG" \
 python3 - "$META" "$HERE/tools" <<'EOF'
 import json, os, sys
@@ -208,6 +220,7 @@ import mkfit
 e = os.environ
 json.dump({"uboot_version": e["UBOOT_VERSION"], "banner": e["BANNER"],
            "defconfig": e["UBOOT_DEFCONFIG"], "debug": e["DEBUG"] == "1",
+           "diag": e["DIAG"] == "1",
            "text_base": e["TEXT_BASE"], "bootcmd": e["BOOTCMD"],
            "addresses": mkfit.addresses(), "sha256": e["SHA"]},
           open(sys.argv[1], "w"), indent=2)

@@ -1,0 +1,58 @@
+Diagnostics only (MY355_DIAG=1): a bootstage mark after every initcall.
+
+The marks land in the kernel's /proc/device-tree/bootstage like the boot
+script's, and baseos-bootinfo prints them in time order with each step's
+duration. Two things need room for them:
+
+- reserve_bootstage() sizes the relocated bootstage block from the names
+  recorded so far, and about a dozen more marks follow before
+  reloc_bootstage() copies them all. Without slack the copy runs into the
+  relocated control device tree, which is copied just before it, and U-Boot
+  hangs after relocation.
+- The report in the kernel's tree grows by 16 KiB instead of 4, inside
+  CONFIG_SYS_FDT_PAD.
+
+diff --git a/include/initcall.h b/include/initcall.h
+--- a/include/initcall.h
++++ b/include/initcall.h
+@@ -7,6 +7,7 @@
+ #define __INITCALL_H
+ 
+ #include <asm/types.h>
++#include <bootstage.h>
+ #include <event.h>
+ #include <hang.h>
+ 
+@@ -19,6 +20,7 @@
+ 			       #_call); \
+ 			hang(); \
+ 		} \
++		bootstage_mark_name(BOOTSTAGE_ID_ALLOC, #_call); \
+ 	} while (0)
+ 
+ #define INITCALL_EVT(_evt) \
+diff --git a/common/bootstage.c b/common/bootstage.c
+--- a/common/bootstage.c
++++ b/common/bootstage.c
+@@ -323,7 +323,7 @@
+ 	 * leaves room for a few records only. Grow it back into the
+ 	 * CONFIG_SYS_FDT_PAD that boot_relocate_fdt() allocated.
+ 	 */
+-	if (working_fdt && fdt_increase_size(working_fdt, 0x1000))
++	if (working_fdt && fdt_increase_size(working_fdt, 0x4000))
+ 		puts("bootstage: Failed to make room in the device tree\n");
+ 	if (add_bootstages_devicetree(working_fdt))
+ 		puts("bootstage: Failed to add to device tree\n");
+diff --git a/common/board_f.c b/common/board_f.c
+--- a/common/board_f.c
++++ b/common/board_f.c
+@@ -601,7 +601,8 @@
+ static int reserve_bootstage(void)
+ {
+ #ifdef CONFIG_BOOTSTAGE
+-	int size = bootstage_get_size(true);
++	/* Room for the names of the marks made between here and reloc_bootstage() */
++	int size = bootstage_get_size(true) + 1024;
+ 
+ 	gd->start_addr_sp = reserve_stack_aligned(size);
+ 	gd->boardf->new_bootstage = map_sysmem(gd->start_addr_sp, size);

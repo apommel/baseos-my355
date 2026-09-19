@@ -1,0 +1,5 @@
+uboot 1.274  printk 1.320  init 2.093  handoff 2.23  nextui 2.69  frame 3.53  (offset 1.510)
+uboot 1.274  printk 1.321  init 2.120  handoff 2.26  nextui 2.70  frame 3.54  (offset 1.513)
+uboot 1.274  printk 1.321  init 2.534  handoff 2.70  nextui 3.15  frame 3.73  (offset 1.517)
+uboot 1.274  printk 1.321  init 2.107  handoff 2.24  nextui 2.70  frame 3.55  (offset 1.509)
+uboot 1.274  printk 1.321  init 2.114  handoff 2.26  nextui 2.73  frame 3.57  (offset 1.518)

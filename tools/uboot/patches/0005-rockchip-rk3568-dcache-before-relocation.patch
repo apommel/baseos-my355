@@ -1,0 +1,72 @@
+Map DRAM cached before relocation on RK3568.
+
+With the MMU off, data accesses are Device memory. On an RK3566 at
+1104 MHz board_init_f() took 570 ms, 288 ms of it binding driver model
+from the device tree and 222 ms probing the UART with its clock and pin
+controllers; after relocation, with caches on, binding and probing take
+38 ms. Enabling the I-cache early changed nothing: the SPL leaves it on.
+
+Follow stm32mp2: page tables in .data before relocation, rebuilt in the
+area arch_reserve_mmu() reserved once enable_caches() runs.
+
+diff --git a/arch/arm/mach-rockchip/rk3568/rk3568.c b/arch/arm/mach-rockchip/rk3568/rk3568.c
+--- a/arch/arm/mach-rockchip/rk3568/rk3568.c
++++ b/arch/arm/mach-rockchip/rk3568/rk3568.c
+@@ -5,9 +5,12 @@
+ 
+ #define LOG_CATEGORY LOGC_ARCH
+ 
++#include <cpu_func.h>
+ #include <dm.h>
+ #include <misc.h>
+ #include <asm/armv8/mmu.h>
++#include <asm/global_data.h>
++#include <asm/system.h>
+ #include <asm/arch-rockchip/bootrom.h>
+ #include <asm/arch-rockchip/grf_rk3568.h>
+ #include <asm/arch-rockchip/hardware.h>
+@@ -108,8 +111,44 @@
+ 		     GPIO0D0_UART2_RXM0 << GPIO0D0_SHIFT);
+ }
+ 
++#if !defined(CONFIG_XPL_BUILD) && !CONFIG_IS_ENABLED(SYS_DCACHE_OFF)
++DECLARE_GLOBAL_DATA_PTR;
++
++/*
++ * With the MMU off every data access is Device memory, uncached: U-Boot
++ * spends over half a second before relocation, mostly reading its device
++ * tree. Map it early, as stm32mp2 does, from tables in .data (.bss is not
++ * usable yet); enable_caches() rebuilds them where arch_reserve_mmu() put
++ * them once U-Boot has relocated, and relocate_code() cleans the copy.
++ */
++#define EARLY_TLB_SIZE	0x10000
++static u8 early_tlb[EARLY_TLB_SIZE] __section(".data") __aligned(0x4000);
++
++static void early_enable_caches(void)
++{
++	/* An undersized table would panic with no console to say so */
++	if (get_page_table_size() > EARLY_TLB_SIZE)
++		return;
++	gd->arch.tlb_size = EARLY_TLB_SIZE;
++	gd->arch.tlb_addr = (ulong)early_tlb;
++	icache_enable();
++	dcache_enable();
++}
++
++void enable_caches(void)
++{
++	dcache_disable();
++	gd->arch.tlb_fillptr = 0;
++	icache_enable();
++	dcache_enable();
++}
++#endif
++
+ int arch_cpu_init(void)
+ {
++#if !defined(CONFIG_XPL_BUILD) && !CONFIG_IS_ENABLED(SYS_DCACHE_OFF)
++	early_enable_caches();
++#endif
+ #ifdef CONFIG_XPL_BUILD
+ 	/*
+ 	 * When perform idle operation, corresponding clock can

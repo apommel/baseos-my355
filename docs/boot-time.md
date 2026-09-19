@@ -24,6 +24,21 @@ Against stock's **15.79 s** to hand-off and **31.50 s** to a first frame, on the
 same unit and the same NextUI install. BaseOS boots from SD faster than stock
 boots from internal NAND.
 
+On the mainline U-Boot path (`MY355_UBOOT=mainline`, under evaluation;
+[U-Boot](uboot.md) Part 3), four cold boots on 2026-09-19:
+
+| phase | at power-on | vendor path |
+|---|---|---|
+| mainline U-Boot hands off | **1.27 s** | — |
+| first printk | 1.32 s | 2.85 s |
+| kernel → `Run /init` | **2.09–2.12 s** | 3.58 s |
+| frontend hand-off | 2.23–2.26 s | 3.72–3.74 s |
+| `nextui.elf` start | **2.69–2.73 s** | 4.19–4.23 s |
+| first NextUI frame | 3.53–3.57 s | (5.72–5.75 s, a different marker) |
+
+`baseos-bootinfo timeline` prints this line for any boot; the first frame needs
+a `MY355_DIAG=1` rootfs ([U-Boot](uboot.md), *Measuring it*).
+
 Nothing of ours is left on the critical path except the system bus, which starts
 in the background; `adbd`, `ntpd` and WiFi all come up after the hand-off.
 
@@ -149,22 +164,22 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 ## What is left
 
-1. **Ship our own U-Boot — under evaluation, 0.92 s ahead.** Behind
-   `MY355_UBOOT=mainline`: first printk **1.84 s** against 2.85 s, `Run /init`
-   **2.66 s** against 3.58 s (2026-09-18). It costs the boot logo. What got it
-   there, each measured on its own cold boots:
+1. **Ship our own U-Boot — under evaluation, 1.47 s ahead.** Behind
+   `MY355_UBOOT=mainline`: first printk **1.32 s** against 2.85 s, `Run /init`
+   **2.09–2.12 s** against 3.58 s, NextUI starting 1.5 s earlier (2026-09-19). It
+   costs the boot logo. What got it there, each measured on its own cold boots:
 
    | step | `Run /init` |
    |---|---|
    | first build, CPU left at 816 MHz | 3.65–3.67 s |
    | CPU handed over at 1104 MHz, as the vendor does | 3.44 s |
    | zstd kernel, decoded in 347 ms against gzip's 447 | 3.24 s |
-   | **SD card actually at 50 MHz**: mainline's RK3568 clock driver ran it at 25 | **2.66 s** |
+   | SD card actually at 50 MHz: mainline's RK3568 clock driver ran it at 25 | 2.66 s |
+   | **data cache on before relocation**: early init 570 → 40 ms | **2.09–2.12 s** |
 
-   U-Boot reports its own bootstage timings; what is left of its 1.79 s is
-   pre-relocation init with the caches off (0.57 s), the read (0.54 s at
-   23.8 MB/s), decompression (0.35 s) and card init (0.20 s) — [U-Boot](uboot.md)
-   Part 3.
+   U-Boot reports its own bootstage timings; what is left of its 1.27 s is
+   the read (0.54 s at 23.8 MB/s), decompression (0.35 s) and card init
+   (0.20 s) — [U-Boot](uboot.md) Part 3.
 2. **zstd for the kernel — 87 ms, on the mainline path.** First measured
    1.60 s *slower* than gzip; the cause was U-Boot's `-mstrict-align` and
    `ZSTD_LIB_MINIFY`, not zstd. Fixed and tuned for decode speed on this SoC,

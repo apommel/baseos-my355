@@ -1,0 +1,22 @@
+#!/bin/sh
+# Diagnostics only (MY355_DIAG=1): when the frontend's first frame reached the
+# panel, for `baseos-bootinfo timeline`. /etc/init.d/dev starts it.
+#
+# There is no kernel marker for it on the mainline U-Boot path (the vendor
+# path's is `Freeing drm_logo memory`), so poll the DRM state for a plane on a
+# CRTC scanning out a framebuffer nextui.elf allocated. Every 20 ms, up to 15 s:
+# the result is an upper bound, and the polling itself costs a little CPU.
+
+grep -q ' /sys/kernel/debug ' /proc/mounts || mount -t debugfs none /sys/kernel/debug
+i=0
+while [ $i -lt 750 ]; do
+	read -r up _ < /proc/uptime
+	if awk '/^plane/ {c = 0} /crtc=video_port/ {c = 1}
+		/allocated by = nextui.elf/ && c {f = 1} END {exit !f}' \
+		/sys/kernel/debug/dri/0/state 2>/dev/null; then
+		echo "$up" > /run/boot-first-frame
+		exit 0
+	fi
+	usleep 20000
+	i=$((i + 1))
+done

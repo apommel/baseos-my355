@@ -81,6 +81,14 @@ the left slot:
 adb shell 'n=$(cat /sys/class/block/mmcblk2p2/size); dd if=/dev/mmcblk2p2 bs=512 skip=$((n - 128)) count=128 2>/dev/null' | tr -d '\000'
 ```
 
+That log belongs to the last boot that **reached the boot script**, which is not
+necessarily the one that failed: a U-Boot that hangs in its own init saves
+nothing, and the previous boot's log is what reads back. Tell them apart from
+the same stock session: `dumpe2fs -h /dev/mmcblk2p3` gives root's `Last mount
+time`, and a failed boot that never reached the kernel leaves it older than the
+failure. Of the two LEDs only the charge LED is ours to read; the `work` LED is
+lit during U-Boot too, so it proves nothing about the kernel (2026-09-19).
+
 The first save happens before `bootm`, so a log that ends at the FIT read with
 no `bootm` error after it means the hang is in `bootm` or the kernel — the shape
 the 2026-08-24 failure would have had. A failed `bootm` returns, and the second

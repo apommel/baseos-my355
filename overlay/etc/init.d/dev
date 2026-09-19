@@ -17,4 +17,7 @@ done
 # Backgrounded: it waits for functionfs ep1.
 [ -x /usr/sbin/usb-gadget-adb ] && /usr/sbin/usb-gadget-adb &
 
+# Only in a MY355_DIAG=1 rootfs: times the frontend's first frame.
+[ -x /usr/sbin/baseos-frameprobe ] && /usr/sbin/baseos-frameprobe &
+
 mark /run/boot-dev-done
