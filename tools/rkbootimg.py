@@ -442,16 +442,15 @@ def add_optee_reservation(dtb: bytes) -> bytes:
                            [("reg", reg), ("no-map", b"")])
 
 
-# VOP2 windows by physical id (the vendor dt-bindings). On the RK3566, Cluster1,
-# Esmart1 and Smart1 are mirrors: they only work once their main window is
-# enabled, so the panel needs the mains. The vendor U-Boot writes this split
-# into the kernel's tree at boot (rk3568_assign_plane_mask: the first display
-# that cannot be hot-plugged is the main one); without it the kernel falls back
-# to a default that gives the DSI port the mirrors, and NextUI draws nothing.
+# VOP2 windows, bit N = physical window N. On the RK3566 Cluster1, Esmart1 and
+# Smart1 cannot scan out a buffer of their own, they only mirror Cluster0,
+# Esmart0 and Smart0: each port needs a main window, and the masks must cover
+# all six or the kernel discards them for a default that mirrors one port.
 VOP2_NODE = "vop@fe040000"
-VOP2_MAIN = (0x15, 4)      # Cluster0, Esmart0, Smart0; primary Smart0
-VOP2_MIRROR = (0x2a, 5)    # Cluster1, Esmart1, Smart1; primary Smart1
-VOP2_DISPLAYS = (("dsi@fe060000", VOP2_MAIN), ("hdmi@fe0a0000", VOP2_MIRROR))
+VOP2_ALL_WINDOWS = 0x3f
+VOP2_PANEL = (0x30, 4)     # Smart0 (primary) + its mirror Smart1
+VOP2_HDMI = (0x0f, 2)      # Esmart0 (primary) + Cluster0, with their mirrors
+VOP2_DISPLAYS = (("dsi@fe060000", VOP2_PANEL), ("hdmi@fe0a0000", VOP2_HDMI))
 
 
 def vop2_port_of(dtb: bytes, encoder: str) -> str:
@@ -471,7 +470,15 @@ def vop2_port_of(dtb: bytes, encoder: str) -> str:
 
 
 def set_vop2_plane_masks(dtb: bytes) -> bytes:
-    """Assign VOP2 windows as the vendor U-Boot does, for the mainline path only."""
+    """Assign VOP2 windows, a main one per display, for the mainline path only."""
+    covered = 0
+    for _encoder, (mask, _primary) in VOP2_DISPLAYS:
+        if covered & mask:
+            raise ValueError(f"VOP2 window assigned twice: 0x{covered & mask:02x}")
+        covered |= mask
+    if covered != VOP2_ALL_WINDOWS:
+        raise ValueError(f"VOP2 masks cover 0x{covered:02x}, not 0x{VOP2_ALL_WINDOWS:02x}; "
+                         "the kernel would discard them and use its own default")
     seen = set()
     for encoder, (mask, primary) in VOP2_DISPLAYS:
         port = vop2_port_of(dtb, encoder)

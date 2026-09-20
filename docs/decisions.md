@@ -76,6 +76,11 @@ reads 0% when full, and reading it back from the coulomb counter rather than
 the power-on voltage gave 11% after a night switched off. Each was found by its
 failure, so there may be a fourth.
 
+One of them turned into a gain. Giving each display a VOP2 window of its own
+(2026-09-20) runs the panel and HDMI at the same time with independent content,
+and makes hot-plug and hot-unplug work. Stock cannot: it disables the panel to
+use a TV, and has to reboot to switch.
+
 It measured faster end to end — NextUI's first frame 2.93–2.98 s, where the
 vendor path frees its logo at 5.72–5.75 s — and on 2026-09-19 it became the
 default with those costs accepted; `MY355_UBOOT=vendor` still builds the vendor

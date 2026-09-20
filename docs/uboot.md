@@ -58,7 +58,10 @@ Two things were found along the way and kept.
 `g_miyoo_use_hdmi` is set. Only the first was ever patched, so the variant still
 carried the stock `root=/dev/mtdblock3 rootfstype=squashfs` — **BaseOS would not
 have booted on that path.** `setargs` now patches every `rk-kernel.dtb*` entry and
-asserts `root=` on each.
+asserts `root=` on each. The variant itself differs in only three properties —
+the DSI endpoint `disabled`, `vcc3v3-lcd0-n` switched to `regulator-boot-off`,
+and the PMIC codec `disabled` — which is stock running the TV *instead of* the
+panel rather than alongside it (*The display planes*, Part 3).
 
 **The panel is the floor of U-Boot's display work, and it is a choice.**
 `dsi@fe060000/panel@0`'s `panel-init-sequence` holds **282 ms of mandated sleep**
@@ -606,18 +609,47 @@ this path does each one itself. Four are known, each found by its failure.
 | the vendor U-Boot | without it, on mainline | done here by |
 |---|---|---|
 | splits `/memory` around OP-TEE at `0x08400000` | the kernel allocates over resident secure firmware and dies after `Starting kernel` (2026-08-24) | `mkfit.py boot`: a `/reserved-memory` `no-map` node |
-| writes `rockchip,plane-mask` and `rockchip,primary-plane` into each VOP2 port (`rk3568_assign_plane_mask`) | the kernel's default gives the panel's port (`vp1`) the RK3566's mirror windows, which scan out nothing: **NextUI runs, the panel is black with the backlight on**. dmesg: `current plane mask: 0x0 … use default plane mask` | `mkfit.py boot`: the vendor's policy — the non-hot-plug display gets the main windows |
+| writes `rockchip,plane-mask` and `rockchip,primary-plane` into each VOP2 port (`rk3568_assign_plane_mask`) | the kernel's default gives the panel's port (`vp1`) the RK3566's mirror windows, which scan out nothing: **NextUI runs, the panel is black with the backlight on**. dmesg: `current plane mask: 0x0 … use default plane mask` | `mkfit.py boot`: a main window of its own for each display (below) |
 | reconciles the RK817 fuel gauge and sets `FG_INIT` (`fg_rk817.c`) | the kernel reads charge gained while off as a halted session and restarts the displayed SOC from **0% on a full battery**; a low-battery shutdown would follow unplugged | `my355 fg`, in the boot script |
 | takes that SOC from the power-on voltage instead (`rk817_bat_first_pwron`) | the coulomb counter does not survive a power-off and nothing contradicts it: **11% on a battery at 4.2 V** | `my355 fg`, against the cell's OCV table, on any boot `OFF_CNT` flags as following a real off |
 
-**The display planes.** On the RK3566, Cluster1, Esmart1 and Smart1 only mirror
-their main window. The vendor U-Boot hands the main windows to the first
-display that cannot be hot-plugged, "to ensure that the mirror planes are not
-enabled first": the DSI panel gets `0x15` (Cluster0, Esmart0, Smart0; primary
-Smart0), HDMI `0x2a` (the mirrors; primary Smart1). `rkbootimg.set_vop2_plane_masks`
-writes exactly that, finding each encoder's VOP port from the tree's endpoints
-rather than assuming it, and refuses a tree that already assigns planes. HDMI
-while docked is untested on this path.
+**The display planes.** The RK3566's VOP2 has six windows but only three that
+can source a buffer: Cluster1, Esmart1 and Smart1 have no framebuffer of their
+own, they only mirror Cluster0, Esmart0 and Smart0. Upstream refuses to register
+them at all (`vop2_is_mirror_win`, soc_id 3566); the vendor kernel takes
+`rockchip,plane-mask` per port and trusts what it is given.
+
+The vendor U-Boot gives one port every main window and the other every mirror —
+the panel `0x15`, HDMI `0x2a` — so whichever display holds the mirrors scans out
+the *other* one's buffer at its own stride. On a TV that is the boot logo
+duplicated and torn, and nothing the frontend draws ever appears. Stock avoids
+this by never running both at once: `rk-kernel.dtb.hdmi` disables the DSI
+endpoint and powers the panel rail down, leaving HDMI the only display. That is
+why stock rebooted to switch to a TV, and why hot-plugging it could not work.
+
+This path splits the windows instead. The panel takes `0x30` (Smart0 as primary,
+plus its mirror Smart1), HDMI `0x0f` (Esmart0 as primary and Cluster0, with
+theirs). Each display drives a main window of its own, so both run at once with
+independent content, and plugging a cable in is an ordinary modeset on a port
+that already owns its window. Esmart0 takes the TV because it is primary-capable
+and scales 8x either way, against Cluster0's 4x; the frontend renders 1280x720
+natively, so the scaler is there for what a core hands it. Measured against the
+mirrored split, `dclk_vop0`, `dclk_vop1`, `aclk_vop` and the DDR frequency are
+unchanged: both ports were always clocked and always fetching, a mirror window
+simply fetched the wrong address.
+
+Every window has to be assigned. The kernel checks the masks against `0x3f` and
+silently falls back to its own default if any is missing — `all windows should
+be assigned, full plane mask: 0x3f, current plane mask: 0x15 … use default plane
+mask`, which hands one port the mains and the other the mirrors again. So
+`set_vop2_plane_masks` refuses a split that does not cover all six or that
+assigns a window twice, finds each encoder's VOP port from the tree's endpoints
+rather than assuming it, and refuses a tree that already assigns planes. No
+`.hdmi` tree variant is needed.
+
+Cold-plug, hot-plug and hot-unplug were all verified on this split. Following
+`card0-HDMI-A-1/status` and moving between the two is the frontend's own work;
+this only makes both connectors usable at once.
 
 **The fuel gauge.** The RK817 keeps its state across power-off in PMIC
 registers: a coulomb counter, and the SOC and capacity the kernel last saved.
@@ -904,9 +936,8 @@ adds the console record and the charge LED; how to read them is in
 1. **Cold boots of the release build.** `MY355_UBOOT_DEBUG=0` has been the
    default since 2026-09-19, 7 ms faster; the timings above are debug builds.
 2. **The untested paths:** the charger-woken power-on (it should switch itself
-   off again), HDMI while docked with the plane split above, and an update
-   from 0.6.0, which swaps the vendor `uboot` and `boot` slots for these in one
-   step.
+   off again) and an update from 0.6.0, which swaps the vendor `uboot` and
+   `boot` slots for these in one step.
 3. **NextUI's `my355.sh` change**, which stops it clearing `/dev/fb0` on
    BaseOS, in the NextUI release users will run. Without it the `rcS` logo is
    erased before the panel shows it.
@@ -939,8 +970,10 @@ decompression and 0.12 s init before the boot script.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
 the early boot logo (no VOP2 driver; `rcS` draws one at 2.00 s against ~1.0 s), the
-low-battery guard and charge animation, the `.hdmi` device tree variant, and
-`androidboot.serialno` (`usb-gadget-adb` falls back to the machine id). It also
+low-battery guard and charge animation, and `androidboot.serialno`
+(`usb-gadget-adb` falls back to the machine id). The `.hdmi` device tree variant
+is not given up but obsolete: the plane split above runs both displays at once,
+which is what stock used that variant to avoid having to do. It also
 removes `Freeing drm_logo memory`, the first-frame marker in
 [boot time](boot-time.md), so compare the two paths on first printk, `Run /init`
 and the `/run/boot-*` breadcrumbs.
