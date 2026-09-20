@@ -601,13 +601,14 @@ Kconfig base.
 
 The vendor U-Boot edits the kernel's world before hand-off, and the vendor
 kernel depends on each edit without saying so. Mainline does none of them, so
-this path does each one itself. Three are known; each was found by its failure.
+this path does each one itself. Four are known, each found by its failure.
 
 | the vendor U-Boot | without it, on mainline | done here by |
 |---|---|---|
 | splits `/memory` around OP-TEE at `0x08400000` | the kernel allocates over resident secure firmware and dies after `Starting kernel` (2026-08-24) | `mkfit.py boot`: a `/reserved-memory` `no-map` node |
 | writes `rockchip,plane-mask` and `rockchip,primary-plane` into each VOP2 port (`rk3568_assign_plane_mask`) | the kernel's default gives the panel's port (`vp1`) the RK3566's mirror windows, which scan out nothing: **NextUI runs, the panel is black with the backlight on**. dmesg: `current plane mask: 0x0 … use default plane mask` | `mkfit.py boot`: the vendor's policy — the non-hot-plug display gets the main windows |
 | reconciles the RK817 fuel gauge and sets `FG_INIT` (`fg_rk817.c`) | the kernel reads charge gained while off as a halted session and restarts the displayed SOC from **0% on a full battery**; a low-battery shutdown would follow unplugged | `my355 fg`, in the boot script |
+| takes that SOC from the power-on voltage instead (`rk817_bat_first_pwron`) | the coulomb counter does not survive a power-off and nothing contradicts it: **11% on a battery at 4.2 V** | `my355 fg`, against the cell's OCV table, on any boot `OFF_CNT` flags as following a real off |
 
 **The display planes.** On the RK3566, Cluster1, Esmart1 and Smart1 only mirror
 their main window. The vendor U-Boot hands the main windows to the first
@@ -624,19 +625,83 @@ Left alone, the kernel compares the two, and a gap over 10% of FCC — charging
 while off gives one — it takes for a crash, restarting from an `rsoc` it has not
 yet computed: 0. NextUI's battery log on this unit shows it happening, 78 → 54
 → 0 → creeping up 1% at a time on a battery at 4.19 V. `my355 fg` (patch
-`0001`) does the vendor U-Boot's reconciliation: the counter's change since
-the last save moves the SOC (both directions, where the vendor counts only
-charge), SOC, capacity and counter are written back, the off-minutes counter
-restarts and `FG_INIT` tells the kernel to take it (`rk817-bat: initialized
-yet..`). One addition: a saved SOC more than 10 points from the counter's is
-replaced by the counter's, which repaired this unit's corrupted 12% to 99.9% on
-the first boot (2026-09-19). A battery reconnected from empty (`BAT_CON`), or a
-counter the PMIC marks invalid, is left to the kernel's own voltage estimate.
-The kernel's charger driver sets input and charge limits itself from its tree
-(`rk817_charge_pre_init`), so nothing else of the vendor's `fg_rk817.c` is
-needed. Like stock, this skips the kernel's recalibration from resting voltage
-after 30 minutes off; doing it here needs the OCV table from the kernel's tree.
-It costs 13.5 ms of I2C.
+`0001`) writes a SOC, capacity and counter of its own and sets `FG_INIT`, which
+tells the kernel to take them (`rk817-bat: initialized yet..`). `FG_INIT` also
+suppresses the kernel's recalibration from resting voltage, so that becomes
+this command's job as well.
+
+Which source the SOC comes from depends on how the board got here, because the
+two available ones fail in opposite conditions:
+
+| | after a real power-off | after a warm reboot |
+|---|---|---|
+| coulomb counter | **does not survive it** | correct — 3000 → 2998 mAh over ten minutes |
+| `PWRON_VOL` (`0x6B`) | freshly latched as the rails come up, on a cell that has had the whole off to relax | **stale** — whatever the last real power-on saw |
+| so `my355 fg` takes | the voltage | the counter |
+
+The counter does not survive by any fixed amount: 4h20m off cost 112 mAh and
+~9.4 h cost 2,670, both times on a battery still at 4.15–4.20 V. There is no
+drift rate to extrapolate and no threshold that recovers it, which is why the
+voltage replaces it outright rather than correcting it.
+
+`PWRON_VOL` is scaled to millivolts by the factory pair in `VCALIB0`/`VCALIB1`
+(`0x93`–`0x96`) exactly as the kernel's `rk817_bat_init_voltage_kb()` derives
+it, truncation included, so both arrive at the same millivolt — checked against
+`voltage_now`, 4161 mV either way. Those two registers are rewritten at runtime
+(they moved between two boots the same day), so they are read fresh rather than
+carried. The `ocv_table` did not need the kernel's tree after all: its
+twenty-one 5% steps are a property of the cell, so patch `0001` carries them. A
+voltage outside 2500–4500 mV is not a battery reading, and falls back to the
+counter.
+
+This is what the vendor U-Boot does, and why stock never shows it: its binary
+carries `ocv_table`, `design_capacity` and `sample_res` parsing, the BSP's
+`rk817_bat_first_pwron` (`rsoc = vol2soc(pwron_voltage)`), and a Miyoo-added
+`miyoo force first boot battery`. A bootloader parses an OCV table for one
+reason.
+
+**`OFF_CNT` decides between them**, and only its being zero is read. `ON_SOURCE`
+cannot: it stayed `0x80` across a warm reboot, because it records the last time
+the PMIC raised the rails, not the last reset. `OFF_CNT`'s unit is **not** the
+minute the vendor driver reads it as — against measured offs it steps about
+every ten minutes, a timed one-hour off giving **6** and 4h20m giving 26 — which
+also makes the vendor kernel's own `pwroff_min >= 30` gate about five hours
+rather than thirty minutes. The zero test itself has held across a warm reboot
+and two real offs, it does not tick while running, and `my355 fg` clearing it
+each boot is what keeps it readable.
+
+That leaves one hole: an off **shorter than one step** reads zero and is taken
+for a warm reboot. How far the counter moves in ten minutes is not known — the
+two measured offs are too far apart, and too non-proportional, to extrapolate
+down. So the log prints what the counter said on every boot whether it was used
+or not, and the first short off to go wrong will say so rather than having to
+be reproduced.
+
+The risk this design accepts is the one the [Zetarancio
+notebook](https://github.com/Zetarancio/Miyoo-Flip-Mainline-Linux-Reverse-Engineering/blob/main/docs/miyoo-flip-power-off-investigation.md#re-verification-2026-08-27)
+documents: it retracts its own "37.5 mA drain" as a boot-time OCV re-seed
+reading low, because mainline never applies `factory-internal-resistance` and
+the curve between 3.55 and 3.90 V is flat enough to turn a small voltage error
+into a large percentage one. `my355 fg` does not correct for the tree's
+`bat_res` of 100 mΩ either. What differs is that it uses the vendor's own table
+and calibration, and reads only a relaxed cell — and that the alternative is a
+counter with no bounded error at all. Any residual few points are left to the
+kernel's smoothing, at 1% per 72 s.
+
+A battery reconnected from empty (`BAT_CON`), or a counter the PMIC marks
+invalid, is left to the kernel's own estimate. The kernel's charger driver sets
+input and charge limits itself from its tree (`rk817_charge_pre_init`), so
+nothing else of the vendor's `fg_rk817.c` is needed. The whole thing costs
+16 ms of I2C. The log line carries every input and the decision:
+
+```
+my355 fg: soc 100.000 -> 99.934%, cap 3000 -> 2998 mAh of 3000, off 0, cnt 99.933%, ocv 100%
+```
+
+`off 0` made that a warm reboot, so the counter was taken and the `ocv` figure
+is only reported. After a real off the line carries `(by ocv)` instead, and a
+boot that followed one while still reading `off 0` would be the signature of
+the hole above.
 
 ## The boot logo
 

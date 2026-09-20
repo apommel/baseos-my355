@@ -71,8 +71,10 @@ decompression at 1800 MHz and the Flip's own control tree — it reaches
 2.00 s against ~1.0 s — and the low-battery guard. And it has to do by hand
 what the vendor kernel silently relied on the vendor U-Boot for: the OP-TEE
 reservation, the display plane assignment (without it the panel stays black
-under NextUI) and the fuel gauge bookkeeping (without it the battery reads 0%
-when full). Each was found by its failure, so there may be a fourth.
+under NextUI) and the fuel gauge, which took two goes: without it the battery
+reads 0% when full, and reading it back from the coulomb counter rather than
+the power-on voltage gave 11% after a night switched off. Each was found by its
+failure, so there may be a fourth.
 
 It measured faster end to end — NextUI's first frame 2.93–2.98 s, where the
 vendor path frees its logo at 5.72–5.75 s — and on 2026-09-19 it became the
