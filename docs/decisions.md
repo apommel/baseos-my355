@@ -72,8 +72,8 @@ decompression at 1800 MHz and the Flip's own control tree — it reaches
 what the vendor kernel silently relied on the vendor U-Boot for: the OP-TEE
 reservation, the display plane assignment (without it the panel stays black
 under NextUI) and the fuel gauge, which took two goes: without it the battery
-reads 0% when full, and reading it back from the coulomb counter rather than
-the power-on voltage gave 11% after a night switched off. Each was found by its
+reads 0% when full, and letting the coulomb counter move the SOC down across
+a boot gave 11% after a night switched off. Each was found by its
 failure, so there may be a fourth.
 
 One of them turned into a gain. Giving each display a VOP2 window of its own
