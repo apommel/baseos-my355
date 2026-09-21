@@ -559,9 +559,9 @@ driver model, and changes nothing else:
   relocation in U-Boot proper the same way (`arch/arm/mach-stm32mp/`), as do
   Layerscape and Versal.
 
-Verified 2026-09-19: five cold boots, a warm reboot, a cold boot with the
-charger attached; the charger-woken power-on (which should switch itself off
-again) is untested. Worth **530 ms**, carried unchanged to the first frame. A
+Verified 2026-09-19: five cold boots, a warm reboot and a cold boot with the
+charger attached; since 2026-09-21, charger-woken power-ons too (*Charging
+while off*). Worth **530 ms**, carried unchanged to the first frame. A
 failure would look like the dark screen of the first diagnostics build: a hang
 before the boot script, which the SPL does not catch because the FIT is valid,
 recovered by re-flashing or from stock with the card in the left slot.
@@ -720,6 +720,64 @@ my355 fg: soc 74.999 -> 74.999%, cap 2346 -> 2346 mAh of 3000, off 7, cnt 2062 m
 not the minute the vendor driver reads it as, so the vendor kernel's own
 `pwroff_min >= 30` gate is really about five hours.
 
+## Charging while off
+
+The RK817 charges with the SoC off: on 2026-09-21 a unit charged while off
+booted with `CHRG_STS` at *terminated* and the counter up
+(`charged while off`). The charge LED, though, is a SoC pin (`gpio0 PC2`), so
+with the SoC off it stays dark. Stock keeps its U-Boot running to light it and
+draw the battery screen; `my355 charge`, first in the boot script, does the
+same without the screen:
+
+- **When.** The PMIC was started by the charger (`ON_SOURCE` bit 6), or the
+  kernel restarted with `reboot charge`. `ON_SOURCE` survives a reboot, so it
+  only counts on a cold start, which the reboot-mode register tells apart: 0
+  then, `0x5242c3xx` once U-Boot or the kernel has run. U-Boot's own boot-mode
+  handling is off (`ROCKCHIP_BOOT_MODE_REG=0x0`) because it would clear the
+  register first. Every other boot costs three I2C reads.
+- **Shut down with the charger in.** The PMIC powers off and no plug-in event
+  ever wakes it. `/usr/sbin/poweroff` (the one NextUI runs) flags it with the
+  charger online, and `rcK` then ends in `rebootmode charge` instead: a
+  `LINUX_REBOOT_CMD_RESTART2` that busybox cannot issue. The vendor kernel lists
+  `charge` among the reboots that keep the PMIC up, and its reboot-mode driver
+  writes `0x5242c30b` to `PMU_GRF_OS_REG0`.
+- **Then** the `work` LED (`gpio0 PB4`, lit from power-on) goes off, and
+  every 100 ms the charge LED follows `CHRG_STS`: lit for dead, trickle and
+  CC/CV. The PMIC is powered off when it reads terminated, when the cable is
+  pulled, or after 60 s without charging (a paused or refused charge, which
+  the PMIC resumes on its own). The power key (`INT_STS0` `PWRON_FALL`) boots
+  instead, with the `work` LED lit again.
+- **Powering off** clears `SYS_CAN_SD` (`0xe6` bit 7) first. A battery
+  reconnect sets it, and while set it costs ~8 mA off (the
+  [Zetarancio notebook](https://github.com/Zetarancio/Miyoo-Flip-Mainline-Linux-Reverse-Engineering/blob/main/docs/miyoo-flip-power-off-investigation.md));
+  the vendor U-Boot and kernel clear it at probe, but charge mode can power
+  off before the kernel has ever run.
+- **The gauge.** Unlike a real power-off, the counter works while U-Boot runs,
+  so `my355 fg`'s bookkeeping runs on entry and again on exit. The exit is where
+  the charge is saved as SOC, before the counter decays with the rails down. A
+  terminated charge writes 100% and the full capacity (`(charged to full)`).
+
+It runs at the least the SoC allows without new drivers: the one core U-Boot
+uses at 408 MHz and `vdd_cpu` at 850 mV (the vendor's floor for every bin, down
+from the RK8600's 1000 mV at power-on), and parked in WFE between polls, woken by
+the timer's event stream every 1.4 ms rather than spinning. The boot path puts
+both back up (`my355 cpu 1104`). Not done: the DDR stays at its trained rate
+(lowering it goes through BL31), and the GPU and logic rails stay up.
+
+Against the vendor's
+[`charge_animation.c`](https://github.com/rockchip-linux/u-boot/blob/next-dev/drivers/power/charge_animation.c),
+three deliberate differences. The vendor stays up once full, handing over to
+a *charging-full* LED the Flip does not have; this powers off, as dark as a
+normal shutdown. The vendor boots on a long press, a short one toggling its
+screen; with no screen, any press boots. And the vendor idles in PSCI system
+suspend, with
+the regulators in their sleep states, which needs interrupts and a wake-up
+source mainline U-Boot does not have here; WFE is the step short of that. The
+rest matches: the exit on unplug, `reboot charge` (`BOOT_CHARGING`, cleared
+once read), the gauge saved before powering off, and on termination the full
+capacity loaded into the counter (`rk817_bat_finish_chrg`), though the vendor
+walks the SOC up to 100% where this writes it at once.
+
 ## The boot logo
 
 Mainline U-Boot has no VOP2 driver, so it draws nothing and the kernel brings
@@ -820,7 +878,8 @@ FIT. No hash nodes: bootm treats them as optional, and a hash over the kernel
 is the work this path exists to delete. A 512-byte header in front carries `MY355FIT` and the FIT's sector
 count.
 
-**The boot script**, generated by `build-uboot.sh`: power the panel,
+**The boot script**, generated by `build-uboot.sh`: `my355 charge` (*Charging
+while off*), power the panel,
 `my355 cpu 1104`, `my355 fg`, `blkcache configure`, `mmc dev 1`, then `part
 start`/`part size` to find `boot` **by name**, read the header, check both magic
 words, read exactly the FIT, then `bootm` in its steps with the decompression
@@ -850,7 +909,7 @@ every fragment line survives `olddefconfig`, and builds with
 **Six patches** in `tools/uboot/patches/`:
 
 * `0001` — the `my355` command: `mark <name>` (a bootstage record from the boot
-  script), `cpu <MHz>` and `fg` (above), and `log <addr> <max>` (the console
+  script), `cpu <MHz>`, `fg` and `charge` (above), and `log <addr> <max>` (the console
   record, for saving to the card).
 * `0002` — room for the bootstage report. `image_setup_libfdt()` shrinks the
   kernel's tree to its minimum before the report is added, so only the last ten
@@ -920,8 +979,8 @@ adds the console record and the charge LED; how to read them is in
 
 1. **Cold boots of the release build.** `MY355_UBOOT_DEBUG=0` has been the
    default since 2026-09-19, 7 ms faster; the timings above are debug builds.
-2. **The untested paths:** the charger-woken power-on (it should switch itself
-   off again) and an update from 0.6.0, which swaps the vendor `uboot` and
+2. **The untested paths:** charge mode's power key and its 60-second give-up
+   (*Charging while off*), and an update from 0.6.0, which swaps the vendor `uboot` and
    `boot` slots for these in one step.
 3. **NextUI's `my355.sh` change**, which stops it clearing `/dev/fb0` on
    BaseOS, in the NextUI release users will run. Without it the `rcS` logo is
@@ -955,7 +1014,8 @@ decompression and 0.12 s init before the boot script.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
 the early boot logo (no VOP2 driver; `rcS` draws one at 2.00 s against ~1.0 s), the
-low-battery guard and charge animation, and `androidboot.serialno`
+low-battery guard, the charge animation's screen (its LED is kept, *Charging
+while off*), and `androidboot.serialno`
 (`usb-gadget-adb` falls back to the machine id). The `.hdmi` device tree variant
 is not given up but obsolete: the plane split above runs both displays at once,
 which is what stock used that variant to avoid having to do. It also

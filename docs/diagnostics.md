@@ -61,7 +61,9 @@ The default release build (`0`) has neither: a failed boot is dark, then off.
 Rebuild with `MY355_UBOOT_DEBUG=1` and flash it to see why.
 
 **The charge LED** (`gpio0 PC2`, off from reset until the kernel's
-`battery-charging` trigger claims it) marks U-Boot's stages. Keep the charger
+`battery-charging` trigger claims it) marks U-Boot's stages once
+`my355 charge` has let the boot through; before that, it shows the board
+charging off ([U-Boot](uboot.md), *Charging while off*). Keep the charger
 connected during bring-up so a failed boot cannot flatten the battery; a cable
 at power-on only matters for timing boots.
 

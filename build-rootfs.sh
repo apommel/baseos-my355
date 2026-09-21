@@ -90,7 +90,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
 
   # The GPT tools: gptgrow for first-boot expand-to-fill, gptslot for A/B
   # updates (overlay/usr/sbin/expand-storage, overlay/usr/sbin/baseos-update).
-  for t in gptgrow gptslot; do
+  # rebootmode: a reboot argument (charge) for rcK, which busybox cannot pass.
+  for t in gptgrow gptslot rebootmode; do
     gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c
     strip "$R"/usr/sbin/"$t"
   done
@@ -101,6 +102,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
 
   # 4. The overlay wins over everything. cp -a carries the modes across, and
   #    every script in overlay/ is committed executable.
+  # overlay/usr/sbin/poweroff replaces an applet link; cp would write through
+  # it into busybox itself.
+  rm -f "$R"/usr/sbin/poweroff
   cp -a /overlay/. "$R"/
   if [ "$DIAG" = 1 ]; then cp -a /overlay-diag/. "$R"/; fi
 

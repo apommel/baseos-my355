@@ -1,0 +1,7 @@
+#!/bin/sh
+# With the charger in, rcK restarts into U-Boot's charge mode instead, so the
+# charge LED lights: once the PMIC is off, nothing wakes it again.
+case "$(cat /sys/class/power_supply/usb/online /sys/class/power_supply/ac/online 2>/dev/null)" in
+	*1*) : > /run/baseos-charge ;;
+esac
+exec /usr/bin/busybox poweroff "$@"

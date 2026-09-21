@@ -78,6 +78,9 @@ eval "$(python3 "$HERE/tools/mkfit.py" addresses)"
 # The panel's supply (gpio0 PC7), which the kernel only switches on at ~2.0 s:
 # powered from here, rkbootimg.py can drop the kernel's power-up waits.
 PANEL="gpio set A23;"
+# First, before the panel: charging off stays in U-Boot with the charge LED
+# lit, until full, unplugged or the power key.
+CHARGE="my355 charge;"
 # PREP is `;`-separated: the boot survives each step refusing.
 # The core clock before the card, so the read and the decompression run at it
 # too. If it refuses, the boot carries on at 816 MHz.
@@ -119,10 +122,10 @@ if [ "$DEBUG" = 1 ]; then
   # gpio0 PC2, the charge LED: lit once init is done, dark once the kernel is
   # read. Saving the log is kept off the boot path's && chain so that a failed
   # write can never stop the boot; it runs again after a failed bootm.
-  BOOTCMD="$PANEL gpio set A18; $PREP $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
+  BOOTCMD="$CHARGE $PANEL gpio set A18; $PREP $LOAD && gpio clear A18 && setenv ok 1; $CARDINFO; $SAVELOG;"
   BOOTCMD="$BOOTCMD $BOOT; $SAVELOG; poweroff"
 else
-  BOOTCMD="$PANEL $PREP $LOAD && setenv ok 1; $BOOT; poweroff"
+  BOOTCMD="$CHARGE $PANEL $PREP $LOAD && setenv ok 1; $BOOT; poweroff"
 fi
 
 FRAGMENTS="/frag/my355.config"
