@@ -566,10 +566,12 @@ shipping one ([boot chain](boot-chain.md)).
 The PMIC theory was never supported: on a healthy boot the battery read `Full`,
 4.159 V, `health=Good`, thermal zones 41.9 / 39.4 / 18.8 °C.
 
-**Still worth doing if a silent hang ever returns:** the kernel registers
-`ramoops` (`0xf0000@0x110000`), which survives a warm reset, but nothing mounts
-`pstore`, so a panic leaves no readable record. Mounting it in `rcS` would make
-the next one self-documenting.
+**Since done (2026-09-21):** the kernel registers `ramoops`
+(`0xf0000@0x110000`), which survives a warm reset. `rcS` now mounts `pstore`,
+sets `kernel.panic=10` so a panic resets warm, and copies the records to
+`/data/pstore/<date>/` when the previous boot panicked or never reached `rcK`.
+This kernel has no soft-lockup or hung-task detector, so a hang that does not
+panic still needs a long press, and that loses the records.
 
 ## Measurement history
 

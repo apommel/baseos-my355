@@ -37,6 +37,9 @@ if [ "$i" -lt 10 ]; then log "all exited"; else log "killing, $LEFT still runnin
 i=0
 while others && [ "$i" -lt 10 ]; do /bin/usleep 50000; i=$((i + 1)); done
 
+# Tells the next rcS this boot ended here, so its ramoops record is not a crash.
+: > /data/clean-shutdown 2>/dev/null
+
 # Everything but / and the system's own mounts, newest first so nested mounts go
 # before their parents. Logged first: /data carries the log and is one of them.
 log "unmounting"
