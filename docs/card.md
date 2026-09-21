@@ -169,12 +169,13 @@ left on the card and has to be weighed up again.
 
 `tools/rkbootimg.py setargs` repacks the vendor Android boot image. The kernel
 is never modified — it is stored gzipped, and the tool asserts that what it
-writes decompresses to the vendor bytes. Four things change:
+writes decompresses to the vendor bytes. Five things change:
 
 | what | why |
 |---|---|
 | `/chosen/bootargs`, in every `rk-kernel.dtb*` | repoint `root=` at the card, drop `earlycon=`, add our tokens — see below |
 | `sd-uhs-sdr50/104` on `dwmmc@fe2b0000` | raise the boot slot's bus above the vendor's SDR25 ([boot time](boot-time.md)) |
+| `vqmmc-supply` removed from `dwmmc@fe2c0000` | the left slot named the boot slot's I/O rail, and its 3.3 V request during card init failed the boot card's 1.8 V switch on resume ([history](history.md)) |
 | `logo.bmp`, `logo_kernel.bmp` | tell, on a console-less device, whether U-Boot came from the card or NAND. Size is ours to choose — see below |
 | the header's SHA1 `id` | **mandatory** — see below |
 

@@ -345,6 +345,7 @@ def cmd_boot(a) -> int:
     # The same SD ceiling as the vendor path: nothing about it is bootloader-specific.
     if a.sd_uhs != "off":
         dtb = rk.set_sd_uhs(dtb, rk.SD_SLOT0_NODE, a.sd_uhs)
+    dtb = rk.detach_sd_slot1_vqmmc(dtb)
     # Bootloader-specific, and only this path needs it (rkbootimg.add_optee_reservation).
     dtb = rk.add_optee_reservation(dtb)
     dtb = rk.set_vop2_plane_masks(dtb)
@@ -360,6 +361,7 @@ def cmd_boot(a) -> int:
     if a.sd_uhs != "off":
         print(f"      sd: {rk.SD_SLOT0_NODE} += {', '.join(rk.SD_UHS_MODES[a.sd_uhs][0])}, "
               f"{rk.SD_TUNING_PHASES} tuning steps")
+    print(f"      sd: {rk.SD_SLOT1_NODE} -= vqmmc-supply (shared with {rk.SD_SLOT0_NODE})")
     print(f"      old: {old}")
     print(f"      new: {new}")
 
@@ -438,6 +440,8 @@ def cmd_boot(a) -> int:
     if a.sd_uhs != "off":
         phases = rk.fdt_node_props(back, rk.SD_SLOT0_NODE)["rockchip,desired-num-phases"]
         assert phases == struct.pack(">I", rk.SD_TUNING_PHASES), "SD tuning steps not readable back"
+    assert "vqmmc-supply" not in rk.fdt_node_props(back, rk.SD_SLOT1_NODE), \
+        "slot 1 vqmmc-supply still in the written FIT"
     print(f"  wrote {a.out}: header + {sectors} sectors ({SECTOR + len(blob)} bytes)")
     print("  verified: kernel round-trips, bootargs, OP-TEE reservation, VOP2 planes, "
           f"panel timings{' and SD tuning' if a.sd_uhs != 'off' else ''} read back")

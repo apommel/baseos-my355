@@ -93,8 +93,7 @@ log "after wait: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
 printf '%s' "$udc" > "$G/UDC" 2>/dev/null
 log "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
 
-# adbd reopens functionfs when the link errors out, as it can on a resume, and
-# the kernel unbinds the gadget on that close; nothing else binds it again.
+# adbd reopening functionfs (a link error, e.g. on resume) unbinds the gadget.
 # Builtins only: a read on a FIFO nobody writes is the sleep.
 tick=/run/usb-gadget-adb.tick
 /usr/bin/mkfifo "$tick" 2>/dev/null

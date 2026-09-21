@@ -44,9 +44,10 @@ PAGE_DEFAULT = 2048
 # U-Boot before display init; 465 408 boots. The exact threshold is unmeasured.
 RESOURCE_SAFE_BYTES = 465408
 # SD slot 0 — the boot card, `mmcblk1` in Linux, the right-hand slot next to the
-# power button. Slot 1 (dwmmc@fe2c0000) names the same vqmmc-supply, but its pins
-# are on vccio4 = fixed 3.3 V, so UHS there hangs the card (tried 2026-09-16).
+# power button. Slot 1, the left, has its pins on vccio4 = fixed 3.3 V, so UHS
+# there hangs the card (tried 2026-09-16).
 SD_SLOT0_NODE = "dwmmc@fe2b0000"
+SD_SLOT1_NODE = "dwmmc@fe2c0000"
 
 RES_MAGIC = b"RSCE"
 RES_BLOCK = 512
@@ -566,6 +567,31 @@ def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
         ("rockchip,desired-num-phases", struct.pack(">I", SD_TUNING_PHASES))])
 
 
+def fdt_nop_prop(dtb: bytes, node: str, prop: str) -> bytes:
+    """Delete `prop` from `node` by overwriting it with FDT_NOP tokens, so no
+    offset moves."""
+    off, length = fdt_find_prop(dtb, node, prop)
+    start = off - 12                                  # FDT_PROP, len, nameoff
+    end = off + length + ((-length) % 4)
+    out = bytearray(dtb)
+    out[start:end] = struct.pack(">I", 4) * ((end - start) // 4)
+    if prop in fdt_node_props(bytes(out), node):
+        raise ValueError(f"{node}/{prop} still readable after removal")
+    return bytes(out)
+
+
+def detach_sd_slot1_vqmmc(dtb: bytes) -> bytes:
+    """The vendor tree gives slot 1 slot 0's vqmmc-supply. Its 3.3 V request
+    during card init, which on resume overlaps slot 0's 1.8 V switch, fails that
+    switch and takes the boot card with it (docs/history.md, 2026-09-21)."""
+    if fdt_node_props(dtb, SD_SLOT1_NODE).get("vqmmc-supply") != \
+            fdt_node_props(dtb, SD_SLOT0_NODE).get("vqmmc-supply"):
+        raise ValueError(f"{SD_SLOT1_NODE} no longer shares {SD_SLOT0_NODE}'s vqmmc-supply")
+    if any(p.startswith("sd-uhs-") for p in fdt_node_props(dtb, SD_SLOT1_NODE)):
+        raise ValueError(f"{SD_SLOT1_NODE} declares UHS, which needs its vqmmc-supply")
+    return fdt_nop_prop(dtb, SD_SLOT1_NODE, "vqmmc-supply")
+
+
 def set_bootargs(dtb: bytes, new_args: str) -> bytes:
     """Rewrite /chosen/bootargs: in place, space-padded, when it fits; grown otherwise.
 
@@ -686,6 +712,7 @@ def cmd_setargs(a) -> int:
         out = set_bootargs(blob, new)
         if a.sd_uhs != "off":
             out = set_sd_uhs(out, SD_SLOT0_NODE, a.sd_uhs)
+        out = detach_sd_slot1_vqmmc(out)
         print(f"  {name}")
         print(f"      old: {old}")
         print(f"      new: {new}")
@@ -707,7 +734,8 @@ def cmd_setargs(a) -> int:
     if a.sd_uhs != "off":
         added = ", ".join(SD_UHS_MODES[a.sd_uhs][0]) + f", {SD_TUNING_PHASES} tuning steps"
         print(f"  sd: {SD_SLOT0_NODE} += {added} "
-              f"(vendor stops at SDR25 = 50 MHz; slot 1 left alone)")
+              f"(vendor stops at SDR25 = 50 MHz)")
+    print(f"  sd: {SD_SLOT1_NODE} -= vqmmc-supply (shared with {SD_SLOT0_NODE})")
 
     second = ResourceImage.build(entries)
     print(f"  resource: rebuilt, {boot.second_size} -> {len(second)} bytes "

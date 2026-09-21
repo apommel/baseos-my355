@@ -84,7 +84,10 @@ Stock's `runmiyoo.sh` binds `/mnt/sdcard` to the right slot only and power-offs 
 *"Please use the right SD slot for NextUI"* if a NextUI card is found on the left.
 
 The left slot is also capped at high speed: its pins sit in a fixed 3.3 V I/O
-domain, so it cannot do UHS ([boot time](boot-time.md)).
+domain, so it cannot do UHS ([boot time](boot-time.md)). The vendor tree still
+gives its controller the right slot's I/O rail, `vccio_sd`, as `vqmmc-supply`;
+BaseOS removes it, since the two controllers' requests on one rail lost the boot
+card on resume ([history](history.md)).
 
 ---
 

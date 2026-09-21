@@ -145,7 +145,8 @@ read-only mount of this card's FAT partition, about 20–30 ms
 `rcK` does the shutdown work busybox init leaves out. It stops every other
 process (SIGTERM, at most 1 s, SIGKILL), unmounts the frontend's binds, the card
 and `/data`, and remounts `/` read-only. Without that, both ext4 journals replay
-on every boot.
+on every boot. It also leaves `/data/clean-shutdown`, which tells the next `rcS`
+that this boot's crash record is not a crash ([diagnostics](diagnostics.md)).
 
 ### One log
 
@@ -230,6 +231,13 @@ A successful run logs:
 It never blocks boot: no `set -e`, every failure path returns quietly, and
 `/etc/init.d/dev` backgrounds it. Because it must fail quietly, it **logs** instead
 — the only way to diagnose it on a device with no console.
+
+**It stays running to rebind.** When the link errors out, as it can after a
+resume, `adbd` closes and reopens functionfs, and the kernel unbinds the gadget
+on that close. Nothing else binds it again, so the script checks `UDC` every
+2 s and rewrites it once `ep1` is back (`UDC rebound` in the log). Builtins only:
+the wait is a `read -t` on a FIFO nobody writes, so a check costs no fork,
+measured at about 0.03% of one core.
 
 > **A cable is not required before power-on — verified.** RK3566 uses dwc3 with
 > plain configfs and VBUS detection, and we only ever write `UDC`. Hot-plugging

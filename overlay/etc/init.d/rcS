@@ -74,9 +74,8 @@ if ! /bin/mount -t ext4 -o rw,noatime /dev/mmcblk1p4 /data 2>/dev/null; then
 fi
 mark /run/boot-data-mounted
 
-# The previous boot's kernel log (ramoops, which survives a warm reset but not a
-# power cut), kept on /data when that boot oopsed or never reached rcK. A clean
-# warm reboot leaves a console record too, and that one is dropped.
+# The previous boot's ramoops, kept when it oopsed or never reached rcK; a clean
+# reboot leaves a console record too, which is dropped.
 {
 	clean=; [ -e /data/clean-shutdown ] && clean=1 && /bin/rm -f /data/clean-shutdown
 	/bin/mount -t pstore -o nodev,noexec,nosuid pstore /sys/fs/pstore || exit
@@ -89,8 +88,7 @@ mark /run/boot-data-mounted
 	log "pstore: previous boot crashed or hung, its kernel log is in $d"
 } 2>/dev/null &
 
-# A panic resets warm, so ramoops keeps the log, instead of hanging until a long
-# press cuts the power.
+# A panic resets warm, which ramoops survives; a long press does not.
 echo 10 > /proc/sys/kernel/panic
 
 # A freshly updated set of slots is on trial until a frontend session starts.

@@ -23,12 +23,19 @@ Ordered by how early they fire.
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
 | **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |
+| **crash record** | the previous boot panicked or never reached `rcK` | `rcS` copies `ramoops` to `/data/pstore/<date>/` and logs `pstore:`. It survives a warm reset only, so a long press loses it |
 
-During bring-up two more signals were used and then removed once the chain
-worked: a kernel-side LED heartbeat (`/leds/work linux,default-trigger`, which
-`rkbootimg.py` could once set) and `panic=10` to turn a silent hang into a
-visible reboot loop. Both are a one-line addition to `build-image.sh`'s `APPEND`
-if a future bring-up needs them again — see [history](history.md).
+The crash record depends on a warm reset, which is why `rcS` sets
+`kernel.panic=10`. This kernel has no lockup or hung-task detector, so a hang
+that never panics still needs a long press. The ext4 mounts stay on the default
+`errors=continue`: `errors=panic` would turn corruption read at boot into a
+reboot loop, and a boot card lost at run time still falls to stock on the warm
+reset, taking the record with it.
+
+During bring-up a kernel-side LED heartbeat (`/leds/work
+linux,default-trigger`, which `rkbootimg.py` could once set) was used and then
+removed once the chain worked. It is a one-line addition to `build-image.sh`'s
+`APPEND` if a future bring-up needs it again — see [history](history.md).
 
 ## Reading the card afterwards
 
@@ -119,7 +126,7 @@ mainline boot that reached userspace.
 | vendor logo | SPL did not take the card — check the `uboot` partition exists and starts at 16384 |
 | our logo, nothing else | U-Boot read the card but `boot_android` refused the image — **check the boot image `id`** |
 | our logo, then nothing and no adb | kernel alive; root mount or init. `rootwait` **hangs forever** rather than panicking when the root device never appears, so a hang with no reboot loop looks the same as a dead kernel |
-| reboot loop | kernel panicked (only with `panic=10` on the command line) |
+| reboot loop | kernel panicked: after `rcS` it sets `panic=10`; before, only with `panic=10` on the command line |
 | logo, then adb appears | init took over — success |
 
 ## Gotchas, in the order they bit
