@@ -11,21 +11,21 @@ the arch counter — unless marked *warm* (a reboot from BaseOS).
 ## Where a boot goes today
 
 On the mainline U-Boot path, the default since 2026-09-19 and still
-experimental ([U-Boot](uboot.md) Part 3). Five *warm* reboots on 2026-09-19,
-with every change on this page in place; the first frame is from the boots
-just before the Flip control tree. U-Boot's own timings match cold boots; the
+experimental ([U-Boot](uboot.md) Part 3). Three *warm* reboots on 2026-09-21,
+release U-Boot, with every change on this page in place; the first frame is
+from the boots just before the Flip control tree. U-Boot's own timings match cold boots; the
 kernel phase has only been re-measured warm ([U-Boot](uboot.md), *Where
 U-Boot's time goes*).
 
 | phase | at power-on | source |
 |---|---|---|
 | bootrom + DDR + SPL + BL31 | 0.39 s | [boot chain](boot-chain.md) |
-| **mainline U-Boot hands off** | **0.98 s** | bootstage `start_kernel` |
-| first printk | 1.03 s | dmesg |
-| kernel → `Run /init` | **1.81–1.82 s** | dmesg |
-| **frontend hand-off — `exec updater`** | **1.96–1.97 s** | `/run/boot-frontend-exec` |
+| **mainline U-Boot hands off** | **0.94 s** | bootstage `start_kernel` |
+| first printk | 0.99 s | dmesg |
+| kernel → `Run /init` | **1.79–1.80 s** | dmesg |
+| **frontend hand-off — `exec updater`** | **1.94 s** | `/run/boot-frontend-exec` |
 | boot logo on the panel | 2.00–2.01 s | `dw_mipi_dsi_bridge_enable` |
-| `nextui.elf` start | **2.41–2.47 s** | `/proc/<pid>/stat` |
+| `nextui.elf` start | **2.40–2.42 s** | `/proc/<pid>/stat` |
 | **first NextUI frame** | **2.93–2.98 s**, before the control tree | `baseos-frameprobe` (`MY355_DIAG=1`) |
 
 `baseos-bootinfo timeline` prints these for any boot; the first frame needs a
@@ -203,7 +203,7 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 ## What is left
 
 **Our own U-Boot — done, 1.8 s ahead, the default since 2026-09-19.** First
-printk **1.03 s** against 2.85 s, `Run /init` **1.81–1.82 s** against 3.58 s,
+printk **0.99 s** against 2.85 s, `Run /init` **1.79–1.80 s** against 3.58 s,
 NextUI starting 1.8 s earlier. Its boot logo reaches the panel at 2.00 s
 against ~1.0 s. What got it there, each step measured on its own boots (cold
 up to the data cache, warm after):
@@ -217,13 +217,14 @@ up to the data cache, warm after):
 | data cache on before relocation: early init 570 → 40 ms | 2.09–2.12 s |
 | block cache holding the GPT: `mmc dev 1` 202 → 53 ms | 1.95–1.98 s |
 | decompression at 1800 MHz, back to 1104 before the hand-off: 347 → 236 ms | 1.83–1.85 s |
-| **the Flip's own control tree**: init after relocation 59 → 36 ms | **1.81–1.82 s** |
+| the Flip's own control tree: init after relocation 59 → 36 ms | 1.81–1.82 s |
+| **the zstd decoder at `-O2`**, and the release build: 236 → 205 ms | **1.79–1.80 s** |
 
 zstd was first measured 1.60 s *slower* than gzip; the cause was U-Boot's
 `-mstrict-align` and `ZSTD_LIB_MINIFY`, not zstd.
 
-What is left of U-Boot's 0.98 s is the read (0.53 s at 23.8 MB/s),
-decompression (0.24 s) and init before the boot script (0.12 s). The order to
+What is left of U-Boot's 0.94 s is the read (0.53 s at 23.8 MB/s),
+decompression (0.20 s) and init before the boot script (0.12 s). The order to
 take them in is [U-Boot](uboot.md), *Next, in order*.
 
 On the vendor U-Boot only:

@@ -1,0 +1,19 @@
+Build the zstd decoder at -O2.
+
+U-Boot builds everything with -Os (CONFIG_CC_OPTIMIZE_FOR_SIZE). For the
+decoder that is 13% slower on the kernel at 1800 MHz, measured with
+U-Boot's own objects on the device (tools/uboot/decomp-bench/), for about
+10 KB of code.
+
+--- a/lib/zstd/Makefile
++++ b/lib/zstd/Makefile
+@@ -42,3 +42,9 @@
+ $(foreach o,$(zstd_decompress-y) $(zstd_common-y),\
+ 	$(eval CFLAGS_REMOVE_$(notdir $(o)) += -mstrict-align))
+ endif
++
++# -Os costs the decoder 13% (228 against 196 ms for the kernel at 1800 MHz)
++# for 10 KB of code; bootm is the only caller.
++ccflags-y += -O2
++$(foreach o,$(zstd_decompress-y) $(zstd_common-y),\
++	$(eval CFLAGS_REMOVE_$(notdir $(o)) += -Os))

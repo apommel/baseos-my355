@@ -292,27 +292,29 @@ zstd kernel, four with the SD clock fixed, then five with the early data cache,
 each set agreeing to 0.1 ms. The last three columns are warm reboots; U-Boot's
 own stages match cold boots, the kernel phase has not been re-measured cold.
 The fuel gauge step (`my355 fg`, below) came between the SD clock and early
-cache columns.
+cache columns. The `-O2` column is the release build, three warm reboots
+agreeing to 0.2 ms: no debug log save, so ~7 ms of its lead over the Flip
+tree column is that.
 
-| stage | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | block cache | 1800 MHz decode | **Flip tree** | |
-|---|---|---|---|---|---|---|---|---|---|
-| → `board_init_f` | 45 ms | 45 | 45 | 45 | 45 | 45 | 45 | 45 | |
-| **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | 40 | 40 | 38 | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
-| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | 59 | 59 | **36** | 289 devices bound, then 242 (*The control tree*, below) |
-| `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | 16 | 16 | 16 | |
-| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | **53** | 53 | 52 | 184 ms of the 202 was the partition scan (*Card init*, below); the kernel initialises the same card, SDR104 tuning included, in 75–205 ms ([boot time](boot-time.md), *The SD bus*). Why the clock fix also took 87 ms off is not established |
-| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 534 | 534 | 534 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
-| debug log save | 8 ms | 8 | 8 | 7 | 7 | 7 | 7 | 7 | the debug build's whole cost |
-| **decompress** | 608 ms | 447 | 347 | 348 | 347 | 347 | **236** | 236 | gzip, then zstd |
-| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | 12 | 12 | 14 | 14 | |
-| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | 1,791 | 1,274 | 1,124 | 1,004 | **978** | |
+| stage | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | block cache | 1800 MHz decode | **Flip tree** | **zstd `-O2`** | |
+|---|---|---|---|---|---|---|---|---|---|---|
+| → `board_init_f` | 45 ms | 45 | 45 | 45 | 45 | 45 | 45 | 45 | 45 | |
+| **pre-relocation init** | 568 ms | 566 | 569 | 570 | **40** | 40 | 40 | 38 | 38 | the data cache is off until `initr_caches()`; `dm_f` 287 → 9 ms (below) |
+| post-relocation init → `main_loop` | 59 ms | 59 | 59 | 59 | 59 | 59 | 59 | **36** | 36 | 289 devices bound, then 242 (*The control tree*, below) |
+| `my355 cpu 1104`, `my355 fg` | — | 2 | 2 | 2 | 16 | 16 | 16 | 16 | 17 | |
+| **card init** (`mmc dev 1`) | 295 ms | 290 | 289 | 202 | 202 | **53** | 53 | 52 | 52 | 184 ms of the 202 was the partition scan (*Card init*, below); the kernel initialises the same card, SDR104 tuning included, in 75–205 ms ([boot time](boot-time.md), *The SD bus*). Why the clock fix also took 87 ms off is not established |
+| **read** (header + FIT) | 1,054 ms | 1,053 | 1,063 | 536 | 536 | 534 | 534 | 534 | 534 | 12.0 MB/s, then **23.8 MB/s**: 95% of 4-bit 50 MHz |
+| debug log save | 8 ms | 8 | 8 | 7 | 7 | 7 | 7 | 7 | — | the debug build's whole cost |
+| **decompress** | 608 ms | 447 | 347 | 348 | 347 | 347 | **236** | 236 | **205** | gzip, then zstd |
+| FIT checks, FDT fixups, hand-off | 28 ms | 13 | 12 | 12 | 12 | 12 | 14 | 14 | 14 | |
+| **`start_kernel`** | 2,664 ms | 2,492 | 2,405 | 1,791 | 1,274 | 1,124 | 1,004 | **978** | **940** | |
 
-| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | block cache | 1800 MHz decode | **Flip tree** |
-|---|---|---|---|---|---|---|---|---|---|
-| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | 1.837 | 1.320 | 1.171 | 1.053 | **1.027** |
-| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | 2.663 | 2.09–2.12 | 1.95–1.98 | 1.83–1.85 | **1.81–1.82** |
-| `nextui.elf` start | 4.19–4.23 s | | | | 3.26–3.27 | 2.69–2.73 | 2.55–2.61 | 2.43–2.47 | **2.41–2.47** |
-| first NextUI frame | — | | | | 4.09–4.10 | 3.53–3.57 | 3.16–3.19 | **2.93–2.98** | not measured |
+| | vendor (docs) | 816 MHz, gzip | 1104 MHz | zstd | SD clock | early cache | block cache | 1800 MHz decode | **Flip tree** | **zstd `-O2`** |
+|---|---|---|---|---|---|---|---|---|---|---|
+| first printk | 2.85 s | 2.723 s | 2.537 | 2.450 | 1.837 | 1.320 | 1.171 | 1.053 | **1.027** | **0.988** |
+| `Run /init` | 3.58 s | 3.654–3.670 s | 3.440 | 3.239 | 2.663 | 2.09–2.12 | 1.95–1.98 | 1.83–1.85 | **1.81–1.82** | **1.79–1.80** |
+| `nextui.elf` start | 4.19–4.23 s | | | | 3.26–3.27 | 2.69–2.73 | 2.55–2.61 | 2.43–2.47 | **2.41–2.47** | **2.40–2.42** |
+| first NextUI frame | — | | | | 4.09–4.10 | 3.53–3.57 | 3.16–3.19 | **2.93–2.98** | not measured | not measured |
 
 The first frame is timed by polling the DRM state (`MY355_DIAG=1`, below),
 because this path has no kernel marker for it. The vendor path's, `Freeing
@@ -430,6 +432,46 @@ after relocation, with the MMU on and DRAM mapped as normal memory, where that
 bit is all that could forbid an unaligned access. `CONFIG_ZSTD_LIB_MINIFY` is
 off. `mkfit.py` owns the encoder settings; `MY355_COMPRESS_KERNEL=gzip` still
 builds a gzip FIT.
+
+## Kernel compression, revisited
+
+Re-run on 2026-09-21, once the read had doubled to 23.8 MB/s and decompression
+moved to 1800 MHz, both of which shift the trade between size and decode
+speed. Every format `bootm` accepts, 74 encodings in all, was timed with U-Boot's
+own decoders on the device at 1800 MHz and DDR pinned at 1056 MHz, the output
+checked against the vendor `Image` (`tools/uboot/decomp-bench/`). The bench
+read 227 ms for the shipped file against bootstage's 236. The read is charged at
+bootstage's 534 ms for 12.73 MB. Four decoder builds:
+
+* **S**, as shipped: `-Os`, and `-mstrict-align` everywhere but zstd and zlib
+* **U**, every decoder without `-mstrict-align`
+* **M**, U, and lz4's fixed-size copies as `__builtin_memcpy`: with
+  `-fno-builtin` they otherwise call `lib/string.c`'s `memcpy`, which goes
+  byte by byte unless both pointers are 8-byte aligned
+* **O**, M at `-O2`
+
+Best encoding per format, read + decode, in ms:
+
+| format | S | U | M | O |
+|---|---|---|---|---|
+| **zstd** | 755 | 754 | 755 | **725** |
+| lz4 `-12`, 4 MiB blocks (15.52 MB) | 973 | 945 | 735 | 732 |
+| lzo `-9` (14.56 MB) | 790 | 763 | 766 | 770 |
+| gzip, libdeflate `-12` (12.50 MB) | 787 | 781 | 785 | 787 |
+| lzma, `lp=2,pb=2` (9.25 MB) | 1,685 | 1,687 | 1,686 | 1,703 |
+| bzip2 `-9` (12.19 MB) | 5.78 s to decode alone | | | |
+
+* **zstd stays.** Across level 19/22, windows 2^17–2^23 and minimum matches
+  4–7, the best settings sit within 10 ms of each other, and within 7 ms of the
+  shipped one (762 ms), which is kept.
+* **`-O2` is the lever**: the decoder is 13% faster (228 → 196 ms on the
+  shipped file) for 10 KB of code. Patch `0007` builds `lib/zstd` so.
+* **lz4 is now close, not better.** Fixed, it decodes in 79 ms instead of 328,
+  but it is 2.9 MB larger than zstd, and its total rests on the read
+  scaling linearly to that size; zstd's gain is decode alone, measured.
+
+Booted, three warm reboots: `bootm_load_os` 223.9 → **193.5 ms**,
+`start_kernel` 971 → **940 ms**, `Run /init` 1.79–1.80 s.
 
 ## The SD clock
 
@@ -906,7 +948,7 @@ zstd without `MINIFY`, and the block cache the boot script configures. `build-ub
 every fragment line survives `olddefconfig`, and builds with
 `SOURCE_DATE_EPOCH=0`: two builds of the same inputs give the same FIT.
 
-**Six patches** in `tools/uboot/patches/`:
+**Seven patches** in `tools/uboot/patches/`:
 
 * `0001` — the `my355` command: `mark <name>` (a bootstage record from the boot
   script), `cpu <MHz>`, `fg` and `charge` (above), and `log <addr> <max>` (the console
@@ -919,6 +961,7 @@ every fragment line survives `olddefconfig`, and builds with
 * `0004` — the SD clock at the rate asked for (above).
 * `0005` — the data cache before relocation (above).
 * `0006` — the RK3568's 1608 and 1800 MHz CPU rates (*The CPU clock*).
+* `0007` — the zstd decoder at `-O2` (*Kernel compression, revisited*).
 
 `0004`, `0005` and `0006` are the ones worth sending upstream.
 `tools/uboot/patches-diag/` holds the diagnostics-only patches `MY355_DIAG=1`
