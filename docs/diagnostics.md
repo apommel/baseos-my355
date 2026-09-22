@@ -19,7 +19,7 @@ Ordered by how early they fire.
 
 | signal | proves | how |
 |---|---|---|
-| **boot logo** | vendor path: U-Boot ran *and* read the card's `boot` partition. Mainline path: `rcS` is running | vendor path: `mkbootlogo.py` repaints the vendor BMP; only our card carries it. Mainline path: `fbsplash`, from ~2.4 s |
+| **boot logo** | vendor path: U-Boot ran *and* read the card's `boot` partition. Mainline path: `rcS` is running | vendor path: `mkbootlogo.py` repaints the vendor BMP; only our card carries it. Mainline path: `fbsplash`, from 2.00 s |
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
 | **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |

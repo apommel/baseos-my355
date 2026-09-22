@@ -7,8 +7,8 @@ whole table. Three names are load-bearing:
     uboot    the SPL locates U-Boot by `part_get_info_by_name("uboot")`
              and reads the FIT from the partition's FIRST SECTOR. That SPL has no
              raw-sector fallback, so this entry must exist and must start at 16384.
-    boot     stock U-Boot runs `boot_android mmc 1`, which resolves the Android
-             boot image by this name.
+    boot     U-Boot finds the kernel by this name: our boot script with
+             `part start`, the vendor's `boot_android mmc 1` on that path.
     rootfs   named for humans only. What actually matters is its ENTRY NUMBER:
              `root=` is baked into rk-kernel.dtb at build time
              (tools/rkbootimg.py), and --shell derives it from that number.

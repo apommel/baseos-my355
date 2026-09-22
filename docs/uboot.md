@@ -3,8 +3,8 @@
 **Part 1**: tuning the vendor U-Boot — tried, measured at 22 ms, code removed.
 **Part 2**: replacing it — evaluated 2026-08-22 and shelved. **Part 3**: replacing
 it after all — a first build booted on 2026-09-05; this one is rebuilt from what
-that taught, and has been the default since 2026-09-19, still experimental.
-`MY355_UBOOT=vendor` builds the vendor path. The decision is in
+that taught, and is what BaseOS boots since 0.7.0. `MY355_UBOOT=vendor` builds
+the vendor path. The decision is in
 [decisions](decisions.md); what each is worth is in [boot time](boot-time.md).
 
 ---
@@ -231,14 +231,14 @@ From the build that was made and then removed (U-Boot v2026.07,
   [SD boot](boot-chain.md) did for the preloader swap. Stock's own BL31 is TF-A v2.3
   (Jun 2023), so an older rkbin BL31 is the fallback.
 
-# Part 3 — Mainline U-Boot, the default (2026-09-19)
+# Part 3 — Mainline U-Boot, the default since 0.7.0
 
 `./build-all.sh` builds it, or `./build-uboot.sh` then `./build-image.sh`;
-`MY355_UBOOT=vendor` puts the vendor U-Boot back. It **boots**, and it reaches
-`Run /init` **1.8 s earlier** than the vendor path: 1.81–1.82 s against
-3.58 s, with NextUI starting at 2.41–2.47 s against 4.19–4.23 s (2026-09-19,
-five warm reboots; U-Boot's own timings agree to 0.5 ms, and with cold boots).
-Everything below is measured on this unit and card unless marked otherwise.
+`MY355_UBOOT=vendor` puts the vendor U-Boot back. It reaches `Run /init`
+**1.8 s earlier** than the vendor path: 1.79–1.80 s against 3.58 s, with NextUI
+starting at 2.40–2.42 s against 4.19–4.23 s (2026-09-21, three warm reboots;
+U-Boot's own timings agree with cold boots). Everything below is measured on
+this unit and card unless marked otherwise.
 
 ## What the first build measured (2026-08-24 / 09-05)
 
@@ -349,7 +349,7 @@ started". Open.
 
 ## The CPU clock
 
-`my355 cpu 1104` (patch `0001`) runs first in the boot script: it checks the
+`my355 cpu 1104` (patch `0001`) runs before the card is touched: it checks the
 RK8600's ID, reads VSEL0 (712.5 mV + 12.5 mV per step, 6-bit, confirmed against
 the kernel's own reading), raises it to the rate's voltage from the vendor OPP
 table only if it is lower (never lowering it), then sets `ARMCLK` and reads it
@@ -974,7 +974,7 @@ writes into the kernel's tree at hand-off (`/proc/device-tree/bootstage`), and
 `baseos-bootinfo log` the console output a debug build (`MY355_UBOOT_DEBUG=1`)
 saved, `mmc info` and the SD phase registers included. The default release
 build saves none; the debug build costs 7 ms, and the timings on this page are
-from debug builds.
+from debug builds except the `-O2` column.
 
 `baseos-bootinfo timeline` prints one line per boot, on the printk clock:
 
@@ -1018,25 +1018,25 @@ adds the console record and the charge LED; how to read them is in
 
 ## Next, in order
 
-**Before a release ships it:**
+**Before 0.7.0 ships:**
 
-1. **Cold boots of the release build.** `MY355_UBOOT_DEBUG=0` has been the
-   default since 2026-09-19, 7 ms faster; the timings above are debug builds.
+1. **Cold boots of the release build.** Its timings above are warm reboots;
+   the debug builds before it matched cold boots to 0.1 ms.
 2. **The untested paths:** charge mode's power key and its 60-second give-up
-   (*Charging while off*), and an update from 0.6.0, which swaps the vendor `uboot` and
-   `boot` slots for these in one step.
+   (*Charging while off*), and an update from 0.6.0, which swaps the vendor
+   `uboot` and `boot` slots for these in one step.
 3. **NextUI's `my355.sh` change**, which stops it clearing `/dev/fb0` on
    BaseOS, in the NextUI release users will run. Without it the `rcS` logo is
    erased before the panel shows it.
 
-**Speed.** U-Boot now takes 0.98 s, of which 0.53 s is the read, 0.24 s
+**Speed.** U-Boot now takes 0.94 s, of which 0.53 s is the read, 0.20 s
 decompression and 0.12 s init before the boot script.
 
 4. **The read**, 534 ms: SDR50 would halve it, but was dropped (above), and
-   50 MHz is the limit at 3.3 V. Only fewer bytes are left: the zstd settings
-   were chosen at half today's read speed and at 1104 MHz, so LZ4 or a larger
-   window is worth one measurement (estimated ±30 ms).
-5. **Decompression**, 236 ms at 1800 MHz (*The CPU clock*). Overlapping it with
+   50 MHz is the limit at 3.3 V. Fewer bytes are not on offer either: every
+   format was re-measured at today's read speed and clock, and zstd stays
+   (*Kernel compression, revisited*).
+5. **Decompression**, 194 ms at 1800 MHz (*The CPU clock*). Overlapping it with
    the read would need a second core started through BL31: up to ~200 ms, but
    its own MMU and cache setup, and a hang there would be invisible.
 6. **Card init**, 53 ms: `mmc_go_idle` 11 ms and `sd_select_mode_and_width`

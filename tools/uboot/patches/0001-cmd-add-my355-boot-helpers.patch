@@ -41,7 +41,7 @@ new file mode 100644
 index 0000000..1dea617
 --- /dev/null
 +++ b/cmd/my355.c
-@@ -0,0 +1,511 @@
+@@ -0,0 +1,503 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * BaseOS my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
@@ -231,19 +231,11 @@ index 0000000..1dea617
 +}
 +
 +/*
-+ * The RK817 fuel gauge keeps its state in PMIC registers across power-off: a
-+ * coulomb counter, and the SOC and capacity the kernel last saved. Left alone
-+ * the kernel reads a counter that moved while off as a halted session and
-+ * restarts the displayed SOC from 0 on a full battery; FG_INIT tells it to
-+ * take what is written here instead.
-+ *
-+ * The counter does not survive a real power-off, reading low afterwards by an
-+ * unpredictable amount, so only an *increase* is believed — that is charge
-+ * gained while off. Anything else keeps the SOC and capacity the kernel last
-+ * saved and re-seeds the counter from them. This is what the vendor U-Boot
-+ * does (fg_rk817.c, rk817_bat_not_first_pwron), and why stock does not show
-+ * the problem. Register map and units from that driver; sample_res 10 mOhm
-+ * from the Flip's tree.
++ * The RK817 keeps a coulomb counter and the kernel's last SOC and capacity
++ * across power-off. The counter decays while off, so only a rise (charge
++ * gained while off) is believed; otherwise the saved state is kept, as the
++ * vendor's fg_rk817.c does. FG_INIT makes the kernel take the result instead
++ * of restarting from 0. Register map and units from that driver.
 + */
 +#define RK817_ADDR		0x20
 +#define RK817_ID_MSB		0xed
@@ -260,7 +252,7 @@ index 0000000..1dea617
 +#define RK817_NEW_FCC_REG0	0xa0
 +#define RK817_FG_INIT		0xa5
 +#define RK817_FG_INIT_DONE	BIT(7)
-+#define RK817_SAMPLE_RES	10
++#define RK817_SAMPLE_RES	10	/* mOhm, the Flip's tree */
 +#define RK817_DESIGN_MAH	3000	/* design_capacity */
 +#define RK817_QMAX_MAH		3300	/* design_qmax */
 +#define RK817_MIN_FCC		500

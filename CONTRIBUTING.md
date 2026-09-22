@@ -39,7 +39,8 @@ mainline, and the boot logo comes from `rcS` ([docs/uboot.md](docs/uboot.md)
 Part 3); `MY355_UBOOT=vendor` builds the vendor path instead and skips
 `build-uboot.sh`.
 
-To derive the inputs instead — needed to move onto a new vendor release — replace the first line with
+To derive the inputs instead — needed to move onto a new vendor release — replace
+the first line with
 `./prepare-stock.sh NAND_DIR`, whose three `mtd*.img` files are described in
 [docs/recovery.md](docs/recovery.md). It verifies the harvest is a
 **closed set**: every `DT_NEEDED` of every harvested ELF must resolve inside it, or
@@ -92,8 +93,8 @@ against its `EXT4-fs … mounted` printk, or an uptime reading echoed into `/dev
 — then read the `/run/boot-*` breadcrumbs and `/proc/<pid>/stat` field 22. Worked
 examples in [docs/boot-time.md](docs/boot-time.md).
 
-**Measure with USB unplugged.** A cable attached at power-on makes U-Boot run its
-charge animation first, and that lands in the arch counter. adb hot-plug works, so
+**Measure with USB unplugged.** A cable attached at power-on makes the vendor
+U-Boot run its charge animation first, and that lands in the arch counter. adb hot-plug works, so
 attach afterwards.
 
 ## Tests

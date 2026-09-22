@@ -32,7 +32,7 @@ not deleted, in [history](history.md).
 | | |
 |---|---|
 | [decisions](decisions.md) | The choices the port rests on, and what is still open. |
-| [U-Boot](uboot.md) | Tuning it (tried, 22 ms) and replacing it with mainline (the default, experimental). |
+| [U-Boot](uboot.md) | Tuning the vendor one (tried, 22 ms), and the mainline one BaseOS boots since 0.7.0. |
 | [history](history.md) | Experiments, SPL disassembly, superseded measurements, every retracted theory. |
 
 ## The short version
@@ -49,5 +49,5 @@ stock, exactly as before.
 
 From there the card supplies a mainline U-Boot, the vendor kernel with a rewritten
 command line, and a BusyBox userland built on a measured subset of the stock
-libraries. Power-on to frontend hand-off is **1.96–1.97 s** (3.73 s with the vendor
-U-Boot), against stock's 15.79 s.
+libraries. Power-on to frontend hand-off is **1.94 s** (3.73 s with the vendor
+U-Boot, as in 0.6.0), against stock's 15.79 s.

@@ -3,7 +3,7 @@
 # boot keeps the SOC the kernel last saved, and when the coulomb counter is
 # allowed to move it. Runs in a container; no device needed.
 #
-# The decision lives inside do_my355_fg wrapped around its I2C, so the harness
+# The decision lives inside rk817_fg_sync wrapped around its I2C, so the harness
 # restates it; only the constants come from the patch, which at least catches a
 # changed threshold. Each case below is a boot this unit actually did, with the
 # numbers its `my355 fg:` line reported — this is the regression suite for a
@@ -34,7 +34,7 @@ cat > "$WORK/harness.c" <<'EOF'
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #include "defines.h"
 
-/* do_my355_fg()'s decision, from `now_cap >` to the clamps. An invalid
+/* rk817_fg_sync()'s decision, from `now_cap >` to the clamps. An invalid
  * (negative) counter reaches it as now_cap = 0. */
 static int decide(int pre_soc, int pre_cap, int now_cap, int fcc,
 		  int *charged, int *out_cap)

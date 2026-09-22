@@ -10,12 +10,12 @@ the arch counter — unless marked *warm* (a reboot from BaseOS).
 
 ## Where a boot goes today
 
-On the mainline U-Boot path, the default since 2026-09-19 and still
-experimental ([U-Boot](uboot.md) Part 3). Three *warm* reboots on 2026-09-21,
-release U-Boot, with every change on this page in place; the first frame is
-from the boots just before the Flip control tree. U-Boot's own timings match cold boots; the
-kernel phase has only been re-measured warm ([U-Boot](uboot.md), *Where
-U-Boot's time goes*).
+On the mainline U-Boot path, the default since 0.7.0 ([U-Boot](uboot.md)
+Part 3). Three *warm* reboots on 2026-09-21, release U-Boot, with every change
+on this page in place; the first frame is from the boots just before the last
+two U-Boot changes, which took ~40 ms off. U-Boot's own timings match cold
+boots; the kernel phase has only been re-measured warm ([U-Boot](uboot.md),
+*Where U-Boot's time goes*).
 
 | phase | at power-on | source |
 |---|---|---|
@@ -26,7 +26,7 @@ U-Boot's time goes*).
 | **frontend hand-off — `exec updater`** | **1.94 s** | `/run/boot-frontend-exec` |
 | boot logo on the panel | 2.00–2.01 s | `dw_mipi_dsi_bridge_enable` |
 | `nextui.elf` start | **2.40–2.42 s** | `/proc/<pid>/stat` |
-| **first NextUI frame** | **2.93–2.98 s**, before the control tree | `baseos-frameprobe` (`MY355_DIAG=1`) |
+| **first NextUI frame** | **2.93–2.98 s** | `baseos-frameprobe` (`MY355_DIAG=1`) |
 
 `baseos-bootinfo timeline` prints these for any boot; the first frame needs a
 `MY355_DIAG=1` rootfs ([U-Boot](uboot.md), *Measuring it*).
@@ -100,6 +100,9 @@ likely does the same.
 | **Kernel stored gzipped** | **1.82 s** | the payload is 34.9 MiB raw, 11.9 MiB gzipped, and U-Boot reads every byte each boot. `libdeflate-gzip -12` is the same format zlib produces, 486 KB smaller, worth a further 41 ms |
 | **SD bus raised to SDR104** | **1.06 s** | the vendor DTB stops at `sd-uhs-sdr25`, pinning the bus at 50 MHz. 22.3 → 63.0 MB/s measured |
 | **Three initcalls skipped** | **0.71 s** | `initcall_blacklist=` on the command line; the kernel stays the vendor's |
+| **Mainline U-Boot** | **1.8 s** | first printk 2.85 → 0.99 s; step by step under *What is left*, below |
+| USB probes held back until `rcS` | ~0.3 s on half the boots | the WiFi chip's probe no longer delays the root mount; below |
+| SDR104 tuning in 10° steps | ~0.12 s on half the boots | a tuning read on the edge of the card's bad window waits out a 113 ms timeout in 6 of 22 boots, not 13 of 16; below |
 | `quiet` + `performance` governor | ~0.1 s | full speed from cpufreq's probe until the frontend picks its own |
 | `rcS` trimming + clean shutdown | ~30 ms, plus up to 0.2 s of journal replay | see below |
 
@@ -202,7 +205,7 @@ unmounted": Linux never clears a dirty flag that was already set at mount, only
 
 ## What is left
 
-**Our own U-Boot — done, 1.8 s ahead, the default since 2026-09-19.** First
+**Our own U-Boot — done, 1.8 s ahead, the default since 0.7.0.** First
 printk **0.99 s** against 2.85 s, `Run /init` **1.79–1.80 s** against 3.58 s,
 NextUI starting 1.8 s earlier. Its boot logo reaches the panel at 2.00 s
 against ~1.0 s. What got it there, each step measured on its own boots (cold
@@ -238,7 +241,7 @@ On the vendor U-Boot only:
 **Retracted:** "projected with our own U-Boot and zstd: pre-kernel 1.3–1.8 s,
 first frame under 5 s". It assumed the vendor U-Boot's 1.21 s was mostly
 removable work and priced a zstd decode nobody had run; both were measured
-wrong ([U-Boot](uboot.md)). The pre-kernel time reached 1.03 s anyway, by other
+wrong ([U-Boot](uboot.md)). The pre-kernel time reached 0.99 s anyway, by other
 means.
 
 ## Stock, for comparison
@@ -290,4 +293,4 @@ So of the 25.8 s saved to a first frame, the part BaseOS removes outright is the
 9.9 s of vendor userland; the rest is the same work done against faster storage,
 which is a consequence of where the harvest lives rather than of deleting
 anything. The claim that rests on nothing but our own code is the hand-off
-number, **3.73 s against 15.79 s**.
+number, **1.94 s against 15.79 s**.

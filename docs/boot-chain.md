@@ -374,9 +374,9 @@ blob, no `U-Boot SPL`. They begin at the `uboot` partition, so an update never t
 ### The `uboot` partition
 
 Create a GPT partition named **`uboot` starting at sector 16384**. For BaseOS it holds
-the vendor U-Boot FIT; for ROCKNIX **no data need be written into it** — `u-boot.itb`
-is already at that sector and the entry merely gives `part_get_info_by_name` something
-to find.
+a FIT of mainline U-Boot with the vendor BL31 and OP-TEE ([U-Boot](uboot.md)); for
+ROCKNIX **no data need be written into it** — `u-boot.itb` is already at that
+sector and the entry merely gives `part_get_info_by_name` something to find.
 
 That trick was necessary under GammaLoader, whose SPL diverges from stock's at exactly
 one point in `spl_mmc.c`:

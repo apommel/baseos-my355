@@ -490,7 +490,7 @@ upright). `baseos-splash` wraps it and only ever overlays a status pill.
 `fbsplash 0` in the background as soon as `/run` is mounted, lights the
 backlight, and mounts debugfs, where NextUI's `launch.sh` reads the
 backlight's duty to keep it lit. The logo reaches the panel when the kernel
-brings it up, at ~2.4 s ([U-Boot](uboot.md), *The boot logo*). On the vendor
+brings it up, at 2.00 s ([U-Boot](uboot.md), *The boot logo*). On the vendor
 path, the vendor U-Boot's logo stays untouched until the frontend draws its
 first frame.
 

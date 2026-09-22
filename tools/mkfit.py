@@ -62,11 +62,9 @@ LOG_SECTORS = 128
 
 OPTEE = (rk.OPTEE_BASE, rk.OPTEE_BASE + rk.OPTEE_SIZE)
 
-# Tuned for decode speed on this SoC with U-Boot's own decoder, not for size:
-# a 256 KiB window stays in cache, min-match 6 means fewer, longer copies, and
-# the frame checksum costs ~100 ms to verify. 352 ms to decode the vendor kernel
-# at 1104 MHz against gzip's 428, for 12.64 MB against gzip's 12.50
-# (docs/uboot.md, "zstd").
+# Tuned for decode speed with U-Boot's own decoder, not for size: a 256 KiB
+# window stays in cache, min-match 6 means fewer, longer copies, and the frame
+# checksum costs ~100 ms to verify (docs/uboot.md, "zstd").
 ZSTD_ARGS = ["--ultra", "-22", "--no-check", "--zstd=wlog=18,mml=6", "-T1", "-q"]
 
 
