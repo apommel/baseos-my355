@@ -5,8 +5,9 @@
 //
 // The mode follows the message, not a flag: with a message the renderer
 // overlays a compact status surface and preserves every pixel outside it; with
-// none it draws the full-screen logo, which is only ever wanted offline when
-// generating the bootloader image. Runtime boot scripts always pass a message.
+// none it draws the full-screen logo: offline when generating the bootloader
+// image, and from rcS when the bootloader drew none. Every other call passes a
+// message.
 // -1 suppresses the pill's progress track (an action or error state).
 //
 // No options are accepted, and anything option-shaped is a hard error — see

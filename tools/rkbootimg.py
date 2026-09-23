@@ -44,9 +44,10 @@ PAGE_DEFAULT = 2048
 # U-Boot before display init; 465 408 boots. The exact threshold is unmeasured.
 RESOURCE_SAFE_BYTES = 465408
 # SD slot 0 — the boot card, `mmcblk1` in Linux, the right-hand slot next to the
-# power button. Slot 1 (dwmmc@fe2c0000) names the same vqmmc-supply, but its pins
-# are on vccio4 = fixed 3.3 V, so UHS there hangs the card (tried 2026-09-16).
+# power button. Slot 1, the left, has its pins on vccio4 = fixed 3.3 V, so UHS
+# there hangs the card (tried 2026-09-16).
 SD_SLOT0_NODE = "dwmmc@fe2b0000"
+SD_SLOT1_NODE = "dwmmc@fe2c0000"
 
 RES_MAGIC = b"RSCE"
 RES_BLOCK = 512
@@ -246,10 +247,17 @@ def fdt_walk(dtb: bytes):
             break
 
 
+def _fdt_is(path: tuple, node: str) -> bool:
+    """`node` names the path's last component, or with slashes its last few:
+    `port@1` alone is ambiguous where every encoder has one."""
+    parts = tuple(node.split("/"))
+    return path[-len(parts):] == parts
+
+
 def fdt_find_prop(dtb: bytes, node: str, prop: str) -> tuple[int, int]:
     """Return (offset, length) of `prop`'s value in the first node named `node`."""
     for event in fdt_walk(dtb):
-        if event[0] == "prop" and event[1][-1:] == (node,) and event[2] == prop:
+        if event[0] == "prop" and _fdt_is(event[1], node) and event[2] == prop:
             return event[3], event[4]
     raise KeyError(f"{node}/{prop} not found")
 
@@ -260,7 +268,7 @@ def fdt_node_props(dtb: bytes, node: str) -> "dict[str, bytes]":
     for event in fdt_walk(dtb):
         kind, path = event[0], event[1]
         if target is None:
-            if kind == "node" and path[-1] == node:
+            if kind == "node" and _fdt_is(path, node):
                 target = path
             continue
         if path[:len(target)] != target:              # left the node
@@ -290,6 +298,20 @@ def _fdt_rebuild(dtb: bytes, body: bytes, strings: bytes) -> bytes:
     return bytes(out)
 
 
+def _fdt_intern(strings: bytearray, name: str) -> int:
+    """Offset of `name` in the strings block, appending it if absent."""
+    encoded = name.encode() + b"\0"
+    # Reuse an existing string only on a whole-entry match; a suffix match
+    # (e.g. "sdr50" inside "sd-uhs-sdr50") would name the wrong property.
+    if strings.startswith(encoded):
+        return 0
+    at = strings.find(b"\0" + encoded)
+    if at >= 0:
+        return at + 1
+    strings += encoded
+    return len(strings) - len(encoded)
+
+
 def fdt_add_props(dtb: bytes, node: str,
                   props: "list[tuple[str, bytes]]") -> bytes:
     """Insert properties into the first node named `node`, growing the FDT.
@@ -313,19 +335,12 @@ def fdt_add_props(dtb: bytes, node: str,
 
     # Just past this node's FDT_BEGIN_NODE.
     insert_at = next(e[2] for e in fdt_walk(dtb)
-                     if e[0] == "node" and e[1][-1] == node)
+                     if e[0] == "node" and _fdt_is(e[1], node))
 
     strings = bytearray(dtb[off_strings:off_strings + size_strings])
     tokens = bytearray()
     for name, value in todo:
-        encoded = name.encode() + b"\0"
-        # Reuse an existing string only on a whole-entry match; a suffix match
-        # (e.g. "sdr50" inside "sd-uhs-sdr50") would name the wrong property.
-        at = 0 if strings.startswith(encoded) else strings.find(b"\0" + encoded)
-        nameoff = at + 1 if at > 0 else (0 if at == 0 else len(strings))
-        if at < 0:
-            strings += encoded
-        tokens += struct.pack(">III", 3, len(value), nameoff)
+        tokens += struct.pack(">III", 3, len(value), _fdt_intern(strings, name))
         tokens += value + b"\0" * ((-len(value)) % 4)
 
     body = (dtb[off_struct:insert_at] + bytes(tokens)
@@ -344,6 +359,174 @@ def fdt_add_props(dtb: bytes, node: str,
     return out
 
 
+def fdt_add_subnode(dtb: bytes, parent: str, name: str,
+                    props: "list[tuple[str, bytes]]") -> bytes:
+    """Append a child node to the first node named `parent`, growing the FDT.
+
+    The child goes just before the parent's FDT_END_NODE, which is valid
+    whatever the parent holds: properties precede subnodes, and this is after
+    both. A child of that name already present is left alone.
+    """
+    _fdt_require_dtc_layout(dtb)
+    off_struct, off_strings, size_strings, size_struct = _fdt_header(dtb)
+    try:
+        fdt_node_props(dtb, name)
+        return dtb
+    except KeyError:
+        pass
+
+    # fdt_walk does not report FDT_END_NODE, so track depth here.
+    p, end, depth, want, insert_at = off_struct, off_struct + size_struct, 0, None, None
+    while p < end and insert_at is None:
+        tok = struct.unpack(">I", dtb[p:p + 4])[0]
+        if tok == 1:
+            e = dtb.index(b"\0", p + 4)
+            depth += 1
+            if want is None and (dtb[p + 4:e].decode() or "/") == parent:
+                want = depth
+            p = (e + 1 + 3) & ~3
+        elif tok == 2:
+            if depth == want:
+                insert_at = p
+            depth -= 1
+            p += 4
+        elif tok == 3:
+            length = struct.unpack(">I", dtb[p + 4:p + 8])[0]
+            p = (p + 12 + length + 3) & ~3
+        elif tok == 9:
+            break
+        else:                                         # FDT_NOP
+            p += 4
+    if insert_at is None:
+        raise KeyError(parent)
+
+    strings = bytearray(dtb[off_strings:off_strings + size_strings])
+    encoded = name.encode() + b"\0"
+    tokens = bytearray(struct.pack(">I", 1) + encoded + b"\0" * ((-len(encoded)) % 4))
+    for pname, value in props:
+        tokens += struct.pack(">III", 3, len(value), _fdt_intern(strings, pname))
+        tokens += value + b"\0" * ((-len(value)) % 4)
+    tokens += struct.pack(">I", 2)
+
+    body = (dtb[off_struct:insert_at] + bytes(tokens)
+            + dtb[insert_at:off_struct + size_struct])
+    out = _fdt_rebuild(dtb, body, bytes(strings))
+
+    check = fdt_node_props(out, name)
+    for pname, value in props:
+        if check.get(pname) != value:
+            raise ValueError(f"{name}/{pname}: not readable after insertion")
+    if fdt_node_props(out, parent) != fdt_node_props(dtb, parent):
+        raise ValueError(f"{parent}: damaged by insertion")
+    return out
+
+
+# OP-TEE, resident for the life of the system: BL31 runs it as BL32. The vendor
+# U-Boot carves it out of the /memory banks it writes; mainline U-Boot knows
+# nothing about it, so on that path the reservation has to be in the tree.
+OPTEE_BASE = 0x08400000
+OPTEE_SIZE = 0x01000000
+
+
+def add_optee_reservation(dtb: bytes) -> bytes:
+    """Reserve OP-TEE's 16 MiB as no-map, for the mainline U-Boot path only.
+
+    Without it the kernel allocates over live secure firmware and dies just
+    after `Starting kernel ...` — the 2026-08-24 failure (docs/uboot.md).
+    """
+    cells = fdt_node_props(dtb, "reserved-memory")
+    if (struct.unpack(">I", cells["#address-cells"])[0],
+            struct.unpack(">I", cells["#size-cells"])[0]) != (2, 2):
+        raise ValueError("/reserved-memory is not 2/2 cells; the reg below assumes it")
+    reg = struct.pack(">QQ", OPTEE_BASE, OPTEE_SIZE)
+    return fdt_add_subnode(dtb, "reserved-memory", f"optee@{OPTEE_BASE:x}",
+                           [("reg", reg), ("no-map", b"")])
+
+
+# VOP2 windows, bit N = physical window N. On the RK3566 Cluster1, Esmart1 and
+# Smart1 cannot scan out a buffer of their own, they only mirror Cluster0,
+# Esmart0 and Smart0: each port needs a main window, and the masks must cover
+# all six or the kernel discards them for a default that mirrors one port.
+VOP2_NODE = "vop@fe040000"
+VOP2_ALL_WINDOWS = 0x3f
+VOP2_PANEL = (0x30, 4)     # Smart0 (primary) + its mirror Smart1
+VOP2_HDMI = (0x0f, 2)      # Esmart0 (primary) + Cluster0, with their mirrors
+VOP2_DISPLAYS = (("dsi@fe060000", VOP2_PANEL), ("hdmi@fe0a0000", VOP2_HDMI))
+
+
+def vop2_port_of(dtb: bytes, encoder: str) -> str:
+    """The VOP port the encoder's enabled endpoint is wired to, e.g. `port@1`."""
+    nodes: "dict[tuple, dict[str, bytes]]" = {}
+    for event in fdt_walk(dtb):
+        if event[0] == "prop":
+            nodes.setdefault(event[1], {})[event[2]] = dtb[event[3]:event[3] + event[4]]
+    remotes = {props["remote-endpoint"] for path, props in nodes.items()
+               if encoder in path and "remote-endpoint" in props
+               and props.get("status", b"okay\0") == b"okay\0"}
+    ports = {path[-2] for path, props in nodes.items()
+             if VOP2_NODE in path and props.get("phandle") in remotes}
+    if len(ports) != 1:
+        raise ValueError(f"{encoder}: wired to VOP ports {sorted(ports)}, expected one")
+    return ports.pop()
+
+
+def set_vop2_plane_masks(dtb: bytes) -> bytes:
+    """Assign VOP2 windows, a main one per display, for the mainline path only."""
+    covered = 0
+    for _encoder, (mask, _primary) in VOP2_DISPLAYS:
+        if covered & mask:
+            raise ValueError(f"VOP2 window assigned twice: 0x{covered & mask:02x}")
+        covered |= mask
+    if covered != VOP2_ALL_WINDOWS:
+        raise ValueError(f"VOP2 masks cover 0x{covered:02x}, not 0x{VOP2_ALL_WINDOWS:02x}; "
+                         "the kernel would discard them and use its own default")
+    seen = set()
+    for encoder, (mask, primary) in VOP2_DISPLAYS:
+        port = vop2_port_of(dtb, encoder)
+        if port in seen:
+            raise ValueError(f"{encoder} shares {port} with another display")
+        seen.add(port)
+        node = f"{VOP2_NODE}/ports/{port}"
+        if "rockchip,plane-mask" in fdt_node_props(dtb, node):
+            raise ValueError(f"{node} already assigns planes; this would not override it")
+        dtb = fdt_add_props(dtb, node, [
+            ("rockchip,plane-mask", struct.pack(">I", mask)),
+            ("rockchip,primary-plane", struct.pack(">I", primary)),
+        ])
+    return dtb
+
+
+PANEL_NODE = "dsi@fe060000/panel@0"
+# Vendor value -> ours. reset/init only wait out power-on, which U-Boot now
+# does ~1.8 s earlier (no reset line here); enable holds the backlight, which
+# rcS lights.
+PANEL_DELAYS = {"reset-delay-ms": (160, 0), "init-delay-ms": (200, 20),
+                "enable-delay-ms": (200, 0)}
+# The init sequence opens with sleep-out (DCS 0x11), then waits 250 ms; 120 ms
+# is the usual requirement. Bytes: type, delay, length, command.
+PANEL_SLEEP_OUT = (bytes([0x05, 250, 0x01, 0x11]), bytes([0x05, 120, 0x01, 0x11]))
+
+
+def set_panel_delays(dtb: bytes) -> bytes:
+    """Shorten the panel's power-up waits, for the mainline path only."""
+    props = fdt_node_props(dtb, PANEL_NODE)
+    if "reset-gpios" in props:
+        raise ValueError(f"{PANEL_NODE} has a reset line; reset-delay-ms is real")
+    out = bytearray(dtb)
+    for prop, (vendor, ours) in PANEL_DELAYS.items():
+        off, length = fdt_find_prop(dtb, PANEL_NODE, prop)
+        got = struct.unpack(">I", dtb[off:off + length])[0]
+        if length != 4 or got != vendor:
+            raise ValueError(f"{PANEL_NODE}/{prop} is {got}, expected {vendor}")
+        struct.pack_into(">I", out, off, ours)
+    off, _ = fdt_find_prop(dtb, PANEL_NODE, "panel-init-sequence")
+    vendor, ours = PANEL_SLEEP_OUT
+    if dtb[off:off + 4] != vendor:
+        raise ValueError(f"{PANEL_NODE}: init sequence does not open with a 250 ms sleep-out")
+    out[off:off + 4] = ours
+    return bytes(out)
+
+
 # UHS modes the RK3566 sdmmc controller can drive, in ascending order, with the
 # bus clock each one implies. Anything above SDR25 also needs max-frequency to
 # allow it and the I/O rail to be switchable to 1.8 V — both asserted below.
@@ -351,6 +534,14 @@ SD_UHS_MODES = {
     "sdr50": (["sd-uhs-sdr50"], 100_000_000),
     "sdr104": (["sd-uhs-sdr50", "sd-uhs-sdr104"], 150_000_000),
 }
+
+
+# SDR104 tuning steps across 360 degrees (the driver's default is 360). A test
+# read at a phase on the edge of the card's bad window can wait out the
+# controller's whole ~113 ms data timeout; fewer steps land there less often
+# (13 of 16 boots at 360, 6 of 22 at 36). 10 degrees is still finer than the
+# 20 the driver skips after every bad phase.
+SD_TUNING_PHASES = 36
 
 
 def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
@@ -370,7 +561,35 @@ def set_sd_uhs(dtb: bytes, node: str, mode: str) -> bytes:
     if maxfreq < needed:
         raise ValueError(f"{node}: max-frequency is {maxfreq}, but {mode} "
                          f"needs {needed}; raising it is a separate decision")
-    return fdt_add_props(dtb, node, [(f, b"") for f in flags])
+    if "rockchip,desired-num-phases" in props:
+        raise ValueError(f"{node} already sets its tuning steps")
+    return fdt_add_props(dtb, node, [(f, b"") for f in flags] + [
+        ("rockchip,desired-num-phases", struct.pack(">I", SD_TUNING_PHASES))])
+
+
+def fdt_nop_prop(dtb: bytes, node: str, prop: str) -> bytes:
+    """Delete `prop` from `node` by overwriting it with FDT_NOP tokens, so no
+    offset moves."""
+    off, length = fdt_find_prop(dtb, node, prop)
+    start = off - 12                                  # FDT_PROP, len, nameoff
+    end = off + length + ((-length) % 4)
+    out = bytearray(dtb)
+    out[start:end] = struct.pack(">I", 4) * ((end - start) // 4)
+    if prop in fdt_node_props(bytes(out), node):
+        raise ValueError(f"{node}/{prop} still readable after removal")
+    return bytes(out)
+
+
+def detach_sd_slot1_vqmmc(dtb: bytes) -> bytes:
+    """The vendor tree gives slot 1 slot 0's vqmmc-supply. Its 3.3 V request
+    during card init, which on resume overlaps slot 0's 1.8 V switch, fails that
+    switch and takes the boot card with it (docs/history.md, 2026-09-21)."""
+    if fdt_node_props(dtb, SD_SLOT1_NODE).get("vqmmc-supply") != \
+            fdt_node_props(dtb, SD_SLOT0_NODE).get("vqmmc-supply"):
+        raise ValueError(f"{SD_SLOT1_NODE} no longer shares {SD_SLOT0_NODE}'s vqmmc-supply")
+    if any(p.startswith("sd-uhs-") for p in fdt_node_props(dtb, SD_SLOT1_NODE)):
+        raise ValueError(f"{SD_SLOT1_NODE} declares UHS, which needs its vqmmc-supply")
+    return fdt_nop_prop(dtb, SD_SLOT1_NODE, "vqmmc-supply")
 
 
 def set_bootargs(dtb: bytes, new_args: str) -> bytes:
@@ -493,6 +712,7 @@ def cmd_setargs(a) -> int:
         out = set_bootargs(blob, new)
         if a.sd_uhs != "off":
             out = set_sd_uhs(out, SD_SLOT0_NODE, a.sd_uhs)
+        out = detach_sd_slot1_vqmmc(out)
         print(f"  {name}")
         print(f"      old: {old}")
         print(f"      new: {new}")
@@ -512,9 +732,10 @@ def cmd_setargs(a) -> int:
         else:
             entries.append((name, data))
     if a.sd_uhs != "off":
-        added = ", ".join(SD_UHS_MODES[a.sd_uhs][0])
+        added = ", ".join(SD_UHS_MODES[a.sd_uhs][0]) + f", {SD_TUNING_PHASES} tuning steps"
         print(f"  sd: {SD_SLOT0_NODE} += {added} "
-              f"(vendor stops at SDR25 = 50 MHz; slot 1 left alone)")
+              f"(vendor stops at SDR25 = 50 MHz)")
+    print(f"  sd: {SD_SLOT1_NODE} -= vqmmc-supply (shared with {SD_SLOT0_NODE})")
 
     second = ResourceImage.build(entries)
     print(f"  resource: rebuilt, {boot.second_size} -> {len(second)} bytes "

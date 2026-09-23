@@ -133,7 +133,9 @@ and Mali, WiFi and the panel are built in, so nothing is `insmod`ed here
 ([hardware](hardware.md)).
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed,
-**loopback**, the first-boot card expansion, the frontend card, any pending system
+**loopback**, USB authorization in the background (the kernel holds USB drivers
+back so the WiFi probe cannot delay the root mount — [boot time](boot-time.md)),
+the first-boot card expansion, the frontend card, any pending system
 update, and the USB gadget in the background. Of the two update hooks,
 `baseos-update boot-check` after `/data` only runs when a trial is pending (a
 builtin file test). `apply` after the card mount costs a failed glob plus a
@@ -143,7 +145,8 @@ read-only mount of this card's FAT partition, about 20–30 ms
 `rcK` does the shutdown work busybox init leaves out. It stops every other
 process (SIGTERM, at most 1 s, SIGKILL), unmounts the frontend's binds, the card
 and `/data`, and remounts `/` read-only. Without that, both ext4 journals replay
-on every boot.
+on every boot. It also leaves `/data/clean-shutdown`, which tells the next `rcS`
+that this boot's crash record is not a crash ([diagnostics](diagnostics.md)).
 
 ### One log
 
@@ -228,6 +231,13 @@ A successful run logs:
 It never blocks boot: no `set -e`, every failure path returns quietly, and
 `/etc/init.d/dev` backgrounds it. Because it must fail quietly, it **logs** instead
 — the only way to diagnose it on a device with no console.
+
+**It stays running to rebind.** When the link errors out, as it can after a
+resume, `adbd` closes and reopens functionfs, and the kernel unbinds the gadget
+on that close. Nothing else binds it again, so the script checks `UDC` every
+2 s and rewrites it once `ep1` is back (`UDC rebound` in the log). Builtins only:
+the wait is a `read -t` on a FIFO nobody writes, so a check costs no fork,
+measured at about 0.03% of one core.
 
 > **A cable is not required before power-on — verified.** RK3566 uses dwc3 with
 > plain configfs and VBUS detection, and we only ever write `UDC`. Hot-plugging
@@ -473,8 +483,16 @@ This device has no console, so `fbsplash` — built from `src/fbsplash.c`, stati
 freetype — is the only way to tell the owner anything.
 It reads panel geometry from the framebuffer and rotation from
 `/etc/baseos-release` (`BASEOS_PANEL_ROTATION_CCW=0`; the Flip's 640x480 panel is
-upright). `baseos-splash` wraps it, and ordinary boots never call it:
-the bootloader logo stays untouched until the frontend draws its first frame.
+upright). `baseos-splash` wraps it and only ever overlays a status pill.
+
+**The boot logo.** When the bootloader handed none to the kernel (no
+`logo,offset` in the display route: the mainline U-Boot path), `rcS` runs
+`fbsplash 0` in the background as soon as `/run` is mounted, lights the
+backlight, and mounts debugfs, where NextUI's `launch.sh` reads the
+backlight's duty to keep it lit. The logo reaches the panel when the kernel
+brings it up, at 2.00 s ([U-Boot](uboot.md), *The boot logo*). On the vendor
+path, the vendor U-Boot's logo stays untouched until the frontend draws its
+first frame.
 
 `frontend-session` shows `INSERT SD CARD` when the left slot is empty and
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards

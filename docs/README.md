@@ -32,7 +32,7 @@ not deleted, in [history](history.md).
 | | |
 |---|---|
 | [decisions](decisions.md) | The choices the port rests on, and what is still open. |
-| [U-Boot](uboot.md) | Tuning it (tried, 22 ms) and replacing it (shelved). |
+| [U-Boot](uboot.md) | Tuning the vendor one (tried, 22 ms), and the mainline one BaseOS boots since 0.7.0. |
 | [history](history.md) | Experiments, SPL disassembly, superseded measurements, every retracted theory. |
 
 ## The short version
@@ -43,10 +43,11 @@ are never muxed. A preloader with a working `/pinctrl` can, and it looks up a GP
 partition named `uboot` and reads a U-Boot FIT from its first sector.
 
 So BaseOS patches **2 MiB of internal NAND** — the user's own preloader, in
-place, from a card, with a backup written first — and leaves stock U-Boot, the
-kernel and the stock rootfs untouched. Card in: BaseOS. Card out: stock, exactly
-as before.
+place, from a card, with a backup written first — and leaves the stock U-Boot in
+NAND, the kernel and the stock rootfs untouched. Card in: BaseOS. Card out:
+stock, exactly as before.
 
-From there the card supplies the vendor U-Boot, the vendor kernel with a rewritten
+From there the card supplies a mainline U-Boot, the vendor kernel with a rewritten
 command line, and a BusyBox userland built on a measured subset of the stock
-libraries. Power-on to frontend hand-off is **3.73 s**, against stock's 15.79 s.
+libraries. Power-on to frontend hand-off is **1.94 s** (3.73 s with the vendor
+U-Boot, as in 0.6.0), against stock's 15.79 s.

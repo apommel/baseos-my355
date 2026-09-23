@@ -18,7 +18,7 @@ reaches for a third by **number**:
 | | why it is load-bearing |
 |---|---|
 | GPT partition `uboot`, **starting at sector 16384** | The SPL calls `part_get_info_by_name(dev, "uboot")` and reads the U-Boot FIT from the partition's *first sector*. |
-| GPT partition `boot` | Stock U-Boot runs `boot_android mmc 1`, which resolves the Android boot image by this name. |
+| GPT partition `boot` | Our U-Boot's boot script finds it by name with `part start`/`part size` and reads the FIT behind its header ([U-Boot](uboot.md)); the vendor U-Boot's `boot_android mmc 1` does the same for its Android boot image. |
 | rootfs as GPT **entry 3** | `root=/dev/mmcblk1p3` is baked into the DTB at build time. The name does not matter; the entry number does. |
 
 The right slot enumerates as `mmcblk1` (left is `mmcblk2`) — fixed by DT aliases
@@ -30,9 +30,9 @@ The right slot enumerates as `mmcblk1` (left is `mmcblk2`) — fixed by DT alias
 via `--shell` rather than duplicating constants.
 
 ```
-entry 1  uboot     16384 ..   32767     8 MiB   stock U-Boot FIT, verbatim
+entry 1  uboot     16384 ..   32767     8 MiB   U-Boot FIT: ours + vendor BL31/OP-TEE
   —      (spare)   32768 ..   49151     8 MiB
-entry 2  boot      49152 ..  131071    40 MiB   Android boot image
+entry 2  boot      49152 ..  131071    40 MiB   kernel + DTB: a FIT (vendor path: Android boot image)
   —      (spare)  131072 ..  212991    40 MiB
 entry 3  rootfs   212992 .. 1261567   512 MiB            <- root=/dev/mmcblk1p3
   —      (spare) 1261568 .. 2310143   512 MiB
@@ -134,7 +134,7 @@ where the last one ends. A card without the spare halves fails that check and
 cannot be flipped, which is what stops this touching a 0.2.x card.
 
 Nothing in the boot chain references an address, which is what makes a GPT write
-enough to select all three: the SPL finds `uboot` by name, `boot_android` finds
+enough to select all three: the SPL finds `uboot` by name, U-Boot finds
 `boot` by name, and `root=/dev/mmcblk1p3` names an entry number.
 
 **Rollback.** `rcS` runs `baseos-update boot-check`, which counts boots while a
@@ -167,14 +167,21 @@ left on the card and has to be weighed up again.
 
 ## Boot image surgery
 
+On the default, mainline U-Boot path, `tools/mkfit.py boot` packs the vendor
+kernel (zstd) and `rk-kernel.dtb` into a FIT instead, with the same device tree
+edits as below except the logo, plus what the vendor U-Boot used to do for the
+kernel ([U-Boot](uboot.md), *How this build works*). The rest of this section is
+the vendor path.
+
 `tools/rkbootimg.py setargs` repacks the vendor Android boot image. The kernel
 is never modified — it is stored gzipped, and the tool asserts that what it
-writes decompresses to the vendor bytes. Four things change:
+writes decompresses to the vendor bytes. Five things change:
 
 | what | why |
 |---|---|
 | `/chosen/bootargs`, in every `rk-kernel.dtb*` | repoint `root=` at the card, drop `earlycon=`, add our tokens — see below |
 | `sd-uhs-sdr50/104` on `dwmmc@fe2b0000` | raise the boot slot's bus above the vendor's SDR25 ([boot time](boot-time.md)) |
+| `vqmmc-supply` removed from `dwmmc@fe2c0000` | the left slot named the boot slot's I/O rail, and its 3.3 V request during card init failed the boot card's 1.8 V switch on resume ([history](history.md)) |
 | `logo.bmp`, `logo_kernel.bmp` | tell, on a console-less device, whether U-Boot came from the card or NAND. Size is ours to choose — see below |
 | the header's SHA1 `id` | **mandatory** — see below |
 

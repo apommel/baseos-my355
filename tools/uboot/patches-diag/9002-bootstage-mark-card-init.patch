@@ -1,0 +1,184 @@
+Diagnostics only (MY355_DIAG=1): where `mmc dev 1` spends its time.
+
+A bootstage mark at each step of SD card init and around the partition scan
+that probing the block device runs, the number of ACMD41 polls the card
+needed, and the duration of every block read, printed to the console record.
+
+`mmc dev 1` takes 202 ms here against ~77 ms for the kernel on the same card
+(docs/uboot.md).
+
+diff --git a/drivers/block/blk-uclass.c b/drivers/block/blk-uclass.c
+--- a/drivers/block/blk-uclass.c
++++ b/drivers/block/blk-uclass.c
+@@ -7,6 +7,7 @@
+ #define LOG_CATEGORY UCLASS_BLK
+ 
+ #include <blk.h>
++#include <bootstage.h>
+ #include <dm.h>
+ #include <log.h>
+ #include <malloc.h>
+@@ -831,11 +832,14 @@
+ 	if (CONFIG_IS_ENABLED(PARTITIONS) && blk_enabled()) {
+ 		struct blk_desc *desc = dev_get_uclass_plat(dev);
+ 
++		bootstage_mark_name(BOOTSTAGE_ID_ALLOC, "blk_probe");
+ 		part_init(desc);
++		bootstage_mark_name(BOOTSTAGE_ID_ALLOC, "blk_part_init");
+ 
+ 		if (desc->part_type != PART_TYPE_UNKNOWN &&
+ 		    part_create_block_devices(dev))
+ 			debug("*** creating partitions failed\n");
++		bootstage_mark_name(BOOTSTAGE_ID_ALLOC, "blk_part_devs");
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/mmc/mmc.c b/drivers/mmc/mmc.c
+--- a/drivers/mmc/mmc.c
++++ b/drivers/mmc/mmc.c
+@@ -9,6 +9,7 @@
+ 
+ #include <config.h>
+ #include <blk.h>
++#include <bootstage.h>
+ #include <command.h>
+ #include <dm.h>
+ #include <log.h>
+@@ -28,6 +29,9 @@
+ #include <linux/printk.h>
+ #include <div64.h>
+ #include "mmc_private.h"
++
++/* Diagnostics only (MY355_DIAG=1): where card init spends its time */
++#define MY355_MARK(n)	bootstage_mark_name(BOOTSTAGE_ID_ALLOC, "mmc_" n)
+ 
+ #define DEFAULT_CMD6_TIMEOUT_MS  500
+ 
+@@ -517,6 +521,8 @@
+ 	int err;
+ 	lbaint_t cur, blocks_todo = blkcnt;
+ 	uint b_max;
++	ulong t0 = timer_get_us();
++	lbaint_t first = start;
+ 
+ 	if (blkcnt == 0)
+ 		return 0;
+@@ -551,7 +557,8 @@
+ 	do {
+ 		cur = (blocks_todo > b_max) ? b_max : blocks_todo;
+ 		if (mmc_read_blocks(mmc, dst, start, cur) != cur) {
+-			pr_debug("%s: Failed to read blocks\n", __func__);
++			printf("mmc: read " LBAF "+" LBAF " failed after %lu us\n",
++			       first, blkcnt, timer_get_us() - t0);
+ 			return 0;
+ 		}
+ 		blocks_todo -= cur;
+@@ -559,6 +566,8 @@
+ 		dst += cur * mmc->read_bl_len;
+ 	} while (blocks_todo > 0);
+ 
++	printf("mmc: read " LBAF "+" LBAF " %lu us\n", first, blkcnt,
++	       timer_get_us() - t0);
+ 	return blkcnt;
+ }
+ 
+@@ -706,6 +715,7 @@
+ 
+ 		udelay(1000);
+ 	}
++	printf("mmc: ACMD41 ready after %d polls\n", 1000 - timeout);
+ 
+ 	if (mmc->version != SD_VERSION_2)
+ 		mmc->version = SD_VERSION_1_0;
+@@ -2563,6 +2573,7 @@
+ 	cmd.cmdarg = 0;
+ 
+ 	err = mmc_send_cmd_quirks(mmc, &cmd, NULL, MMC_QUIRK_RETRY_SEND_CID, 4);
++	MY355_MARK("cid");
+ 	if (err)
+ 		return err;
+ 
+@@ -2705,6 +2716,7 @@
+ 	err = mmc_set_capacity(mmc, mmc_get_blk_desc(mmc)->hwpart);
+ 	if (err)
+ 		return err;
++	MY355_MARK("selected");
+ 
+ #if CONFIG_IS_ENABLED(MMC_TINY)
+ 	mmc_set_clock(mmc, mmc->legacy_speed, false);
+@@ -2715,6 +2727,7 @@
+ 		err = sd_get_capabilities(mmc);
+ 		if (err)
+ 			return err;
++		MY355_MARK("caps");
+ 
+ #if CONFIG_IS_ENABLED(MMC_UHS_SUPPORT)
+ 		/*
+@@ -2737,6 +2750,7 @@
+ #endif
+ 
+ 		err = sd_select_mode_and_width(mmc, mmc->card_caps);
++		MY355_MARK("mode");
+ 	} else {
+ 		err = mmc_get_capabilities(mmc);
+ 		if (err)
+@@ -2972,6 +2986,7 @@
+ 	}
+ 	if (err)
+ 		return err;
++	MY355_MARK("power_cycle");
+ 
+ #if CONFIG_IS_ENABLED(DM_MMC)
+ 	/*
+@@ -2985,6 +3000,7 @@
+ #endif
+ 	if (err)
+ 		return err;
++	MY355_MARK("reinit");
+ 	mmc->ddr_mode = 0;
+ 
+ retry:
+@@ -2994,6 +3010,7 @@
+ 
+ 	/* Reset the Card */
+ 	err = mmc_go_idle(mmc);
++	MY355_MARK("idle");
+ 
+ 	if (err)
+ 		return err;
+@@ -3003,9 +3020,11 @@
+ 
+ 	/* Test for SD version 2 */
+ 	err = mmc_send_if_cond(mmc);
++	MY355_MARK("if_cond");
+ 
+ 	/* Now try to get the SD card's operating condition */
+ 	err = sd_send_op_cond(mmc, uhs_en);
++	MY355_MARK("op_cond");
+ 	if (err && uhs_en) {
+ 		uhs_en = false;
+ 		mmc_power_cycle(mmc);
+@@ -3061,6 +3080,7 @@
+ #if CONFIG_IS_ENABLED(DM_MMC)
+ 	mmc_deferred_probe(mmc);
+ #endif
++	MY355_MARK("probed");
+ #if !defined(CONFIG_MMC_BROKEN_CD)
+ 	no_card = mmc_getcd(mmc) == 0;
+ #else
+@@ -3096,6 +3116,7 @@
+ 
+ 	if (!err)
+ 		err = mmc_startup(mmc);
++	MY355_MARK("startup");
+ 	if (err)
+ 		mmc->has_init = 0;
+ 	else
+@@ -3130,6 +3151,7 @@
+ 		return 0;
+ 
+ 	start = get_timer(0);
++	MY355_MARK("init");
+ 
+ 	if (!mmc->init_in_progress)
+ 		err = mmc_start_init(mmc);

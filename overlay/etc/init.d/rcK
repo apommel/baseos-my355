@@ -28,6 +28,7 @@ others() {
 }
 
 log "shutdown"
+[ -e /run/baseos-charge ] && log "charger in: restarting to charge"
 /sbin/killall5 -15
 i=0
 while others && [ "$i" -lt 10 ]; do /bin/usleep 100000; i=$((i + 1)); done
@@ -35,6 +36,9 @@ if [ "$i" -lt 10 ]; then log "all exited"; else log "killing, $LEFT still runnin
 /sbin/killall5 -9
 i=0
 while others && [ "$i" -lt 10 ]; do /bin/usleep 50000; i=$((i + 1)); done
+
+# Tells the next rcS this boot ended here, so its ramoops record is not a crash.
+: > /data/clean-shutdown 2>/dev/null
 
 # Everything but / and the system's own mounts, newest first so nested mounts go
 # before their parents. Logged first: /data carries the log and is one of them.
@@ -46,3 +50,6 @@ for m in $(/usr/bin/awk '$2 != "/" && $2 !~ /^\/(proc|sys|dev)(\/|$)/ && $2 !~ /
 	log "umount $m failed, left $r"
 done
 /bin/mount -o remount,ro / 2>/dev/null
+
+# Set by poweroff with the charger in: U-Boot then keeps the charge LED lit.
+[ -e /run/baseos-charge ] && /usr/sbin/rebootmode charge

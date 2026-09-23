@@ -1,0 +1,27 @@
+The RK3568's 1608 and 1800 MHz CPU rates, as Linux's clk-rk3568.c has them:
+the dividers of its rk3568_cpuclk_rates rows (acore 1; atcore, gic, pclk and
+periph 5 up to 1608 MHz, 7 above) and the 1800 MHz APLL setting.
+
+U-Boot stopped at 1416 MHz. The my355 boot script decompresses the kernel
+above 1104 MHz and comes back down before the hand-off (patch 0001).
+
+diff --git a/drivers/clk/rockchip/clk_rk3568.c b/drivers/clk/rockchip/clk_rk3568.c
+--- a/drivers/clk/rockchip/clk_rk3568.c
++++ b/drivers/clk/rockchip/clk_rk3568.c
+@@ -38,6 +38,8 @@
+ #define DIV_TO_RATE(input_rate, div)    ((input_rate) / ((div) + 1))
+ 
+ static struct rockchip_cpu_rate_table rk3568_cpu_rates[] = {
++	RK3568_CPUCLK_RATE(1800000000, 1, 7),
++	RK3568_CPUCLK_RATE(1608000000, 1, 5),
+ 	RK3568_CPUCLK_RATE(1416000000, 1, 5),
+ 	RK3568_CPUCLK_RATE(1296000000, 1, 5),
+ 	RK3568_CPUCLK_RATE(1200000000, 1, 3),
+@@ -52,6 +54,7 @@
+ 
+ static struct rockchip_pll_rate_table rk3568_pll_rates[] = {
+ 	/* _mhz, _refdiv, _fbdiv, _postdiv1, _postdiv2, _dsmpd, _frac */
++	RK3036_PLL_RATE(1800000000, 1, 75, 1, 1, 1, 0),
+ 	RK3036_PLL_RATE(1608000000, 1, 67, 1, 1, 1, 0),
+ 	RK3036_PLL_RATE(1416000000, 1, 118, 2, 1, 1, 0),
+ 	RK3036_PLL_RATE(1296000000, 1, 108, 2, 1, 1, 0),

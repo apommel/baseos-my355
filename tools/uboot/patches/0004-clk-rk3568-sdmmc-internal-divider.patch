@@ -1,0 +1,76 @@
+Drive the RK3568 SD card at the rate the MMC core asks for.
+
+The dw_mmc controller divides its input clock by 2 internally, so the
+kernel sets clk_sdmmc0 to twice the card clock (RK3288_CLKGEN_DIV) and the
+px30, rk3308, rk3328 and rk3399 clock drivers here take and report the card
+rate. rk3568 mapped it straight to the CRU source, so a 50 MHz high-speed
+request ran the card at 25 MHz: 12.0 MB/s where 4-bit 50 MHz allows 25.
+
+diff --git a/drivers/clk/rockchip/clk_rk3568.c b/drivers/clk/rockchip/clk_rk3568.c
+--- a/drivers/clk/rockchip/clk_rk3568.c
++++ b/drivers/clk/rockchip/clk_rk3568.c
+@@ -1421,19 +1421,20 @@
+ 		return -ENOENT;
+ 	}
+ 
++	/* The dw_mmc controller divides its input by 2 internally */
+ 	switch (sel) {
+ 	case CLK_SDMMC_SEL_24M:
+-		return OSC_HZ;
++		return OSC_HZ / 2;
+ 	case CLK_SDMMC_SEL_400M:
+-		return 400 * MHz;
++		return 200 * MHz;
+ 	case CLK_SDMMC_SEL_300M:
+-		return 300 * MHz;
++		return 150 * MHz;
+ 	case CLK_SDMMC_SEL_100M:
+-		return 100 * MHz;
+-	case CLK_SDMMC_SEL_50M:
+ 		return 50 * MHz;
++	case CLK_SDMMC_SEL_50M:
++		return 25 * MHz;
+ 	case CLK_SDMMC_SEL_750K:
+-		return 750 * KHz;
++		return 375 * KHz;
+ 	default:
+ 		return -ENOENT;
+ 	}
+@@ -1445,27 +1446,27 @@
+ 	struct rk3568_cru *cru = priv->cru;
+ 	int src_clk;
+ 
++	/* rate is the card clock: provide double, as rk3399 and px30 do */
+ 	switch (rate) {
+-	case OSC_HZ:
+-	case 26 * MHz:
+-	case 25 * MHz:
++	case OSC_HZ / 2:
+ 		src_clk = CLK_SDMMC_SEL_24M;
+ 		break;
+-	case 400 * MHz:
++	case 200 * MHz:
+ 		src_clk = CLK_SDMMC_SEL_400M;
+ 		break;
+-	case 300 * MHz:
++	case 150 * MHz:
+ 		src_clk = CLK_SDMMC_SEL_300M;
+-		break;
+-	case 100 * MHz:
+-		src_clk = CLK_SDMMC_SEL_100M;
+ 		break;
+ 	case 52 * MHz:
+ 	case 50 * MHz:
+-		src_clk = CLK_SDMMC_SEL_50M;
++		src_clk = CLK_SDMMC_SEL_100M;
+ 		break;
+-	case 750 * KHz:
++	case 26 * MHz:
++	case 25 * MHz:
++		src_clk = CLK_SDMMC_SEL_50M;
++		break;
+ 	case 400 * KHz:
++	case 375 * KHz:
+ 		src_clk = CLK_SDMMC_SEL_750K;
+ 		break;
+ 	default:

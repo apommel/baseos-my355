@@ -1,0 +1,32 @@
+Make room for the bootstage report in the kernel's device tree.
+
+image_setup_libfdt() shrinks the tree to its minimum before
+announce_and_cleanup() adds the report, so on a large tree only the last
+few records fit and the earliest ones, which matter most, are dropped.
+
+diff --git a/common/bootstage.c b/common/bootstage.c
+index 4532100a..43d09f77 100644
+--- a/common/bootstage.c
++++ b/common/bootstage.c
+@@ -11,6 +11,7 @@
+ #define LOG_CATEGORY	LOGC_BOOT
+ 
+ #include <bootstage.h>
++#include <fdt_support.h>
+ #include <hang.h>
+ #include <log.h>
+ #include <malloc.h>
+@@ -317,6 +318,13 @@ static int add_bootstages_devicetree(struct fdt_header *blob)
+ 
+ int bootstage_fdt_add_report(void)
+ {
++	/*
++	 * image_setup_libfdt() has already shrunk the tree to its minimum, which
++	 * leaves room for a few records only. Grow it back into the
++	 * CONFIG_SYS_FDT_PAD that boot_relocate_fdt() allocated.
++	 */
++	if (working_fdt && fdt_increase_size(working_fdt, 0x1000))
++		puts("bootstage: Failed to make room in the device tree\n");
+ 	if (add_bootstages_devicetree(working_fdt))
+ 		puts("bootstage: Failed to add to device tree\n");
+ 

@@ -17,6 +17,8 @@ command -v zip >/dev/null 2>&1 || { echo "zip is required to package images" >&2
 # Up front, rather than part-way through a long build.
 baseos_require_prepared "$WORK/prepared"
 
+# Its source tree is cached, so a rerun is an incremental make.
+if [ "${MY355_UBOOT:-mainline}" = mainline ]; then "$HERE/build-uboot.sh"; fi
 "$HERE/build-rootfs.sh"
 "$HERE/build-image.sh"
 "$HERE/build-update.sh"

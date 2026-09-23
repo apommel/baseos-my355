@@ -25,6 +25,15 @@ grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 
 mark /run/boot-rcS-start
 
+# The boot logo and backlight, unless the vendor U-Boot handed its own logo to
+# the kernel (logo,offset). In the background: its pan waits for the panel.
+if [ ! -e /proc/device-tree/display-subsystem/route/route-dsi0/logo,offset ]; then
+	{ /usr/bin/fbsplash 0; mark /run/boot-logo; } &
+	echo 0 > /sys/class/backlight/backlight/bl_power 2>/dev/null
+fi
+# NextUI's launch.sh reads the backlight's duty here to keep the panel lit.
+/bin/mount -t debugfs -o nodev,noexec,nosuid debugfs /sys/kernel/debug
+
 # The vendor kernel restores rails from RK817 POWER_EN_SAVE1 on shutdown; if it
 # reads 0 that cuts vcc_1v8/vcc3v3_pmu and the device hangs. Nothing else sets it.
 if [ -w /sys/rk8xx/rk8xx_dbg ]; then
@@ -38,6 +47,22 @@ fi
 
 /bin/hostname -F /etc/hostname
 
+# USB devices, left unauthorized by the kernel (usbcore.authorized_default=0 in
+# build-image.sh). A device still enumerating took the old default and shows up
+# up to ~0.15 s later, so sweep for a second. Backgrounded: each write runs that
+# device's probe, ~0.3 s for the WiFi chip.
+{
+	for f in /sys/bus/usb/devices/usb*/authorized_default; do echo 1 > "$f"; done
+	i=0
+	while [ $i -lt 20 ]; do
+		for f in /sys/bus/usb/devices/*/authorized; do
+			read -r a < "$f" && [ "$a" = 0 ] && echo 1 > "$f" && mark /run/boot-usb
+		done
+		usleep 50000
+		i=$((i + 1))
+	done
+} 2>/dev/null &
+
 # Loopback. Nothing here needs the network, but adbd binds a TCP listener during
 # start-up and treats the failure as fatal, so without `lo` there is no adb.
 /sbin/ifconfig lo 127.0.0.1 netmask 255.0.0.0 up 2>/dev/null
@@ -48,6 +73,23 @@ if ! /bin/mount -t ext4 -o rw,noatime /dev/mmcblk1p4 /data 2>/dev/null; then
 	/bin/mount -t tmpfs tmpfs /data
 fi
 mark /run/boot-data-mounted
+
+# The previous boot's ramoops, kept when it oopsed or never reached rcK; a clean
+# reboot leaves a console record too, which is dropped.
+{
+	clean=; [ -e /data/clean-shutdown ] && clean=1 && /bin/rm -f /data/clean-shutdown
+	/bin/mount -t pstore -o nodev,noexec,nosuid pstore /sys/fs/pstore || exit
+	set -- /sys/fs/pstore/*
+	[ -e "$1" ] || exit
+	set -- /sys/fs/pstore/dmesg-*
+	[ -n "$clean" ] && [ ! -e "$1" ] && exit
+	d=/data/pstore/$(/bin/date +%Y%m%d-%H%M%S)
+	/bin/mkdir -p "$d" && /bin/cp /sys/fs/pstore/* "$d/" && /bin/rm -f /sys/fs/pstore/dmesg-*
+	log "pstore: previous boot crashed or hung, its kernel log is in $d"
+} 2>/dev/null &
+
+# A panic resets warm, which ramoops survives; a long press does not.
+echo 10 > /proc/sys/kernel/panic
 
 # A freshly updated set of slots is on trial until a frontend session starts.
 # Count the boots that never get that far and restore the previous ones if this

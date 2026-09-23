@@ -1,0 +1,681 @@
+Add the `my355` command: named bootstage marks from the boot script, the
+core clock handed to the kernel, the RK817 fuel gauge reconciled for it, the
+charge LED while charging off, and a copy of the console record the boot
+script can save to the card. The Flip has no UART attached, so this is how a
+failed boot reports what happened.
+
+diff --git a/cmd/Kconfig b/cmd/Kconfig
+index 5c611fb..7815eed 100644
+--- a/cmd/Kconfig
++++ b/cmd/Kconfig
+@@ -1640,6 +1640,15 @@ config CMD_PART
+ 	  Read and display information about the partition table on
+ 	  various media.
+ 
++config CMD_MY355
++	bool "my355 - BaseOS Miyoo Flip boot helpers"
++	depends on BOOTSTAGE
++	help
++	  Named bootstage marks, the core clock and fuel gauge state handed
++	  to the kernel, the charge LED while charging off and, with
++	  CONSOLE_RECORD, a copy of the console output the boot script can
++	  save to the card. For a unit with no serial console attached.
++
+ config CMD_PCI
+ 	bool "pci - Access PCI devices"
+ 	help
+diff --git a/cmd/Makefile b/cmd/Makefile
+index 2547990..2ba004c 100644
+--- a/cmd/Makefile
++++ b/cmd/Makefile
+@@ -142,6 +142,7 @@ obj-$(CONFIG_ENV_SUPPORT) += nvedit.o
+ obj-$(CONFIG_CMD_NVEDIT_EFI) += nvedit_efi.o
+ obj-$(CONFIG_CMD_ONENAND) += onenand.o
+ obj-$(CONFIG_CMD_OSD) += osd.o
++obj-$(CONFIG_CMD_MY355) += my355.o
+ obj-$(CONFIG_CMD_PART) += part.o
+ obj-$(CONFIG_CMD_PCAP) += pcap.o
+ ifdef CONFIG_PCI
+diff --git a/cmd/my355.c b/cmd/my355.c
+new file mode 100644
+index 0000000..1dea617
+--- /dev/null
++++ b/cmd/my355.c
+@@ -0,0 +1,637 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * BaseOS my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
++ * the boot script records its own timings and saves its own console output.
++ */
++
++#include <bootstage.h>
++#include <clk.h>
++#include <command.h>
++#include <dm.h>
++#include <env.h>
++#include <i2c.h>
++#include <mapmem.h>
++#include <membuf.h>
++#include <sysreset.h>
++#include <asm/global_data.h>
++#include <asm/gpio.h>
++#include <asm/io.h>
++#include <asm/system.h>
++#include <time.h>
++#include <linux/string.h>
++#include <vsprintf.h>
++#include <dt-bindings/clock/rk3568-cru.h>
++#include <linux/bitfield.h>
++#include <linux/bitops.h>
++#include <linux/delay.h>
++#include <linux/kernel.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++static int do_my355_mark(struct cmd_tbl *cmdtp, int flag, int argc,
++			 char *const argv[])
++{
++	char *name;
++
++	if (argc != 2)
++		return CMD_RET_USAGE;
++	/* bootstage keeps the pointer; argv does not outlive this command */
++	name = strdup(argv[1]);
++	if (!name)
++		return CMD_RET_FAILURE;
++	bootstage_mark_name(BOOTSTAGE_ID_ALLOC, name);
++
++	return CMD_RET_SUCCESS;
++}
++
++static int do_my355_log(struct cmd_tbl *cmdtp, int flag, int argc,
++			char *const argv[])
++{
++#if CONFIG_IS_ENABLED(CONSOLE_RECORD)
++	struct membuf copy;
++	ulong max;
++	char *dst, *data;
++	int i, len, total = 0;
++
++	if (argc != 3)
++		return CMD_RET_USAGE;
++	max = hextoul(argv[2], NULL);
++	dst = map_sysmem(hextoul(argv[1], NULL), max);
++	/* Drain a copy, so a second save still has everything */
++	copy = gd->console_out;
++	for (i = 0; i < 2; i++) {
++		len = membuf_getraw(&copy, max - total, true, &data);
++		memcpy(dst + total, data, len);
++		total += len;
++	}
++	unmap_sysmem(dst);
++	env_set_hex("my355_logsize", total);
++
++	return CMD_RET_SUCCESS;
++#else
++	return CMD_RET_FAILURE;
++#endif
++}
++
++/*
++ * vdd_cpu is an RK8600 on i2c0; VSEL0 is its run-time selector. The mainline
++ * clock driver leaves the cores at 816 MHz, where the vendor U-Boot hands the
++ * kernel 1104 MHz, and the kernel runs at whatever it inherits until cpufreq.
++ */
++#define RK8600_ADDR	0x40
++#define RK8600_VSEL0	0x00
++#define RK8600_ID1	0x03
++#define RK8600_ID1_VAL	0x88
++#define RK8600_EN	BIT(7)
++#define RK8600_NSEL	GENMASK(5, 0)
++#define RK8600_UV(n)	(712500 + 12500 * (n))
++#define RK8600_RAMP_UV_PER_US	2300
++
++/*
++ * The vendor OPP table's voltage per rate, from its default column (L0), which
++ * covers every silicon bin. Above 1104 MHz only for decompression: the vendor
++ * kernel sets vdd_cpu to 900 mV when its regulator probes, before cpufreq, so
++ * the boot script brings the clock back down before the hand-off.
++ */
++static const struct { ulong mhz; int uv; } my355_opps[] = {
++	{ 408, 850000 },
++	{ 816, 850000 },
++	{ 1104, 900000 },
++	{ 1416, 1025000 },
++	{ 1608, 1100000 },
++	{ 1800, 1150000 },
++};
++
++/* lower: allowed only with the clock already brought down to match */
++static int my355_vdd_cpu(int uv, bool lower)
++{
++	struct udevice *pmic;
++	int reg, nsel, id, want, ret;
++
++	ret = i2c_get_chip_for_busnum(0, RK8600_ADDR, 1, &pmic);
++	id = ret ? ret : dm_i2c_reg_read(pmic, RK8600_ID1);
++	reg = ret ? ret : dm_i2c_reg_read(pmic, RK8600_VSEL0);
++	if (id != RK8600_ID1_VAL || reg < 0 || !(reg & RK8600_EN)) {
++		printf("my355 cpu: no RK8600 at i2c0 0x%x (id %d, vsel0 %d)\n",
++		       RK8600_ADDR, id, reg);
++		return -ENODEV;
++	}
++	nsel = reg & RK8600_NSEL;
++	printf("my355 cpu: vdd_cpu vsel0 0x%02x = %d uV\n", reg, RK8600_UV(nsel));
++	want = DIV_ROUND_UP(uv - RK8600_UV(0), 12500);
++	/* Otherwise raise only; never lower a rail someone else set */
++	if (want == nsel || (want < nsel && !lower))
++		return 0;
++	ret = dm_i2c_reg_write(pmic, RK8600_VSEL0, (reg & ~RK8600_NSEL) | want);
++	if (ret || dm_i2c_reg_read(pmic, RK8600_VSEL0) !=
++		   ((reg & ~RK8600_NSEL) | want)) {
++		printf("my355 cpu: vdd_cpu write failed\n");
++		return -EIO;
++	}
++	if (want > nsel)
++		udelay((RK8600_UV(want) - RK8600_UV(nsel)) /
++		       RK8600_RAMP_UV_PER_US + 100);
++	printf("my355 cpu: vdd_cpu -> %d uV\n", RK8600_UV(want));
++	return 0;
++}
++
++static int my355_armclk(ulong mhz)
++{
++#if IS_ENABLED(CONFIG_ROCKCHIP_RK3568)
++	struct udevice *cru;
++	struct clk armclk;
++	ulong hz = mhz * 1000000;
++	int i, ret;
++
++	ret = uclass_get_device_by_driver(UCLASS_CLK,
++					  DM_DRIVER_GET(rockchip_rk3568_cru), &cru);
++	if (ret)
++		return ret;
++	armclk.dev = cru;
++	armclk.id = ARMCLK;
++	/* The driver records the first ARMCLK rate and applies later ones */
++	for (i = 0; i < 2 && clk_get_rate(&armclk) != hz; i++)
++		clk_set_rate(&armclk, hz);
++	printf("my355 cpu: armclk %lu Hz\n", clk_get_rate(&armclk));
++
++	return clk_get_rate(&armclk) == hz ? 0 : -EIO;
++#else
++	return -ENOSYS;
++#endif
++}
++
++static int my355_opp_uv(ulong mhz)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(my355_opps); i++)
++		if (my355_opps[i].mhz == mhz)
++			return my355_opps[i].uv;
++	printf("my355 cpu: %lu MHz is not a supported rate\n", mhz);
++	return 0;
++}
++
++static int do_my355_cpu(struct cmd_tbl *cmdtp, int flag, int argc,
++			char *const argv[])
++{
++	ulong mhz;
++	int uv;
++
++	if (argc != 2)
++		return CMD_RET_USAGE;
++	mhz = dectoul(argv[1], NULL);
++	uv = my355_opp_uv(mhz);
++	if (!uv || my355_vdd_cpu(uv, false) || my355_armclk(mhz))
++		return CMD_RET_FAILURE;
++	return CMD_RET_SUCCESS;
++}
++
++/*
++ * The RK817 keeps a coulomb counter and the kernel's last SOC and capacity
++ * across power-off. The counter decays while off, so only a rise (charge
++ * gained while off) is believed; otherwise the saved state is kept, as the
++ * vendor's fg_rk817.c does. FG_INIT makes the kernel take the result instead
++ * of restarting from 0. Register map and units from that driver.
++ */
++#define RK817_ADDR		0x20
++#define RK817_ID_MSB		0xed
++#define RK817_ID		0x8170
++#define RK817_GG_CON		0x56
++#define RK817_VOL_INSTANT	BIT(1)	/* BAT_VOL a sample, not an average */
++#define RK817_GG_STS		0x57
++#define RK817_BAT_CON		BIT(4)	/* battery was disconnected */
++#define RK817_PWRON_VOL_H	0x6b	/* the PMIC's own reading, at less load */
++#define RK817_OFF_CNT		0x6f
++#define RK817_Q_INIT_H3		0x70
++#define RK817_Q_PRES_H3		0x74
++#define RK817_CAP_INVALID	BIT(31)	/* of Q_PRES: it fell below zero */
++#define RK817_BAT_VOL_H		0x78
++#define RK817_VCALIB0_H		0x93
++#define RK817_VCALIB1_H		0x95
++#define RK817_SOC_REG0		0x9a
++#define RK817_REMAIN_CAP_REG0	0x9d
++#define RK817_NEW_FCC_REG0	0xa0
++#define RK817_FG_INIT		0xa5
++#define RK817_FG_INIT_DONE	BIT(7)
++#define RK817_SAMPLE_RES	10	/* mOhm, the Flip's tree */
++#define RK817_DESIGN_MAH	3000	/* design_capacity */
++#define RK817_QMAX_MAH		3300	/* design_qmax */
++#define RK817_MIN_FCC		500
++#define RK817_FULL		100000
++/* Below this the counter has not risen, it has only drifted (vendor's figure) */
++#define RK817_CHRG_MIN		10	/* mAh */
++
++/* How far the counter is believed */
++enum rk817_fg_basis {
++	RK817_FG_BOOT,		/* after a power-off: a rise only */
++	RK817_FG_AWAKE,		/* counted while U-Boot ran: any change */
++	RK817_FG_FULL,		/* the charger has just terminated */
++};
++
++/*
++ * The SOC and capacity to hand the kernel, from the ones it saved and the
++ * counter; true when the counter moved them. tests/test-fuel-gauge.sh
++ * compiles this function as it stands.
++ */
++static bool rk817_fg_decide(enum rk817_fg_basis basis, int pre_soc,
++			    int pre_cap, int now_cap, int fcc, int *soc, int *cap)
++{
++	bool moved = true;
++
++	if (basis == RK817_FG_FULL) {
++		*cap = fcc;
++		*soc = RK817_FULL;
++	} else if ((basis == RK817_FG_AWAKE && now_cap > 0) ||
++		   now_cap > pre_cap + RK817_CHRG_MIN) {
++		*cap = min(now_cap, fcc);
++		*soc = *cap == fcc ? RK817_FULL :
++		       pre_soc + (*cap - pre_cap) * RK817_FULL / fcc;
++	} else {
++		*cap = pre_cap;
++		*soc = pre_soc;
++		moved = false;
++	}
++	*soc = clamp(*soc, 0, RK817_FULL);
++	*cap = clamp(*cap, 0, fcc);
++	return moved;
++}
++
++/* A little-endian register of up to 3 bytes, or a negative error */
++static int rk817_read(struct udevice *dev, uint reg, int n)
++{
++	u8 b[3] = {};
++	int ret = dm_i2c_read(dev, reg, b, n);
++
++	return ret ? ret : b[0] | b[1] << 8 | b[2] << 16;
++}
++
++/* A big-endian pair (ID, voltages), or a negative error */
++static int rk817_read_be16(struct udevice *dev, uint reg)
++{
++	u8 b[2];
++	int ret = dm_i2c_read(dev, reg, b, 2);
++
++	return ret ? ret : b[0] << 8 | b[1];
++}
++
++/* A 4-byte counter, stored big-endian */
++static int rk817_read_q(struct udevice *dev, uint reg, u32 *q)
++{
++	u8 b[4];
++	int ret = dm_i2c_read(dev, reg, b, 4);
++
++	if (!ret)
++		*q = (u32)b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3];
++	return ret;
++}
++
++static int rk817_write3(struct udevice *dev, uint reg, u32 val)
++{
++	int i, ret = 0;
++
++	for (i = 0; i < 3 && !ret; i++)
++		ret = dm_i2c_reg_write(dev, reg + i, (val >> (8 * i)) & 0xff);
++	return ret;
++}
++
++/* A voltage register in mV, converted as the kernel does, or a negative error */
++static int rk817_mv(struct udevice *dev, uint reg)
++{
++	int c0 = rk817_read_be16(dev, RK817_VCALIB0_H);
++	int c1 = rk817_read_be16(dev, RK817_VCALIB1_H);
++	int raw = rk817_read_be16(dev, reg);
++	int k;
++
++	if (c0 < 0 || c1 < 0 || raw < 0 || c1 == c0)
++		return -EIO;
++	k = (4025 - 2300) * 1000 / (c1 - c0);
++	return k * raw / 1000 + 4025 - k * c1 / 1000;
++}
++
++static int rk817_get(struct udevice **pmic, const char *who)
++{
++	int id, ret;
++
++	ret = i2c_get_chip_for_busnum(0, RK817_ADDR, 1, pmic);
++	/* One two-byte read: it also proves the auto-increment the others need */
++	id = ret ? ret : rk817_read_be16(*pmic, RK817_ID_MSB);
++	if (id < 0 || (id & 0xfff0) != RK817_ID) {
++		printf("my355 %s: no RK817 at i2c0 0x%x (%d)\n", who, RK817_ADDR, id);
++		return -ENODEV;
++	}
++	return 0;
++}
++
++static int rk817_fg_sync(struct udevice *pmic, enum rk817_fg_basis basis)
++{
++	static const char *const moved_by[] = {
++		[RK817_FG_BOOT] = " (charged while off)",
++		[RK817_FG_AWAKE] = " (counted while up)",
++		[RK817_FG_FULL] = " (charged to full)",
++	};
++	int sts, off, fcc, pre_soc, pre_cap, now_cap, soc, cap, i, ret;
++	bool moved, fcc_fixed = false;
++	u32 q, init, adc;
++
++	/* A disconnected battery has no history: the kernel estimates from voltage */
++	sts = dm_i2c_reg_read(pmic, RK817_GG_STS);
++	if (sts < 0 || (sts & RK817_BAT_CON)) {
++		printf("my355 fg: first power-on, left to the kernel\n");
++		return 0;
++	}
++	fcc = rk817_read(pmic, RK817_NEW_FCC_REG0, 3);
++	pre_soc = rk817_read(pmic, RK817_SOC_REG0, 3);
++	pre_cap = rk817_read(pmic, RK817_REMAIN_CAP_REG0, 3);
++	off = rk817_read(pmic, RK817_OFF_CNT, 1);
++	if (fcc < 0 || pre_soc < 0 || pre_cap < 0 || off < 0) {
++		printf("my355 fg: gauge unreadable, left to the kernel\n");
++		return 0;
++	}
++	/* Unreadable is treated as invalid: a fall, so the saved state is kept */
++	if (rk817_read_q(pmic, RK817_Q_PRES_H3, &q))
++		q = RK817_CAP_INVALID;
++	if (rk817_read_q(pmic, RK817_Q_INIT_H3, &init))
++		init = 0;
++	/* Bailing out here would hand the kernel its halt path, which restarts
++	 * from 0; the vendor substitutes instead, and so does this */
++	if (fcc < RK817_MIN_FCC || fcc > RK817_QMAX_MAH) {
++		fcc = fcc < RK817_MIN_FCC ? RK817_DESIGN_MAH : RK817_QMAX_MAH;
++		fcc_fixed = true;
++	}
++	/* The vendor reads an invalid counter as 0, which is never a rise */
++	now_cap = q & RK817_CAP_INVALID ? 0 :
++		  q / 1000 * 1720 / 3600 / RK817_SAMPLE_RES;
++	moved = rk817_fg_decide(basis, pre_soc, pre_cap, now_cap, fcc, &soc, &cap);
++
++	ret = rk817_write3(pmic, RK817_SOC_REG0, soc) ||
++	      rk817_write3(pmic, RK817_REMAIN_CAP_REG0, cap) ||
++	      (fcc_fixed && rk817_write3(pmic, RK817_NEW_FCC_REG0, fcc));
++	/* Reload the counter; Q_INIT_L0 must change for the load to happen */
++	adc = cap * RK817_SAMPLE_RES * 3600 / 1720 * 1000;
++	if (init == adc)
++		adc++;
++	for (i = 0; i < 4 && !ret; i++)
++		ret = dm_i2c_reg_write(pmic, RK817_Q_INIT_H3 + i,
++				       (adc >> (8 * (3 - i))) & 0xff);
++	/* The vendor clears it here too; it is only reported now */
++	ret = ret || dm_i2c_reg_write(pmic, RK817_OFF_CNT, 0);
++	sts = dm_i2c_reg_read(pmic, RK817_FG_INIT);
++	ret = ret || sts < 0 ||
++	      dm_i2c_reg_write(pmic, RK817_FG_INIT, sts | RK817_FG_INIT_DONE);
++	printf("my355 fg: soc %d.%03d -> %d.%03d%%%s, cap %d -> %d mAh of %d, off %d, cnt %d mAh%s\n",
++	       pre_soc / 1000, pre_soc % 1000, soc / 1000, soc % 1000,
++	       moved ? moved_by[basis] : "", pre_cap, cap, fcc, off,
++	       now_cap, ret ? ", write failed" : "");
++
++	return ret;
++}
++
++static int do_my355_fg(struct cmd_tbl *cmdtp, int flag, int argc,
++		       char *const argv[])
++{
++	struct udevice *pmic;
++
++	if (rk817_get(&pmic, "fg"))
++		return CMD_RET_FAILURE;
++	return rk817_fg_sync(pmic, RK817_FG_BOOT) ? CMD_RET_FAILURE :
++						    CMD_RET_SUCCESS;
++}
++
++/*
++ * The PMIC charges with or without the SoC, but the charge LED is a SoC pin:
++ * U-Boot stays up to drive it until full or unplugged, as stock's charge
++ * screen does. It also refuses to boot a flat battery, as stock does.
++ */
++#define RK817_CHRG_OUT		0xe4	/* charge current and voltage */
++#define RK817_USB_CTRL		0xe5
++#define RK817_ILIM_1500MA	0x0b	/* input current, with its enable bit */
++#define RK817_VLIM_4500MV	0xd0	/* input voltage floor, with its enable bit */
++#define RK817_CHRG_TERM		0xe6
++/* Set again by a battery reconnect, costing ~8 mA while off. The vendor
++ * clears it at probe; charge mode can power off before the kernel has run */
++#define RK817_SYS_CAN_SD	BIT(7)
++#define RK817_CHRG_STS		0xeb
++#define RK817_CHG_STS		GENMASK(6, 4)
++#define RK817_CHG_DEAD		1
++#define RK817_CHG_TRICKLE	2
++#define RK817_CHG_CCCV		3
++#define RK817_CHG_TERM		4
++#define RK817_SYS_STS		0xf0
++#define RK817_PLUG_IN_STS	BIT(6)
++#define RK817_ON_SOURCE		0xf5
++#define RK817_ON_PLUG_IN	BIT(6)
++#define RK817_INT_STS0		0xf8	/* write 1 to clear */
++#define RK817_PWRON_FALL	BIT(0)	/* pressed */
++#define RK817_PWRON_RISE	BIT(1)	/* released */
++#define RK817_PWRON_INTS	GENMASK(3, 0)
++/* The kernel's reboot-mode register */
++#define MY355_BOOT_MODE_REG	0xfdc20200
++#define MY355_REBOOT_FLAG	0x5242c300	/* + mode; + 0 is normal */
++#define MY355_BOOT_CHARGING	(MY355_REBOOT_FLAG + 11)
++#define MY355_CHARGE_LED	"A18"	/* gpio0 PC2 */
++#define MY355_WORK_LED		"A12"	/* gpio0 PB4, lit from power-on */
++#define MY355_CHARGE_POLL_MS	100
++#define MY355_LONG_PRESS_MS	2000	/* the vendor's KEY_LONG_DOWN_MS */
++/* The vendor tree's uboot-low-power-voltage, plus the 50 mV it adds */
++#define MY355_LOW_MV		3400
++#define MY355_VOL_MIN_MV	2500	/* below: not a battery reading */
++
++/* Timer event stream (CNTHCTL_EL2 / CNTKCTL_EL1): an event every 2^15
++ * ticks, 1.4 ms at 24 MHz, so WFE can wait out the poll in standby */
++#define CNTCTL_EVNT		GENMASK(7, 2)
++#define CNTCTL_EVNT_ON		(BIT(2) | (14 << 4))
++
++static u64 my355_event_stream(u64 set)
++{
++	u64 old;
++
++	if (current_el() == 2) {
++		asm volatile("mrs %0, cnthctl_el2" : "=r" (old));
++		asm volatile("msr cnthctl_el2, %0" : : "r" ((old & ~CNTCTL_EVNT) | set));
++	} else {
++		asm volatile("mrs %0, cntkctl_el1" : "=r" (old));
++		asm volatile("msr cntkctl_el1, %0" : : "r" ((old & ~CNTCTL_EVNT) | set));
++	}
++	isb();
++	return old & CNTCTL_EVNT;
++}
++
++static void my355_idle_ms(ulong ms)
++{
++	ulong start = get_timer(0);
++
++	while (get_timer(start) < ms)
++		wfe();
++}
++
++static bool my355_led(struct gpio_desc *led, const char *name, int on)
++{
++	if (dm_gpio_lookup_name(name, led) || dm_gpio_request(led, "my355") ||
++	    dm_gpio_set_dir_flags(led, GPIOD_IS_OUT))
++		return false;
++	dm_gpio_set_value(led, on);
++	return true;
++}
++
++static void my355_led_free(struct gpio_desc *led, bool have, int on)
++{
++	if (!have)
++		return;
++	dm_gpio_set_value(led, on);
++	dm_gpio_free(led->dev, led);
++}
++
++/*
++ * Too flat to boot. Both readings must agree: BAT_VOL may predate this
++ * power-on, and a false alarm would keep the unit from booting at all.
++ */
++static bool my355_battery_low(struct udevice *pmic)
++{
++	int now = rk817_mv(pmic, RK817_BAT_VOL_H);
++	int on = rk817_mv(pmic, RK817_PWRON_VOL_H);
++
++	printf("my355 charge: battery %d mV, %d mV at power-on\n", now, on);
++	return now > MY355_VOL_MIN_MV && now < MY355_LOW_MV &&
++	       on > MY355_VOL_MIN_MV && on < MY355_LOW_MV;
++}
++
++/*
++ * The PMIC powers on with a 450 mA input limit, which the kernel and the
++ * vendor U-Boot both raise; without this, charging off trickles at ~340 mA
++ * once the SoC has taken its share. The vendor sets the input voltage floor
++ * too, which backs the current off on a source that sags, and leaves the
++ * charge current register alone: so does this.
++ */
++static void my355_charge_limits(struct udevice *pmic)
++{
++	int usb = dm_i2c_reg_read(pmic, RK817_USB_CTRL);
++
++	dm_i2c_reg_write(pmic, RK817_USB_CTRL,
++			 RK817_VLIM_4500MV | RK817_ILIM_1500MA);
++	printf("my355 charge: usb_ctrl 0x%02x -> 0x%02x, chrg_out 0x%02x\n",
++	       usb, dm_i2c_reg_read(pmic, RK817_USB_CTRL),
++	       dm_i2c_reg_read(pmic, RK817_CHRG_OUT));
++}
++
++static void my355_power_off(struct udevice *pmic)
++{
++	dm_i2c_reg_clrset(pmic, RK817_CHRG_TERM, RK817_SYS_CAN_SD, 0);
++	sysreset_walk_halt(SYSRESET_POWER_OFF);
++}
++
++static int do_my355_charge(struct cmd_tbl *cmdtp, int flag, int argc,
++			   char *const argv[])
++{
++	struct gpio_desc led, work;
++	struct udevice *pmic;
++	u32 mode = readl(MY355_BOOT_MODE_REG);
++	ulong pressed = 0;
++	int i, src, sys, chg, ints;
++	bool cold, low, held = false, have_led, have_work;
++	const char *why;
++	u64 evnt;
++
++	writel(MY355_REBOOT_FLAG, MY355_BOOT_MODE_REG);
++	if (rk817_get(&pmic, "charge"))
++		return CMD_RET_FAILURE;
++	/* An average still holds readings from before the power-off. The
++	 * vendor U-Boot switches too; the kernel's probe switches back */
++	dm_i2c_reg_clrset(pmic, RK817_GG_CON, 0, RK817_VOL_INSTANT);
++	/* 0 on a cold start; U-Boot and the kernel leave it flagged. Only a cold
++	 * start has a fresh PWRON_VOL, and ON_SOURCE survives a reboot */
++	cold = (mode & ~0xffU) != MY355_REBOOT_FLAG;
++	low = cold && my355_battery_low(pmic);
++	sys = dm_i2c_reg_read(pmic, RK817_SYS_STS);
++	src = dm_i2c_reg_read(pmic, RK817_ON_SOURCE);
++	if (low && (sys < 0 || !(sys & RK817_PLUG_IN_STS))) {
++		printf("my355 charge: battery too low to boot, powering off\n");
++		/* Three blinks: the only way to say why it went dark */
++		have_led = my355_led(&led, MY355_CHARGE_LED, 0);
++		for (i = 0; have_led && i < 6; i++) {
++			dm_gpio_set_value(&led, !(i & 1));
++			mdelay(200);
++		}
++		my355_power_off(pmic);
++		return CMD_RET_FAILURE;
++	}
++	if (mode != MY355_BOOT_CHARGING && !low &&
++	    !(cold && src >= 0 && (src & RK817_ON_PLUG_IN)))
++		return CMD_RET_SUCCESS;
++
++	printf("my355 charge: %s\n", mode == MY355_BOOT_CHARGING ?
++	       "reboot charge" : low ? "battery too low to boot, charging" :
++	       "woken by the charger");
++	my355_charge_limits(pmic);
++	have_led = my355_led(&led, MY355_CHARGE_LED, 0);
++	have_work = my355_led(&work, MY355_WORK_LED, 0);
++	/* The vendor's floor for every bin; the boot path raises both again */
++	if (!my355_armclk(408))
++		my355_vdd_cpu(my355_opp_uv(408), true);
++	evnt = my355_event_stream(CNTCTL_EVNT_ON);
++	rk817_fg_sync(pmic, RK817_FG_BOOT);
++	dm_i2c_reg_write(pmic, RK817_INT_STS0, RK817_PWRON_INTS);
++
++	for (;;) {
++		sys = dm_i2c_reg_read(pmic, RK817_SYS_STS);
++		chg = dm_i2c_reg_read(pmic, RK817_CHRG_STS);
++		ints = dm_i2c_reg_read(pmic, RK817_INT_STS0);
++		if (ints > 0 && (ints & RK817_PWRON_INTS)) {
++			dm_i2c_reg_write(pmic, RK817_INT_STS0,
++					 ints & RK817_PWRON_INTS);
++			/* Both edges within one poll are a short press */
++			if (ints & RK817_PWRON_RISE) {
++				held = false;
++			} else if (ints & RK817_PWRON_FALL) {
++				held = true;
++				pressed = get_timer(0);
++			}
++		}
++		if (held && get_timer(pressed) >= MY355_LONG_PRESS_MS) {
++			held = false;
++			if (!low || rk817_mv(pmic, RK817_BAT_VOL_H) >= MY355_LOW_MV)
++				break;
++			printf("my355 charge: power key held, battery still too low\n");
++		}
++		chg = chg < 0 ? 0 : FIELD_GET(RK817_CHG_STS, chg);
++		why = sys < 0 || !(sys & RK817_PLUG_IN_STS) ? "unplugged" :
++		      chg == RK817_CHG_TERM ? "full" : NULL;
++		if (why) {
++			printf("my355 charge: %s, powering off\n", why);
++			rk817_fg_sync(pmic, chg == RK817_CHG_TERM ?
++				      RK817_FG_FULL : RK817_FG_AWAKE);
++			my355_power_off(pmic);
++			return CMD_RET_FAILURE;
++		}
++		/* Dark while paused or refused: the PMIC resumes on its own */
++		if (have_led)
++			dm_gpio_set_value(&led, chg >= RK817_CHG_DEAD &&
++						chg <= RK817_CHG_CCCV);
++		my355_idle_ms(MY355_CHARGE_POLL_MS);
++	}
++
++	printf("my355 charge: power key held, booting\n");
++	rk817_fg_sync(pmic, RK817_FG_AWAKE);
++	my355_led_free(&led, have_led, 0);
++	my355_led_free(&work, have_work, 1);
++	my355_event_stream(evnt);
++	return CMD_RET_SUCCESS;
++}
++
++U_BOOT_LONGHELP(my355,
++	"mark <name>       - add a named bootstage record\n"
++	"my355 log <addr> <max> - copy the console record to <addr>;\n"
++	"                        its length goes in $my355_logsize\n"
++	"my355 cpu <MHz>        - raise vdd_cpu if needed, then set the core clock\n"
++	"my355 fg               - reconcile the RK817 fuel gauge for the kernel\n"
++	"my355 charge           - power off a flat battery on a cold start; if\n"
++	"                        the charger started the board, the kernel\n"
++	"                        restarted with 'charge' or the battery is flat,\n"
++	"                        light the charge LED until full or unplugged,\n"
++	"                        then power off. Holding the power key boots");
++
++U_BOOT_CMD_WITH_SUBCMDS(my355, "BaseOS my355 boot helpers", my355_help_text,
++	U_BOOT_SUBCMD_MKENT(mark, 2, 1, do_my355_mark),
++	U_BOOT_SUBCMD_MKENT(log, 3, 1, do_my355_log),
++	U_BOOT_SUBCMD_MKENT(cpu, 2, 1, do_my355_cpu),
++	U_BOOT_SUBCMD_MKENT(fg, 1, 1, do_my355_fg),
++	U_BOOT_SUBCMD_MKENT(charge, 1, 1, do_my355_charge));

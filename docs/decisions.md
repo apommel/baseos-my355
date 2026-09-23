@@ -56,14 +56,40 @@ SPI NAND, **not** sector 64 as on SD), emission of the `bootdev` ATAG, and a DDR
 blob BL31 accepts. Each is individually known; together they are a real piece of
 work, and every iteration is a preloader write.
 
-### Keep the vendor U-Boot
+### Mainline U-Boot, since 0.7.0
 
-Replacing it is the largest remaining boot-time lever — 1.2–1.7 s — and needs no
-NAND write, because the card already carries the `uboot` partition. Evaluated and
-**shelved**: mainline U-Boot has no VOP2 driver, so a boot logo means writing
-one, and a dark panel until the kernel comes up is a worse product than a slower
-boot. Tuning the vendor one from its device tree was tried and measured at 22 ms.
-Both in [U-Boot](uboot.md).
+Replacing it needs no NAND write, because the card already carries the `uboot`
+partition, and it fails safe: a bad FIT sends the SPL on to stock in NAND. The
+1.2–1.7 s once projected for it is **refuted**, and the first build to boot
+(2026-09-05) was 0.16 s *slower*, because it handed the kernel 816 MHz where the
+vendor hands 1104. Eight changes later — that clock, a zstd kernel, the card
+driven at the 50 MHz it only claimed to use, the data cache on before
+relocation, the GPT held in the block cache, decompression at 1800 MHz, the
+Flip's own control tree and the zstd decoder at `-O2` — it reaches `Run /init`
+**1.8 s** ahead of the vendor path.
+
+It costs the early boot logo — mainline U-Boot has no VOP2 driver, so `rcS`
+draws it, on the panel at 2.00 s against ~1.0 s — and the charge screen (the
+charge LED and the low-battery guard are kept). And it has to do by hand what the vendor
+kernel silently relied on the vendor U-Boot for: the OP-TEE reservation, the
+display plane assignment (without it the panel stays black under NextUI) and the
+fuel gauge (without it the battery reads 0% when full). Each was found by its
+failure, so there may be a fourth.
+
+One of them turned into a gain. Giving each display a VOP2 window of its own
+runs the panel and HDMI at the same time with independent content, and makes
+hot-plug and hot-unplug work. Stock cannot: it disables the panel to use a TV,
+and has to reboot to switch.
+
+It became the default on 2026-09-19 and first shipped in 0.7.0;
+`MY355_UBOOT=vendor` still builds the vendor path. It replaces U-Boot proper and
+nothing else: BL31, OP-TEE and the SPL's control tree stay the vendor's,
+byte-for-byte. Its seven U-Boot patches and its control tree are ours to carry;
+three of the patches — the RK3568 SD clock (an upstream bug), the data cache
+before relocation and the 1608/1800 MHz CPU rates — are worth sending upstream.
+The patches, the control tree and the measurements are in [U-Boot](uboot.md)
+Part 3; tuning the vendor U-Boot from its device tree instead was tried and
+measured at 22 ms (Part 1).
 
 ### No signing key for updates
 
@@ -85,8 +111,8 @@ the device. NextUI is slot-agnostic: nothing in `my355.sh` or
 - **Root is mounted `rw`.** A read-only root with writable state on `/data` is
   the target; nothing on the card depends on a writable root today except the
   update trial state, which already lives on `/data`.
-- **The real resource-size threshold.** 465 408 bytes boots, 943 616 hangs
-  U-Boot before display init. The build stays under the proven figure, but the
+- **The real resource-size threshold** (vendor U-Boot path only). 465 408 bytes
+  boots, 943 616 hangs U-Boot before display init. The build stays under the proven figure, but the
   actual limit is unknown ([the card](card.md)).
 - **spruceOS as a frontend.** Its card would be mounted and its `updater`
   executed, but whether it finds the userland it expects in the harvest is
