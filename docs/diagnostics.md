@@ -80,9 +80,10 @@ at power-on only matters for timing boots.
 | dark, LED never lit | U-Boot died during its own init, before the boot script — the one blind case; the last change is the suspect |
 | dark, LED stays lit | stuck finding or reading the `boot` FIT: read the log |
 | dark, LED lit then off | the FIT was read; the hang is in `bootm` or the kernel: read the log |
+| the charge LED blinks three times, then off | any build: the battery is too flat to boot and no charger is in. The log's `my355 charge: battery N mV, N mV at power-on` gives both readings ([U-Boot](uboot.md), *Charging while off*) |
 | the device switches itself off | `bootm` refused the FIT, the read failed, or the CPU clock would not come back to 1104 MHz after decompression; the log says which |
 | adb up, frontend running, panel black with the backlight on | the kernel's tree lacks the VOP2 plane assignment: dmesg says `use default plane mask` |
-| battery far from what its voltage says | the fuel gauge was not reconciled: dmesg lacks `rk817-bat: initialized yet..`, or the log's `my355 fg:` line says why. It carries `cnt N mAh`, what the counter made of it, which is only ever reported unless `(charged while off)` appears — the one case where the counter is allowed to move the SOC ([U-Boot](uboot.md)) |
+| battery far from what its voltage says | the fuel gauge was not reconciled: dmesg lacks `rk817-bat: initialized yet..`, or the log's `my355 fg:` line says why. It carries `cnt N mAh`, what the counter made of it, which is only ever reported unless `(charged while off)`, `(counted while up)` or `(charged to full)` appears — the cases where the counter or the charger is allowed to move the SOC ([U-Boot](uboot.md)) |
 
 **U-Boot's console output** is recorded and written to the last 64 KiB of the
 active `boot` partition just before hand-off, and again if the hand-off fails.

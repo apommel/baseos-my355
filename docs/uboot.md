@@ -734,7 +734,8 @@ up as the rise. A battery reconnected from empty (`BAT_CON`) has no saved state
 and is left to the kernel, which is the vendor's `rk817_bat_first_pwron` case
 and the only one that reads the power-on voltage.
 
-The power-on voltage is deliberately **not** used here otherwise. `PWRON_VOL`
+The power-on voltage is deliberately **not** used for the SOC. (The
+low-battery guard reads it only as a floor, *Charging while off*.) `PWRON_VOL`
 against the cell's `ocv_table` was tried and rejected: it reads accurately at
 the top of the curve but not in the middle, where it put a cell the counter had
 tracked down to 75% at 92% ([history](history.md), 2026-09-20). That is the
@@ -749,15 +750,20 @@ is replaced by the design capacity or `qmax`, as the vendor's `rk817_bat_get_fcc
 does. Only an unreadable PMIC is handed over.
 
 The kernel's charger driver sets input and charge limits itself from its tree
-(`rk817_charge_pre_init`), so nothing else of `fg_rk817.c` is needed. The log
-line carries both readings and which way it went:
+(`rk817_charge_pre_init`), so nothing else of `fg_rk817.c` is needed. Each
+register is read in one multi-byte transfer: verified on this unit to match
+byte-by-byte reads, and `rk817_get`'s two-byte ID read fails the command if the
+PMIC ever stopped auto-incrementing. The decision itself is
+`rk817_fg_decide()`, which `tests/test-fuel-gauge.sh` compiles as it stands.
+The log line carries both readings and which way it went:
 
 ```
 my355 fg: soc 74.999 -> 74.999%, cap 2346 -> 2346 mAh of 3000, off 7, cnt 2062 mAh
 ```
 
 `cnt` is what the counter made of it and is only ever reported unless
-`(charged while off)` appears, in which case it is what moved the SOC. `off` is
+`(charged while off)`, `(counted while up)` or `(charged to full)` appears, in
+which case it is what moved the SOC. `off` is
 `OFF_CNT`, which is reported but not acted on: its step is about ten minutes,
 not the minute the vendor driver reads it as, so the vendor kernel's own
 `pwroff_min >= 30` gate is really about five hours.
@@ -771,33 +777,69 @@ with the SoC off it stays dark. Stock keeps its U-Boot running to light it and
 draw the battery screen; `my355 charge`, first in the boot script, does the
 same without the screen:
 
-- **When.** The PMIC was started by the charger (`ON_SOURCE` bit 6), or the
-  kernel restarted with `reboot charge`. `ON_SOURCE` survives a reboot, so it
-  only counts on a cold start, which the reboot-mode register tells apart: 0
-  then, `0x5242c3xx` once U-Boot or the kernel has run. U-Boot's own boot-mode
-  handling is off (`ROCKCHIP_BOOT_MODE_REG=0x0`) because it would clear the
-  register first. Every other boot costs three I2C reads.
+- **When.** The PMIC was started by the charger (`ON_SOURCE` bit 6), the
+  kernel restarted with `reboot charge`, or the battery is too flat to boot
+  (below). `ON_SOURCE` survives a reboot, so it only counts on a cold start,
+  which the reboot-mode register tells apart: 0 then, `0x5242c3xx` once U-Boot
+  or the kernel has run. U-Boot's own boot-mode handling is off
+  (`ROCKCHIP_BOOT_MODE_REG=0x0`) because it would clear the register first.
+  Every other boot costs a few I2C transfers.
+- **Too flat to boot**, on a cold start: `BAT_VOL` and `PWRON_VOL` both under
+  3400 mV, the vendor tree's `uboot-low-power-voltage` of 3350 plus the 50 the
+  vendor adds, converted as the kernel does. `BAT_VOL` is switched to single
+  samples first (`GG_CON` bit 1), as the vendor U-Boot does: the kernel keeps
+  it averaged, and the average still holds readings from before the power-off
+  (3926 mV on a battery the kernel then read at 4086). The kernel's probe
+  switches it back. Both readings must still agree, because the first sample
+  may not be ready yet and a false alarm would keep the unit from booting. It
+  is `PWRON_VOL` that decides in practice: U-Boot's own load pulls `BAT_VOL`
+  down, by 26 mV at 99% and 96 mV at 11% on this unit, so at 11% the two read
+  3388 and 3484 mV around a 3400 mV threshold and the boot went through.
+  `PWRON_VOL` is not frozen at power-on either — while running at 10% it read
+  3707 mV against `BAT_VOL`'s 3691 — so both inputs follow the battery. Without a
+  charger the charge LED blinks three times and the board powers off, as the
+  vendor's `charge_extrem_low_power()` does; with one, charge mode starts and
+  the power key is refused until `BAT_VOL` is back over 3400 mV. A warm reboot
+  is never refused: its `PWRON_VOL` dates from the cold start, and the kernel
+  has its own low-voltage shutdown.
 - **Shut down with the charger in.** The PMIC powers off and no plug-in event
   ever wakes it. `/usr/sbin/poweroff` (the one NextUI runs) flags it with the
   charger online, and `rcK` then ends in `rebootmode charge` instead: a
   `LINUX_REBOOT_CMD_RESTART2` that busybox cannot issue. The vendor kernel lists
   `charge` among the reboots that keep the PMIC up, and its reboot-mode driver
   writes `0x5242c30b` to `PMU_GRF_OS_REG0`.
+- **The charge current.** The PMIC powers on limiting its input to 450 mA, so
+  the first charge-mode session measured ~340 mA reaching the battery once the
+  SoC had taken its share: 113 mAh in 20 minutes (2026-09-22). The kernel
+  raises the limits at probe, which is why charging is fast under BaseOS, and
+  the vendor U-Boot raises them too. `my355 charge` now writes the same
+  `USB_CTRL` the kernel ends up with — input 1500 mA, input voltage floor
+  4.5 V — and, like the vendor, leaves the charge current register alone: it
+  only sets that from a temperature-compensation table the Flip's tree does
+  not have. The floor is what makes 1500 mA safe on a port that cannot supply
+  it, since the PMIC backs off as the source sags; the vendor would use 450 mA
+  for a port its USB detection calls a plain one, which needs a USB PHY driver
+  this build does not have. Both registers are logged.
 - **Then** the `work` LED (`gpio0 PB4`, lit from power-on) goes off, and
   every 100 ms the charge LED follows `CHRG_STS`: lit for dead, trickle and
-  CC/CV. The PMIC is powered off when it reads terminated, when the cable is
-  pulled, or after 60 s without charging (a paused or refused charge, which
-  the PMIC resumes on its own). The power key (`INT_STS0` `PWRON_FALL`) boots
-  instead, with the `work` LED lit again.
+  CC/CV, dark while a charge is paused or refused, which the PMIC resumes on
+  its own. The PMIC is powered off when it reads terminated or when the cable
+  is pulled; U-Boot stays up otherwise, powered by the charger. Holding the
+  power key for 2 s, the vendor's `KEY_LONG_DOWN_MS`, boots instead, with the
+  `work` LED lit again: `INT_STS0` latches the press (`PWRON_FALL`) and the
+  release (`PWRON_RISE`), both cleared as they are read, and both in one poll
+  count as a short press.
 - **Powering off** clears `SYS_CAN_SD` (`0xe6` bit 7) first. A battery
   reconnect sets it, and while set it costs ~8 mA off (the
   [Zetarancio notebook](https://github.com/Zetarancio/Miyoo-Flip-Mainline-Linux-Reverse-Engineering/blob/main/docs/miyoo-flip-power-off-investigation.md));
   the vendor U-Boot and kernel clear it at probe, but charge mode can power
   off before the kernel has ever run.
 - **The gauge.** Unlike a real power-off, the counter works while U-Boot runs,
-  so `my355 fg`'s bookkeeping runs on entry and again on exit. The exit is where
-  the charge is saved as SOC, before the counter decays with the rails down. A
-  terminated charge writes 100% and the full capacity (`(charged to full)`).
+  so `my355 fg`'s bookkeeping runs on entry and again on exit, and on exit any
+  change is taken, not only a rise over 10 mAh (`(counted while up)`). The exit
+  is where the charge is saved as SOC, before the counter decays with the rails
+  down; a boot by the power key saves it the same way first. A terminated
+  charge writes 100% and the full capacity (`(charged to full)`).
 
 It runs at the least the SoC allows without new drivers: the one core U-Boot
 uses at 408 MHz and `vdd_cpu` at 850 mV (the vendor's floor for every bin, down
@@ -808,15 +850,13 @@ both back up (`my355 cpu 1104`). Not done: the DDR stays at its trained rate
 
 Against the vendor's
 [`charge_animation.c`](https://github.com/rockchip-linux/u-boot/blob/next-dev/drivers/power/charge_animation.c),
-three deliberate differences. The vendor stays up once full, handing over to
+two deliberate differences. The vendor stays up once full, handing over to
 a *charging-full* LED the Flip does not have; this powers off, as dark as a
-normal shutdown. The vendor boots on a long press, a short one toggling its
-screen; with no screen, any press boots. And the vendor idles in PSCI system
-suspend, with
+normal shutdown. And the vendor idles in PSCI system suspend, with
 the regulators in their sleep states, which needs interrupts and a wake-up
 source mainline U-Boot does not have here; WFE is the step short of that. The
-rest matches: the exit on unplug, `reboot charge` (`BOOT_CHARGING`, cleared
-once read), the gauge saved before powering off, and on termination the full
+rest matches: the 2 s press to boot, the exit on unplug, the low-battery
+guard, `reboot charge` (`BOOT_CHARGING`, cleared once read), the gauge saved before powering off, and on termination the full
 capacity loaded into the counter (`rk817_bat_finish_chrg`), though the vendor
 walks the SOC up to 100% where this writes it at once.
 
@@ -1022,8 +1062,9 @@ adds the console record and the charge LED; how to read them is in
 
 1. **Cold boots of the release build.** Its timings above are warm reboots;
    the debug builds before it matched cold boots to 0.1 ms.
-2. **The untested paths:** charge mode's power key and its 60-second give-up
-   (*Charging while off*), and an update from 0.6.0, which swaps the vendor
+2. **The untested paths:** charge mode's 2 s power key, a charge left paused,
+   and the low-battery guard with and without a charger (*Charging while
+   off*), and an update from 0.6.0, which swaps the vendor
    `uboot` and `boot` slots for these in one step.
 3. **NextUI's `my355.sh` change**, which stops it clearing `/dev/fb0` on
    BaseOS, in the NextUI release users will run. Without it the `rcS` logo is
@@ -1046,9 +1087,10 @@ decompression and 0.12 s init before the boot script.
 **Upkeep:**
 
 7. **`0004`, `0005` and `0006` upstream.**
-8. The fuel gauge: its 13.5 ms (about 30 single-register transfers; bulk reads
-   would cut them), and the resting-voltage recalibration the kernel skips once
-   `FG_INIT` is set.
+8. The fuel gauge: the resting-voltage recalibration the kernel skips once
+   `FG_INIT` is set, so discharge while off is not seen until the kernel's
+   own low-voltage handling. Its 13.5 ms should drop with multi-byte reads:
+   re-measure.
 9. A U-Boot boot logo (*The boot logo*, above), if 2.00 s is not enough. The
    cheaper levers for it are everything before `start_kernel`, which moves it
    one for one, and the kernel's `rk3x_i2c_driver_init` (146 ms in the last
@@ -1056,9 +1098,9 @@ decompression and 0.12 s init before the boot script.
 10. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
-the early boot logo (no VOP2 driver; `rcS` draws one at 2.00 s against ~1.0 s), the
-low-battery guard, the charge animation's screen (its LED is kept, *Charging
-while off*), and `androidboot.serialno`
+the early boot logo (no VOP2 driver; `rcS` draws one at 2.00 s against ~1.0 s),
+the charge animation's screen (its LED and the low-battery guard are kept,
+*Charging while off*), and `androidboot.serialno`
 (`usb-gadget-adb` falls back to the machine id). The `.hdmi` device tree variant
 is not given up but obsolete: the plane split above runs both displays at once,
 which is what stock used that variant to avoid having to do. It also

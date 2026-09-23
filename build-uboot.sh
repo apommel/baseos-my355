@@ -79,7 +79,7 @@ eval "$(python3 "$HERE/tools/mkfit.py" addresses)"
 # powered from here, rkbootimg.py can drop the kernel's power-up waits.
 PANEL="gpio set A23;"
 # First, before the panel: charging off stays in U-Boot with the charge LED
-# lit, until full, unplugged or the power key.
+# lit, until full, unplugged or the power key held; a flat battery powers off.
 CHARGE="my355 charge;"
 # PREP is `;`-separated: the boot survives each step refusing.
 # The core clock before the card, so the read and the decompression run at it

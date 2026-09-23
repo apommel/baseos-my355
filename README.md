@@ -45,9 +45,9 @@ frame was last measured one step before the final U-Boot changes, which took
 
 Mainline U-Boot has no display driver for this SoC, so the boot logo is drawn by
 `rcS` and reaches the panel at 2.00 s rather than ~1.0 s. What the vendor
-U-Boot did for the kernel is redone here: the battery gauge's bookkeeping, and
-the charge LED while charging off; its low-battery guard and charge screen are
-gone. `MY355_UBOOT=vendor` still builds the 0.6.0 path. Where the rest goes, and
+U-Boot did is redone here: the battery gauge's bookkeeping, the charge LED
+while charging off and the refusal to boot a flat battery; only its charge
+screen is gone. `MY355_UBOOT=vendor` still builds the 0.6.0 path. Where the rest goes, and
 what is left to try, is in [docs/boot-time.md](docs/boot-time.md).
 
 ## New in 0.7.0
