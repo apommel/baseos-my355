@@ -31,6 +31,8 @@
 /usr/lib/libatomic.so.1
 ## Used by some Paks
 /usr/lib/libutil.so.1
+## Rockchip RGA 2D blitter; used by RetroArch
+/usr/lib/librga.so.2
 
 ## GPU: Mali blob + the EGL/GLES shims NextUI's GFX_init opens
 /usr/lib/libmali.so.1
