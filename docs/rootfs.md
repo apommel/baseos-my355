@@ -154,6 +154,14 @@ process (SIGTERM, at most 1 s, SIGKILL), unmounts the frontend's binds, the card
 and `/data`, and puts `/` back to read-only in case it was remounted for
 development. Without that, the `/data` journal replays on every boot.
 
+An unmount that fails is retried every 50 ms for up to 2 s before `rcK` settles
+for read-only. A shutdown that does not come from NextUI (`reboot` over adb, for
+one) finds `nextui.elf` still running. It catches SIGTERM and carries on, so it
+is killed, and for 0.15–0.2 s after that the card stays busy although no process
+holds anything on it any more. Before the retry, that left the card writable and
+its FAT dirty flag set. Shutdowns from NextUI's own menu never hit this:
+`nextui.elf` has already exited.
+
 ### The root is read-only
 
 `ro` on the kernel command line, and nothing remounts it. Runtime state lives on

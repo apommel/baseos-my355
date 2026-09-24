@@ -47,7 +47,16 @@ while others && [ "$i" -lt 10 ]; do /bin/usleep 50000; i=$((i + 1)); done
 log "unmounting"
 /bin/sync
 for m in $(/usr/bin/awk '$2 != "/" && $2 !~ /^\/(proc|sys|dev)(\/|$)/ && $2 !~ /^\/(run|tmp|var)$/ { print $2 }' /proc/mounts | /usr/bin/tac); do
-	/bin/umount "$m" 2>/dev/null && continue
+	# The kernel can hold a killed process's files a moment after it is gone
+	# (nextui.elf's, with no process left holding the card), so retry, up to 2 s.
+	i=0
+	until /bin/umount "$m" 2>/dev/null; do
+		i=$((i + 1))
+		[ "$i" -le 40 ] || break
+		/bin/usleep 50000
+	done
+	[ "$i" -eq 0 ] && continue
+	if [ "$i" -le 40 ]; then log "umount $m took $i retries"; continue; fi
 	/bin/mount -o remount,ro "$m" 2>/dev/null && r="read-only" || r="still writable"
 	log "umount $m failed, left $r"
 done
