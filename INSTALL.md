@@ -100,9 +100,9 @@ occasional second card works, and an empty one changes nothing.
 
 ## How to update BaseOS?
 
-To update BaseOS, you can simply re-flash the SD card. If you are using a one-card
-setup and do not want to overwrite your front-end data, the `.bosupd` file can be
-used to update only the OS without re-flashing the card.
+To update BaseOS, you can simply re-flash the SD card. The `.bosupd` file can also be
+used to update only the OS without re-flashing the card. This can be of interest if
+you are using a one-card setup and do not want to overwrite your front-end data.
 
 Download `baseos-my355-<version>.bosupd` and copy it to the root of either card,
 then power on. The screen shows **UPDATING SYSTEM** with a progress bar for about a
