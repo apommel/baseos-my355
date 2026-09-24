@@ -124,8 +124,9 @@ at any earlier moment leaves the card byte-identical to before. `data` and
 saves and settings that a reflash would destroy.
 
 All three regions are written every time, even when only the rootfs changed.
-Comparing first would save 48 MiB of writes and cost a special case, because the
-running rootfs is mounted `rw` and so never matches its own image.
+Comparing first would save 48 MiB of writes. Since the rootfs is mounted
+read-only, the running slot still matches its own image, so this is no longer
+blocked; it is just not done.
 
 `gptslot` (from `src/gptslot.c`) does the arithmetic and derives the
 geometry from the table alone: the regions tile forward from LBA 16384 — the one
@@ -227,7 +228,7 @@ the FDT property rather than padding it in place — the same relayout the
 `sd-uhs` flags need, and this U-Boot accepts both:
 
 ```
-console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait rw init=/init quiet
+console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait ro init=/init quiet
 cpufreq.default_governor=performance
 initcall_blacklist=tracer_init_tracefs,ohci_platform_init,alpu_init
 ```

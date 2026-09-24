@@ -4,8 +4,8 @@
 . /usr/share/baseos/log.sh
 
 # Host keys on /data: stock regenerates them onto tmpfs every boot, so its
-# fingerprint keeps changing.
-/bin/mkdir -p /data/dropbear
+# fingerprint keeps changing. /root links to /data/root, the root is read-only.
+/bin/mkdir -p /data/dropbear /data/root
 for t in rsa ed25519; do
 	k=/data/dropbear/dropbear_${t}_host_key
 	[ -f "$k" ] || /usr/sbin/dropbearkey -t "$t" -f "$k" >/dev/null 2>&1

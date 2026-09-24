@@ -53,7 +53,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   ln -sf lib      "$R"/lib64
 
   mkdir -p "$R"/proc "$R"/sys "$R"/dev "$R"/tmp "$R"/run "$R"/var \
-           "$R"/data "$R"/mnt/SDCARD "$R"/root "$R"/etc \
+           "$R"/data "$R"/mnt/SDCARD "$R"/etc \
            "$R"/userdata  # the frontend bind-mounts its card copy here, as on stock
 
   # Stock uses the lowercase path, NextUI the uppercase one.
@@ -127,6 +127,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # Same target as stock: NextUI copies the chosen zone into /userdata/localtime,
   # which the frontend bind-mounts onto its card.
   ln -sf /userdata/localtime "$R"/etc/localtime
+
+  # The root is mounted read-only, so the home of root (shell history, SSH
+  # keys) lives on /data; /etc/init.d/dev creates it.
+  ln -sfn /data/root "$R"/root
 
   # resolv.conf is written by the udhcpc event script into /run.
   ln -sf /run/resolv.conf "$R"/etc/resolv.conf

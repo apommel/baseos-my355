@@ -196,8 +196,9 @@ and the card while `adbd` and the frontend still held them — so **every boot
 replayed both ext4 journals**, costing 96–137 ms on the root mount and 80–100 ms
 on `/data`. `rcK` now stops everything outside its own session (SIGTERM, at most
 1 s, SIGKILL), unmounts in reverse mount order and remounts `/` read-only. No
-boot has replayed a journal since. `rcS` also remounts `/` `noatime`, which the
-kernel mounts `relatime`.
+boot has replayed a journal since. The root has since been mounted read-only
+([rootfs](rootfs.md)), so its journal cannot need a replay even after a power-off
+that skips `rcK`; only `/data` still depends on a clean shutdown.
 
 A FAT card that was once powered off uncleanly keeps mounting as "not properly
 unmounted": Linux never clears a dirty flag that was already set at mount, only

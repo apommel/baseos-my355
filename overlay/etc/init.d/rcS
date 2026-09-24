@@ -13,9 +13,6 @@
 
 /bin/mount -t proc  -o nodev,noexec,nosuid proc /proc
 /bin/mount -t sysfs -o nodev,noexec,nosuid sys  /sys
-# The kernel mounts root relatime, which writes an access time for every file
-# read on the first boot of a new slot, and daily after that.
-/bin/mount -o remount,noatime /
 grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 /bin/mkdir -p /dev/pts /dev/shm
 /bin/mount -t devpts -o gid=5,mode=620 devpts /dev/pts

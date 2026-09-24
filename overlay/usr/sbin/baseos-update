@@ -21,8 +21,8 @@
 # these images carry no secrets.
 #
 # All three regions are written every time, even when a release changes only the
-# rootfs. Comparing first would save about 48 MiB of writes and cost a special
-# case for the rootfs, which is mounted rw and so never matches its own image.
+# rootfs. Comparing first would save about 48 MiB of writes; the rootfs is
+# mounted read-only, so its slot does still match its own image.
 
 FORMAT=baseos-update/2
 REGIONS="uboot boot rootfs"

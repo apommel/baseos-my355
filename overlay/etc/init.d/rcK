@@ -49,6 +49,7 @@ for m in $(/usr/bin/awk '$2 != "/" && $2 !~ /^\/(proc|sys|dev)(\/|$)/ && $2 !~ /
 	/bin/mount -o remount,ro "$m" 2>/dev/null && r="read-only" || r="still writable"
 	log "umount $m failed, left $r"
 done
+# Already read-only unless remounted rw for development.
 /bin/mount -o remount,ro / 2>/dev/null
 
 # Set by poweroff with the charger in: U-Boot then keeps the charge LED lit.

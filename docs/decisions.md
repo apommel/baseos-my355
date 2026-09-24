@@ -106,11 +106,19 @@ that can be pulled, reformatted or replaced without touching the one that boots
 the device. NextUI is slot-agnostic: nothing in `my355.sh` or
 `MinUI.pak/launch.sh` names a block device ([rootfs](rootfs.md)).
 
+### A read-only root
+
+The kernel mounts the rootfs `ro`. Everything that changes at runtime already
+lived elsewhere: `/data` for the log, keys, machine-id and update state; tmpfs
+for `/tmp`, `/run` and `/var`; the card's `/userdata` bind for the frontend's
+settings. NextUI never needed a writable root, since on stock it runs on
+squashfs. What it buys: a power-off that skips `rcK` cannot dirty or corrupt
+the OS, the root never replays a journal, a stray write fails with `EROFS`
+instead of shadowing the card, and the running slot stays byte-identical to its
+image ([rootfs](rootfs.md)).
+
 ## Open
 
-- **Root is mounted `rw`.** A read-only root with writable state on `/data` is
-  the target; nothing on the card depends on a writable root today except the
-  update trial state, which already lives on `/data`.
 - **The real resource-size threshold** (vendor U-Boot path only). 465 408 bytes
   boots, 943 616 hangs U-Boot before display init. The build stays under the proven figure, but the
   actual limit is unknown ([the card](card.md)).

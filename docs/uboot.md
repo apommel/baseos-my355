@@ -325,7 +325,8 @@ The kernel phase, 0.77–0.83 s, varies with SD card detection (88–219 ms from
 controller probe to `new ultra high speed SDR104`). One boot with the SD clock
 fixed reached `Run /init` at 3.050 s: its root needed an ext4 journal replay
 (`EXT4-fs (mmcblk1p3): recovery complete`) after an unclean shutdown, which
-is the root being mounted `rw` ([decisions](decisions.md)), not U-Boot. One of
+is the root being mounted `rw` at the time (it is read-only since, see
+[rootfs](rootfs.md)), not U-Boot. One of
 the five early-cache boots lost 0.42 s the same way, in the kernel, with U-Boot
 unchanged; its log was gone before either cause could be checked, and
 `baseos-bootinfo timeline` now reports both. The five early-cache boots, as

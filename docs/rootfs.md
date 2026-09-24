@@ -144,8 +144,23 @@ read-only mount of this card's FAT partition, about 20–30 ms
 
 `rcK` does the shutdown work busybox init leaves out. It stops every other
 process (SIGTERM, at most 1 s, SIGKILL), unmounts the frontend's binds, the card
-and `/data`, and remounts `/` read-only. Without that, both ext4 journals replay
-on every boot. It also leaves `/data/clean-shutdown`, which tells the next `rcS`
+and `/data`, and puts `/` back to read-only in case it was remounted for
+development. Without that, the `/data` journal replays on every boot.
+
+### The root is read-only
+
+`ro` on the kernel command line, and nothing remounts it. Runtime state lives on
+`/data`, on tmpfs (`/tmp`, `/run`, `/var`, `/dev/shm`) or on the frontend card
+through the `/userdata` bind; `resolv.conf`, `machine-id` and `localtime` are
+baked symlinks into those. Root's home, `/root`, links to `/data/root`, which
+`/etc/init.d/dev` creates, so shell history and `.ssh/authorized_keys` persist.
+`/etc/shadow` does not: `passwd` fails.
+
+To change files on a running device, `mount -o remount,rw /` first; `rcK` makes
+it read-only again at shutdown. To check that nothing writes to it, look for
+`Read-only file system` in the log, or on a root remounted `rw` run a full
+session (WiFi, Bluetooth, adb, SSH) and then
+`find / -xdev -newer /etc/baseos-release`. It also leaves `/data/clean-shutdown`, which tells the next `rcS`
 that this boot's crash record is not a crash ([diagnostics](diagnostics.md)).
 
 ### One log
@@ -498,8 +513,3 @@ first frame.
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards
 is the recommended setup, so an empty left slot asks for the card, not for a
 frontend on this one, and logs each step to the one log above.
-
-## Not yet done
-
-- Root is mounted `rw`; a read-only root with writable state on `/data` is the
-  target ([decisions](decisions.md)).

@@ -109,7 +109,8 @@ INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,ohci_platform
 #                /etc/init, /bin/init and /bin/sh — `/init` is the initramfs
 #                convention. Without this the kernel execs /bin/sh, which waits
 #                forever on a console that does not exist.
-#   rw           init writes runtime state to the root filesystem.
+#   ro           nothing writes to the root filesystem: state is on /data,
+#                tmpfs or the card. An unclean power-off cannot dirty it.
 #   quiet        nothing to the FIQ debugger UART, which no one reads; dmesg
 #                still holds every line.
 #   cpufreq.default_governor=performance
@@ -122,7 +123,7 @@ INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,ohci_platform
 #                WiFi chip's takes ~0.3 s: it starts within ms of the card being
 #                ready, and about half the boots lost that race.
 DROP="earlycon="
-APPEND="rw init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
+APPEND="ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
 
 # The BaseOS wordmark. Size keeps the rebuilt resource image well under the
 # largest one proven to boot (tools/rkbootimg.py, RESOURCE_SAFE_BYTES).
