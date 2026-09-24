@@ -373,6 +373,20 @@ silicon bin: 1025 mV at 1416 MHz, 1100 at 1608, 1150 at 1800, against this
 unit's L3 bin at 925/1000/1050. U-Boot's clock tables stopped at 1416 MHz;
 patch `0006` adds Linux's 1608 and 1800 MHz rows.
 
+**A unit whose RK8600 does not answer (2026-09-24).** A 0.7.0 user's Flip,
+same board string and stock firmware as ours, NACKs every address on i2c0 but
+the RK817's: stock's kernel logs `rk860-regulator 0-0040: Failed to get chip
+ID!` and runs with no `vdd_cpu` and no cpufreq. `my355 cpu` refused every
+rate, so the return to 1104 MHz stopped the chain and every boot powered off.
+The vendor U-Boot never talks to that regulator on any unit: its only
+`vdd_cpu` driver is `fan53555`, whose `tcs,tcs452x` matches neither
+`tcs,tcs4525` nor `rockchip,rk8600`, and it sets the SCMI clock's
+`rockchip,clk-init` of 1104 MHz on the power-on voltage
+([`rk3568.c`](https://github.com/rockchip-linux/u-boot/blob/next-dev/arch/arm/mach-rockchip/rk3568/rk3568.c)
+`set_armclk_rate`). `my355 cpu` now does the same: with no RK8600 it sets up to
+1104 MHz blind and refuses anything faster, so such a unit decompresses and
+runs at stock's rate.
+
 | decompression at | `fit_read` → `decompressed` | `start_kernel` |
 |---|---|---|
 | 1104 MHz | ~363 ms | 1,124 ms |

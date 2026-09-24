@@ -106,7 +106,7 @@ LOAD="$LOAD && setexpr.l n *$MY355_HDR_COUNT_ADDR && setexpr fs \${bs} + 1"
 LOAD="$LOAD && mmc read $MY355_FIT_ADDR \${fs} \${n} && my355 mark fit_read"
 # bootm in its steps, to decompress at 1800 MHz: the kernel must not inherit
 # more than 1104 (my355 cpu), so a failed return to it stops the boot. A failed
-# raise only leaves decompression at 1104.
+# raise only leaves decompression at 1104; with no RK8600, 1104 is set blind.
 BOOT="env exists ok && my355 cpu 1800; env exists ok && bootm start $MY355_FIT_ADDR"
 BOOT="$BOOT && bootm loados && my355 mark decompressed && my355 cpu 1104"
 BOOT="$BOOT && bootm prep && bootm go"

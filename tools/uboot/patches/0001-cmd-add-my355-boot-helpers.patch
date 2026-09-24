@@ -41,7 +41,7 @@ new file mode 100644
 index 0000000..1dea617
 --- /dev/null
 +++ b/cmd/my355.c
-@@ -0,0 +1,637 @@
+@@ -0,0 +1,652 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * BaseOS my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
@@ -215,17 +215,32 @@ index 0000000..1dea617
 +	return 0;
 +}
 +
++/*
++ * The vendor U-Boot binds no driver to either vdd_cpu node and sets its
++ * rockchip,clk-init of 1104 MHz on the power-on voltage, so a unit whose
++ * RK8600 does not answer runs stock at that rate: allowed here too.
++ */
++#define MY355_BLIND_MHZ	1104
++
 +static int do_my355_cpu(struct cmd_tbl *cmdtp, int flag, int argc,
 +			char *const argv[])
 +{
 +	ulong mhz;
-+	int uv;
++	int uv, ret;
 +
 +	if (argc != 2)
 +		return CMD_RET_USAGE;
 +	mhz = dectoul(argv[1], NULL);
 +	uv = my355_opp_uv(mhz);
-+	if (!uv || my355_vdd_cpu(uv, false) || my355_armclk(mhz))
++	if (!uv)
++		return CMD_RET_FAILURE;
++	ret = my355_vdd_cpu(uv, false);
++	if (ret == -ENODEV && mhz <= MY355_BLIND_MHZ)
++		printf("my355 cpu: %lu MHz on the power-on voltage, as stock\n",
++		       mhz);
++	else if (ret)
++		return CMD_RET_FAILURE;
++	if (my355_armclk(mhz))
 +		return CMD_RET_FAILURE;
 +	return CMD_RET_SUCCESS;
 +}
