@@ -202,7 +202,8 @@ that skips `rcK`; only `/data` still depends on a clean shutdown.
 
 A FAT card that was once powered off uncleanly keeps mounting as "not properly
 unmounted": Linux never clears a dirty flag that was already set at mount, only
-`fsck.fat` does, and BaseOS ships none.
+`fsck.fat` does. `mount-frontend` now runs it on such a card before mounting it;
+checking a clean one costs 1.8 ms ([rootfs](rootfs.md)).
 
 ## What is left
 

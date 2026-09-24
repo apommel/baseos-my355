@@ -75,6 +75,7 @@ the list grows as more of the stack is exercised:
 | BlueZ + bluealsa | `bt_init.sh` `system()` | see Bluetooth below |
 | `alsa-lib/*_bluealsa.so` | alsa-lib `dlopen` | `audiomon` writes an `.asoundrc` naming `type bluealsa` for both pcm and ctl |
 | `modetest` | `libmsettings` `system()` | the panel's DRM `contrast` and `saturation` properties are set with `modetest -M rockchip -w 179:<prop>:<0-100>`; brightness is sysfs PWM and worked without it |
+| `fsck.fat` | `mount-frontend` | clears a card's FAT dirty flag before it is mounted (below). dosfstools 4.2, libc only |
 
 Two layout notes. Zone files live in `posix/` and the top-level names symlink
 into it, so only `right/` can be dropped. `/etc/localtime` is a symlink to
@@ -160,7 +161,8 @@ one) finds `nextui.elf` still running. It catches SIGTERM and carries on, so it
 is killed, and for 0.15–0.2 s after that the card stays busy although no process
 holds anything on it any more. Before the retry, that left the card writable and
 its FAT dirty flag set. Shutdowns from NextUI's own menu never hit this:
-`nextui.elf` has already exited.
+`nextui.elf` has already exited. A card left dirty anyway, by a power cut or a
+hard power-off, is repaired at the next mount ([below](#nextui-compatibility)).
 
 ### The root is read-only
 
@@ -213,7 +215,7 @@ back.
 Two things bypass `log()` and land on `/data` only, never on the card. `adbd`'s
 own output, because it runs for the whole session and the card copy is on
 removable FAT. And the raw stderr of the tools the scripts drive — `dd`,
-`gunzip`, `gptslot`, `mkfs.vfat`, `unzip` — which is redirected straight at
+`fsck.fat`, `gunzip`, `gptslot`, `mkfs.vfat`, `unzip` — which is redirected straight at
 `$BASEOS_LOG`, so it carries no tag and is only there for the failure it
 describes. The card copy stays tagged throughout, which is the one a user reads.
 
@@ -302,6 +304,21 @@ fallback, leaving `/mnt/SDCARD` occupied and a later card nowhere to go, so when
 `mmcblk2p1` turns up the session releases it — including the `/userdata` binds a
 frontend that ran from it left behind — and lets `mount-frontend` choose again. Safe only there: no frontend is running,
 before or after. A card already mounted from the left slot is never disturbed.
+
+**A dirty card is repaired before it is mounted.** Linux sets a FAT volume's
+dirty flag at mount and clears it at a clean unmount, but never clears one it
+found set. Only `fsck.fat` does, and macOS's Disk Utility does not, so a card
+once powered off while mounted warned on every mount after, on any computer.
+Before each mount, `fatdirty` (`src/fatdirty.c`) reads the boot sector and
+tests the flag where the kernel reads it (offset 65 on FAT32, 37 on FAT12/16),
+and a set flag runs the stock `fsck.fat -a` under `REPAIRING SD CARD`. A clean
+card costs one exec, 1.8 ms measured on the device; a volume that is not FAT, or
+is mounted elsewhere, is left alone. The repair took 5.0 s on a 115 GiB card
+with 5,704 files in the left slot, about 1.5 s of it reading the two FATs. The
+bar follows the partition's own sector counters: the FATs, whose size `fatdirty`
+prints, fill it to half, and the directories, of unknown size, only creep it
+towards 95. Its output goes to the log, and a failed repair still mounts the
+card as it is.
 
 `frontend-session` starts by ending any open update trial — a session starting is
 what confirms a new slot ([the card](card.md)) — then stages
@@ -528,6 +545,8 @@ first frame.
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards
 is the recommended setup, so an empty left slot asks for the card, not for a
 frontend on this one, and logs each step to the one log above.
+`mount-frontend` shows `REPAIRING SD CARD` while `fsck.fat` runs on a card that
+was not cleanly unmounted; the frontend's first frame replaces it.
 
 In both states nothing reads the power key, and holding it is the PMIC's hard
 power-off. So `frontend-session` also starts `pwrkeyd` (`src/pwrkeyd.c`), once,

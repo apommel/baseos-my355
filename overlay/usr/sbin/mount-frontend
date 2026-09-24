@@ -7,12 +7,53 @@
 # frontend installed on the boot card. Exits 0 once something is mounted.
 
 SDCARD=/mnt/SDCARD
+. /usr/share/baseos/log.sh
 
 has_frontend() {
 	[ -f "$SDCARD/.tmp_update/updater" ] || [ -f "$SDCARD/MinUI.zip" ] ||
 		[ -d "$SDCARD/miyoo355/app/.tmp_update" ]
 }
-try() { /bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed "$1" "$SDCARD" 2>/dev/null; }
+
+splash() { [ -x /usr/bin/baseos-splash ] && \
+	/usr/bin/baseos-splash --important "$1" "REPAIRING SD CARD" 2>/dev/null; }
+
+# A dirty flag survives any number of clean mounts until fsck clears it.
+repair() {
+	fats=$(/usr/sbin/fatdirty "$1") || return 0
+	while read -r _dev _rest; do
+		[ "$_dev" = "$1" ] && { log "$1 dirty but mounted, not repairing"; return 0; }
+	done < /proc/mounts
+	log "$1 was not cleanly unmounted, repairing"
+	splash 0
+	done=/run/fsck.done
+	/bin/rm -f "$done"
+	{ /usr/sbin/fsck.fat -a "$1" >> "$BASEOS_LOG" 2>&1; r=$?; : > "$done"; exit $r; } &
+	# fsck.fat reads the FATs first, half the bar; the directories, of unknown
+	# size, only creep it towards 95.
+	stat=/sys/class/block/${1#/dev/}/stat
+	read -r _ _ r0 _ _ _ w0 _ < "$stat"
+	until [ -e "$done" ]; do
+		/bin/sleep 0.25
+		read -r _ _ r _ _ _ w _ < "$stat"
+		io=$((r - r0 + w - w0))
+		if [ "$io" -lt "$fats" ]; then
+			splash $((50 * io / fats))
+		else
+			splash $((50 + 45 * (io - fats) / io))
+		fi
+	done
+	wait $!
+	case "$?" in
+		0|1) log "$1 repaired" ;;
+		*) log "fsck.fat failed on $1, mounting as it is" ;;
+	esac
+	splash 100
+}
+
+try() {
+	repair "$1"
+	/bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed "$1" "$SDCARD" 2>/dev/null
+}
 
 grep -q " $SDCARD " /proc/mounts && exit 0
 
