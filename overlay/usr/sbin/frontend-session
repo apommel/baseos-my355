@@ -29,6 +29,20 @@ idle_cpu() {
 	echo ondemand > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 }
 
+# Sets $PWRKEYD to its pid if it is running. Builtins only: the hand-off asks too.
+pwrkeyd_running() {
+	read -r PWRKEYD 2>/dev/null < /run/pwrkeyd.pid &&
+		read -r _c 2>/dev/null < "/proc/$PWRKEYD/comm" && [ "$_c" = pwrkeyd ]
+}
+
+# Nothing reads the power key without a frontend, so holding it for the PMIC's
+# hard cut would be the only way off. pwrkeyd powers off cleanly on a 2 s hold.
+watch_power_key() {
+	pwrkeyd_running && return
+	/usr/sbin/pwrkeyd &
+	echo $! > /run/pwrkeyd.pid
+}
+
 # --- the frontend card ------------------------------------------------------
 # rcS is ::sysinit: and mounts once, so a card inserted later would never be
 # seen. Mount here too — same devices, options and order — since init respawns
@@ -56,6 +70,7 @@ done
 if ! grep -q " $SDCARD " /proc/mounts; then
 	log "no card mounted"
 	idle_cpu
+	watch_power_key
 	splash -1 "INSERT SD CARD"
 	# Sleep rather than spin: init respawns us, so pace the retry.
 	/bin/sleep 5
@@ -90,6 +105,7 @@ if [ ! -x "$UPDATER" ]; then
 	# Two cards is the recommended setup, so with the left slot empty the
 	# thing to ask for is the card, not a frontend on this one.
 	idle_cpu
+	watch_power_key
 	if [ -b /dev/mmcblk2p1 ]; then
 		log "no frontend on card"
 		splash -1 "ADD FRONTEND TO SD CARD"
@@ -110,6 +126,9 @@ while [ ! -S /run/dbus/system_bus_socket ] && [ "$n" -lt 100 ]; do
 	n=$((n + 1))
 done
 [ "$n" -eq 0 ] || log "waited $((n * 10)) ms for the system bus"
+
+# The frontend reads the power key itself.
+pwrkeyd_running && kill "$PWRKEYD" 2>/dev/null
 
 # Stock calls the updater, not launch.sh directly: it is what installs
 # MinUI.zip/*.pakz payloads before starting the frontend. Keeping that entry

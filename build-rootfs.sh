@@ -91,7 +91,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # The GPT tools: gptgrow for first-boot expand-to-fill, gptslot for A/B
   # updates (overlay/usr/sbin/expand-storage, overlay/usr/sbin/baseos-update).
   # rebootmode: a reboot argument (charge) for rcK, which busybox cannot pass.
-  for t in gptgrow gptslot rebootmode; do
+  # pwrkeyd: a clean poweroff on a 2 s hold of the power key, without a frontend.
+  for t in gptgrow gptslot rebootmode pwrkeyd; do
     gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c
     strip "$R"/usr/sbin/"$t"
   done

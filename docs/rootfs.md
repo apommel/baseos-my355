@@ -528,3 +528,11 @@ first frame.
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards
 is the recommended setup, so an empty left slot asks for the card, not for a
 frontend on this one, and logs each step to the one log above.
+
+In both states nothing reads the power key, and holding it is the PMIC's hard
+power-off. So `frontend-session` also starts `pwrkeyd` (`src/pwrkeyd.c`), once,
+which runs `poweroff` once the key has been held for 2 s, the hold U-Boot's
+charge mode asks to boot; a shorter press does nothing. `rcK` then stops
+everything and unmounts as on any shutdown. `pwrkeyd` opens `rk805 pwrkey` by
+name, since the lid's hall sensor reports `KEY_POWER` too, and is stopped before
+the frontend starts, as NextUI reads the key itself.
