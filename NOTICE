@@ -41,7 +41,7 @@ the vendor's own U-Boot and kernel. Three artifacts are therefore vendor-derived
     boot.img            Miyoo's Android boot image; only the DTB and the logo are
                         rewritten, and the kernel is stored gzipped — the build
                         asserts it decompresses to the vendor bytes
-    stock-harvest.tar   77 allowlisted paths from the stock squashfs — glibc,
+    stock-harvest.tar   79 allowlisted paths from the stock squashfs — glibc,
                         Mali, SDL2, wpa_supplicant, BlueZ, firmware blobs
                         (manifest/harvest.list; the count is in source.json)
 
