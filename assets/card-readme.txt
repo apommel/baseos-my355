@@ -12,3 +12,6 @@ still takes precedence.
 
 Keep mtd5-original-*.img if it is here. It is the copy of your device's
 original preloader, and the way back to a fully stock device.
+
+Settings, such as the device's network name and SSH password, go in
+baseos.conf on this volume. See INSTALL.md#settings on the page above.

@@ -26,6 +26,14 @@ Files that remain upstream's work, unmodified or nearly so:
     flash-card.sh               macOS card writer; reduced to one target, and its
                                 disk guard rekeyed on removable and virtual media
 
+Taken later, from upstream commit 7dec5cb (2026-09-18):
+
+    overlay/usr/sbin/baseos-config
+                                the baseos.conf parser; reduced to hostname and
+                                ssh_password, with a fixed default hostname
+    assets/baseos.conf          its template
+    tests/test-baseos-config.sh its tests, adapted to the above
+
 assets/boot.ttf is licensed under the SIL Open Font License; see assets/OFL.txt.
 
 Everything else — the Rockchip boot chain, the SPI NAND preloader work, the my355

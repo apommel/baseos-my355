@@ -57,6 +57,7 @@ mount_part || { log "cannot mount the new filesystem"; exit 1; }
 /bin/cp -a "$STAGE"/. "$MNT"/ 2>> "$BASEOS_LOG"
 [ -f "$MNT/miyoo355_fw.img" ] || /bin/cp /miyoo355_fw.img "$MNT/" 2>/dev/null
 [ -f "$README" ] && /bin/cp "$README" "$MNT/README.txt"
+[ -f "$MNT/baseos.conf" ] || /bin/cp /usr/share/baseos/baseos.conf "$MNT/" 2>/dev/null
 /bin/sync
 /bin/umount "$MNT"
 splash 95

@@ -144,7 +144,7 @@ What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed
 **loopback**, USB authorization in the background (the kernel holds USB drivers
 back so the WiFi probe cannot delay the root mount — [boot time](boot-time.md)),
 the first-boot card expansion, the frontend card, any pending system
-update, and the USB gadget in the background. Of the two update hooks,
+update, and the settings, SSH and the USB gadget in the background. Of the two update hooks,
 `baseos-update boot-check` after `/data` only runs when a trial is pending (a
 builtin file test). `apply` after the card mount costs a failed glob plus a
 read-only mount of this card's FAT partition, about 20–30 ms
@@ -171,7 +171,9 @@ hard power-off, is repaired at the next mount ([below](#nextui-compatibility)).
 through the `/userdata` bind; `resolv.conf`, `machine-id` and `localtime` are
 baked symlinks into those. Root's home, `/root`, links to `/data/root`, which
 `/etc/init.d/dev` creates, so shell history and `.ssh/authorized_keys` persist.
-`/etc/shadow` does not: `passwd` fails.
+`/etc/shadow`, `/etc/hostname` and `/etc/hosts` link into `/run`, where
+`baseos-config` writes them at every boot from the card's `baseos.conf`
+([below](#settings-come-from-the-card)). `passwd` fails; the password is set there.
 
 To change files on a running device, `mount -o remount,rw /` first; `rcK` makes
 it read-only again at shutdown. To check that nothing writes to it, look for
@@ -179,6 +181,21 @@ it read-only again at shutdown. To check that nothing writes to it, look for
 session (WiFi, Bluetooth, adb, SSH) and then
 `find / -xdev -newer /etc/baseos-release`. It also leaves `/data/clean-shutdown`, which tells the next `rcS`
 that this boot's crash record is not a crash ([diagnostics](diagnostics.md)).
+
+### Settings come from the card
+
+`baseos.conf`, at the root of this card's FAT volume (`mmcblk1p5`), holds the
+settings a user may change: `hostname` (default `miyoo-flip`) and `ssh_password`
+(default `root`). The format and parser are upstream's; its `mdns` and
+`headphone_pop_fix` keys are not carried. `/etc/init.d/dev` runs `baseos-config`
+before it starts `dropbear`: it reads the file where `mount-frontend` mounted that
+volume, or mounts it read-only for the moment it takes. That is off the boot path,
+since `dev` is in the background and nothing before SSH needs either setting. The
+file is card data, parsed and never sourced; the cleartext password goes through
+`mkpasswd -P 0` into `/run/shadow`, built from the baked copy in
+`/usr/share/baseos/shadow`. `S41dhcpcd` sends the hostname with its DHCP requests,
+so the router can name the lease. `expand-storage` puts a commented template on
+the card on first boot, unless one is already there.
 
 ### One log
 
@@ -516,6 +533,7 @@ platform. Useful when reading [upstream](https://github.com/pvaibhav/BaseOS) for
 | zoneinfo | whole tree | whole tree minus `right/` |
 | OS version string | not implemented for this platform in NextUI | `/usr/miyoo/version`, generated from `VERSION` |
 | service shims | `systemctl`, `timedatectl` | `/etc/init.d/S*` |
+| `baseos.conf` | applied by `rcS` before any service, sharing the update's mount of TF1; `hostname`, `mdns`, `ssh_password`, `headphone_pop_fix` | applied by the backgrounded `dev`; `hostname` and `ssh_password`, and the hostname also goes to DHCP |
 
 NextUI's NTP preference is not a second mechanism competing with ours: it is
 stored in NextUI's config, which the OS cannot read, and acted on only when the

@@ -87,6 +87,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   mkdir -p "$R"/usr/share/baseos
   cp /assets/boot.ttf "$R"/usr/share/baseos/boot.ttf
   cp /assets/card-readme.txt "$R"/usr/share/baseos/card-readme.txt
+  cp /assets/baseos.conf "$R"/usr/share/baseos/baseos.conf
 
   # The GPT tools: gptgrow for first-boot expand-to-fill, gptslot for A/B
   # updates (overlay/usr/sbin/expand-storage, overlay/usr/sbin/baseos-update).
@@ -140,6 +141,12 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # rcS restores machine-id from /data into tmpfs; the baked symlink keeps the
   # root filesystem off the boot path.
   ln -sf /run/machine-id "$R"/etc/machine-id
+
+  # baseos-config writes these into /run from baseos.conf on the card, starting
+  # from this shadow.
+  mv "$R"/etc/shadow "$R"/usr/share/baseos/shadow
+  chmod 600 "$R"/usr/share/baseos/shadow
+  for f in shadow hostname hosts; do ln -sf /run/"$f" "$R"/etc/"$f"; done
 
   tar -cf /work/rootfs.tar -C "$R" .
   echo "  rootfs: $(tar -tf /work/rootfs.tar | wc -l) entries, $(stat -c %s /work/rootfs.tar) bytes"

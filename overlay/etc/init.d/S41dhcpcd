@@ -10,7 +10,8 @@ case "$1" in
 	[ -s "$PIDFILE" ] && [ -d "/proc/$(cat "$PIDFILE")" ] && exit 0
 	# -b: background rather than block until the first lease; wifi_init.sh
 	# starts us before wpa_supplicant, so wlan0 has no carrier yet.
-	/sbin/udhcpc -i "$IFACE" -b -p "$PIDFILE" >/dev/null 2>&1
+	# The hostname lets the router name the lease, and often resolve it.
+	/sbin/udhcpc -i "$IFACE" -b -p "$PIDFILE" -x hostname:"$(/bin/hostname)" >/dev/null 2>&1
 	;;
   stop)
 	[ -s "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null

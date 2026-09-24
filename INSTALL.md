@@ -98,6 +98,28 @@ itself as it would on any other card.
 A card carrying a frontend in the left-hand slot is still used in preference, so an
 occasional second card works, and an empty one changes nothing.
 
+## Settings
+
+Edit `baseos.conf` at the root of the BASEOS volume on the BaseOS card, then
+restart. The first boot puts a commented-out copy there; on a card set up with an
+earlier version, create the file. Settings stay on the BaseOS card whichever card
+holds NextUI, and survive BaseOS updates.
+
+```ini
+hostname=my-flip
+ssh_password=a-password
+```
+
+- **`hostname`**: the Flip's network name, which your router sees when it joins
+  Wi-Fi. Defaults to `miyoo-flip`. Use 1–63 letters, digits or hyphens, with no
+  hyphen at either end; anything else uses the default.
+- **`ssh_password`**: the password for `ssh root@<address>`. Defaults to `root`
+  if omitted or empty. It is stored as plain text on the card, so don't reuse an
+  important password. Write it without quotes; surrounding spaces are trimmed.
+
+Omitted settings use their defaults. Lines starting with `#` are comments; `#`
+within an SSH password is part of the password.
+
 ## How to update BaseOS?
 
 To update BaseOS, you can simply re-flash the SD card. The `.bosupd` file can also be

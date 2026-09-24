@@ -1,0 +1,71 @@
+#!/bin/sh
+# Apply the settings in this card's baseos.conf. /etc/init.d/dev passes the
+# file; none, or a missing one, means defaults. Card contents are data, never
+# shell code, and the cleartext password never leaves the card.
+# From upstream BaseOS (pvaibhav/BaseOS), less its mDNS and H700 audio keys.
+set -eu
+export LC_ALL=C
+umask 022
+
+[ "$#" -le 1 ] || { echo "usage: baseos-config [FILE]" >&2; exit 2; }
+CONFIG="${1:-/dev/null}"
+RUN="${BASEOS_RUN_ROOT:-/run}"
+HOSTNAME_BIN="${BASEOS_HOSTNAME_BIN:-/bin/hostname}"
+
+valid_hostname() {
+	case "$1" in ''|-*|*-|*[!A-Za-z0-9-]*) return 1 ;; esac
+	[ "${#1}" -le 63 ]
+}
+
+default_name=miyoo-flip
+name=$default_name
+password=
+
+if [ -f "$CONFIG" ] && [ -r "$CONFIG" ]; then
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in *[![:space:]]*) ;; *) continue ;; esac
+		case "${line#"${line%%[![:space:]]*}"}" in \#*) continue ;; esac
+		case "$line" in *=*) ;; *) continue ;; esac
+		key=${line%%=*}
+		value=${line#*=}
+		# Trim around keys and values, including CRLF, without removing any
+		# internal whitespace that would make a hostname invalid.
+		key=${key#"${key%%[![:space:]]*}"}
+		key=${key%"${key##*[![:space:]]}"}
+		# Passwords may contain literal # characters; other keys allow comments.
+		[ "$key" = ssh_password ] || value=${value%%#*}
+		value=${value#"${value%%[![:space:]]*}"}
+		value=${value%"${value##*[![:space:]]}"}
+		case "$key" in
+			ssh_password) password=$value ;;
+			hostname)
+				name=$default_name
+				if valid_hostname "$value"; then name=$value; fi
+				;;
+		esac
+	done < "$CONFIG"
+fi
+
+mkdir -p "$RUN"
+# Shadow is built in RAM: the root is read-only, and the card supplies the
+# password again after updates.
+umask 077
+shadow_default="${BASEOS_SHADOW_DEFAULT:-/usr/share/baseos/shadow}"
+shadow_tmp="$RUN/shadow.tmp"
+trap 'rm -f "$shadow_tmp"' EXIT HUP INT TERM
+if [ -n "$password" ]; then
+	# -P reads a file descriptor, keeping the password out of process arguments.
+	hash="$(printf '%s\n' "$password" | "${BASEOS_MKPASSWD_BIN:-mkpasswd}" -m sha512 -P 0)"
+	case "$hash" in '$6$'*) ;; *) echo 'baseos-config: password hashing failed' >&2; exit 1 ;; esac
+	awk -F: -v OFS=: -v hash="$hash" '$1 == "root" { $2 = hash } { print }' \
+		"$shadow_default" > "$shadow_tmp"
+else
+	cat "$shadow_default" > "$shadow_tmp"
+fi
+chmod 600 "$shadow_tmp"
+mv -f "$shadow_tmp" "$RUN/shadow"
+unset password
+umask 022
+printf '%s\n' "$name" > "$RUN/hostname"
+printf '127.0.0.1 localhost %s\n::1 localhost\n' "$name" > "$RUN/hosts"
+"$HOSTNAME_BIN" "$name"

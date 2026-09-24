@@ -121,7 +121,8 @@ build-rootfs.sh     harvest + overlay/ + BusyBox → rootfs.tar
 build-image.sh      prepared + rootfs → baseos-my355.img
 build-update.sh     image → baseos-my355-<version>.bosupd, the A/B update payload
 flash-card.sh       image → an SD card, on macOS; refuses anything but removable media
-tests/              offline tests — card expansion, A/B slots, updates, preloader, harvest, fuel gauge
+tests/              offline tests — card expansion, A/B slots, updates, preloader, harvest, fuel gauge,
+                    FAT repair, settings
 overlay/            init, inittab, rcS, the frontend session — what makes it ours
 manifest/           the harvest allowlist, verified closed at prepare time
 tools/              GPT, FIT, Android boot image, preloader and bootlogo surgery;
