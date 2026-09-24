@@ -101,6 +101,13 @@ restores the clock from the RTC and starts `S49ntp`, both backgrounded. Starting
 peer instead of exiting, steps the full nine-year offset in one go, and its `-S`
 hook writes the result back to the RTC so the next boot starts sane.
 
+While it retries, though, it hears no SIGTERM: musl's resolver waits out its
+5 s timeout per lookup through the signal, and with no network the three peers
+kept a stop pending for up to 11 s. So `S49ntp stop` uses SIGKILL, since `ntpd`
+has nothing to save, and `rcK` calls it before signalling everything else. `start` ignores
+an `ntpd` that has exited but is not yet reaped; init reaps orphans about once a
+second, and `pidof` alone turned every `restart` into a stop.
+
 ### Version identity
 
 `/etc/baseos-release` carries `BASEOS_TARGET` and the panel rotation `fbsplash`

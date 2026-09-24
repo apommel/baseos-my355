@@ -29,6 +29,8 @@ others() {
 
 log "shutdown"
 [ -e /run/baseos-charge ] && log "charger in: restarting to charge"
+# ntpd can ignore SIGTERM for seconds (S49ntp), which would use up the wait below.
+[ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp stop
 /sbin/killall5 -15
 i=0
 while others && [ "$i" -lt 10 ]; do /bin/usleep 100000; i=$((i + 1)); done

@@ -5,15 +5,31 @@
 DAEMON=/usr/sbin/ntpd
 SERVERS="0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org"
 
+# pidof also lists an ntpd that has exited but is not reaped yet: init reaps
+# orphans about once a second, and restart would then start nothing.
+running() {
+	for p in $(pidof ntpd); do
+		read -r s < "/proc/$p/stat" 2>/dev/null || continue
+		s=${s##*) }
+		[ "${s%% *}" = Z ] || return 0
+	done
+	return 1
+}
+
 case "$1" in
   start)
-	pidof ntpd >/dev/null 2>&1 && exit 0
+	running && exit 0
 	set -- ; for s in $SERVERS; do set -- "$@" -p "$s"; done
 	# No -n: ntpd forks into its own session, so it outlives this shell.
 	"$DAEMON" -S /usr/sbin/baseos-ntp-hook "$@" >/dev/null 2>&1
 	;;
   stop)
-	kill "$(pidof ntpd)" 2>/dev/null
+	# SIGKILL: while ntpd retries a peer it cannot resolve, musl's resolver
+	# waits out its timeout through SIGTERM, up to ~11 s. It has nothing to save.
+	pids=$(pidof ntpd) || exit 0
+	kill -9 $pids 2>/dev/null
+	n=0
+	while running && [ "$n" -lt 50 ]; do usleep 10000; n=$((n + 1)); done
 	;;
   restart|reload)
 	"$0" stop
