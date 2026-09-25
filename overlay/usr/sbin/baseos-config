@@ -2,7 +2,8 @@
 # Apply the settings in this card's baseos.conf. /etc/init.d/dev passes the
 # file; none, or a missing one, means defaults. Card contents are data, never
 # shell code, and the cleartext password never leaves the card.
-# From upstream BaseOS (pvaibhav/BaseOS), less its mDNS and H700 audio keys.
+# From upstream BaseOS (pvaibhav/BaseOS), less its H700 audio key. Only
+# non-secret settings survive in /run/baseos.conf, which baseos-mdns reads.
 set -eu
 export LC_ALL=C
 umask 022
@@ -19,6 +20,7 @@ valid_hostname() {
 
 default_name=miyoo-flip
 name=$default_name
+mdns=true
 password=
 
 if [ -f "$CONFIG" ] && [ -r "$CONFIG" ]; then
@@ -41,6 +43,10 @@ if [ -f "$CONFIG" ] && [ -r "$CONFIG" ]; then
 			hostname)
 				name=$default_name
 				if valid_hostname "$value"; then name=$value; fi
+				;;
+			mdns)
+				mdns=true
+				case "$value" in true|false) mdns=$value ;; esac
 				;;
 		esac
 	done < "$CONFIG"
@@ -68,4 +74,5 @@ unset password
 umask 022
 printf '%s\n' "$name" > "$RUN/hostname"
 printf '127.0.0.1 localhost %s\n::1 localhost\n' "$name" > "$RUN/hosts"
+printf 'hostname=%s\nmdns=%s\n' "$name" "$mdns" > "$RUN/baseos.conf"
 "$HOSTNAME_BIN" "$name"

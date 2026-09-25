@@ -1,0 +1,37 @@
+#!/bin/sh
+# Reconcile mDNS after a DHCP event. The caller backgrounds this short-lived
+# helper: Avahi's daemonization handshake can wait, but DHCP/frontend startup
+# must not. Avahi itself watches netlink; there is no polling or supervisor.
+# From upstream BaseOS (pvaibhav/BaseOS).
+set -u
+
+CONFIG="${BASEOS_MDNS_CONFIG:-/run/baseos.conf}"
+LOCK_FILE="${BASEOS_MDNS_LOCK_FILE:-/run/baseos-mdns.lock}"
+AVAHI="${BASEOS_MDNS_DAEMON:-/usr/sbin/avahi-daemon}"
+
+case "${1:-refresh}" in
+	refresh|stop) action="${1:-refresh}" ;;
+	*) printf 'usage: baseos-mdns [refresh|stop] [wlan0]\n' >&2; exit 2 ;;
+esac
+[ "${2:-wlan0}" = wlan0 ] || exit 0
+[ -x "$AVAHI" ] || exit 0
+
+# Serialize overlapping DHCP events through the daemon's startup/exit handshake.
+# Keep the lock file in place: unlinking it could create two independent locks.
+exec 9>"$LOCK_FILE"
+flock -x 9 || exit 1
+
+# Read current state after taking the lock, so a delayed deconfig worker cannot
+# stop a newer connection. Only an explicit false disables mDNS; missing config
+# or keys retain the default. Never source even the sanitized runtime config.
+if [ "$action" = refresh ] &&
+	! grep -qx 'mdns=false' "$CONFIG" 2>/dev/null &&
+	ip -4 addr show dev wlan0 up 2>/dev/null | grep -q 'inet '; then
+	"$AVAHI" --check 9>&- >/dev/null 2>&1 && exit 0
+	# The helper holds the lock until startup completes; neither Avahi process
+	# may inherit it, or all later refresh/stop requests would block forever.
+	"$AVAHI" --daemonize --no-drop-root --no-proc-title 9>&-
+else
+	"$AVAHI" --check 9>&- >/dev/null 2>&1 || exit 0
+	"$AVAHI" --kill 9>&-
+fi

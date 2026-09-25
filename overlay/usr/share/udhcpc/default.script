@@ -1,6 +1,7 @@
 #!/bin/sh
 # udhcpc event script (busybox). /etc/resolv.conf is a baked symlink here.
 RESOLV=/run/resolv.conf
+MDNS=/usr/sbin/baseos-mdns
 
 case "$1" in
 	deconfig)
@@ -23,6 +24,14 @@ case "$1" in
 			echo "nameserver $d" >> "$RESOLV".new
 		done
 		mv "$RESOLV".new "$RESOLV"
+		;;
+esac
+
+# Never wait for mDNS probing or the daemon's start-up on the DHCP path.
+# A refresh reads the interface as it is then, including a newer lease.
+case "$1:$interface" in
+	deconfig:wlan0|bound:wlan0|renew:wlan0)
+		[ -x "$MDNS" ] && "$MDNS" refresh wlan0 </dev/null >/dev/null 2>&1 &
 		;;
 esac
 exit 0

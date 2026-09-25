@@ -33,11 +33,25 @@ Taken later, from upstream commit 7dec5cb (2026-09-18):
                                 ssh_password, with a fixed default hostname
     assets/baseos.conf          its template
     tests/test-baseos-config.sh its tests, adapted to the above
+    overlay/usr/sbin/baseos-mdns
+                                starts and stops avahi-daemon on DHCP events
+    overlay/etc/avahi/avahi-daemon.conf
+    tests/test-baseos-mdns.sh   its tests, run against our udhcpc script
+    build-avahi.sh              the static avahi-daemon recipe, from upstream's
+                                build-tools.sh
 
 assets/boot.ttf is licensed under the SIL Open Font License; see assets/OFL.txt.
 
 Everything else — the Rockchip boot chain, the SPI NAND preloader work, the my355
 rootfs, overlay and documentation — is new in this repository.
+
+BUILT FROM SOURCE
+-----------------
+
+/usr/sbin/avahi-daemon is built by build-avahi.sh from unmodified avahi 0.8 and
+libdaemon 0.14, both LGPL-2.1, linked statically with musl (MIT), expat (MIT) and
+libevent (BSD). The script pins each source by URL and SHA-256, so the binary can
+be rebuilt, or relinked against a modified library, from those sources.
 
 VENDOR FIRMWARE
 ---------------

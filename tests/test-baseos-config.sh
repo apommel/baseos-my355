@@ -29,6 +29,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
     printf "127.0.0.1 localhost %s\n::1 localhost\n" "$1" > "$TMP/want"
     cmp -s "$TMP/want" "$TMP/run/hosts" || fail "hosts: $1"
     [ "$(cat "$TMP/events")" = "hostname $1" ] || fail "hostname must be set exactly once: $1"
+    printf "hostname=%s\nmdns=%s\n" "$1" "${2:-true}" > "$TMP/want"
+    cmp -s "$TMP/want" "$TMP/run/baseos.conf" || fail "effective settings: $1/${2:-true}"
   }
   default_shadow() { cmp -s "$BASEOS_SHADOW_DEFAULT" "$TMP/run/shadow" || fail "shadow not default"; }
   # The root hash must be what mkpasswd gives for $1 with the same salt.
@@ -69,6 +71,19 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   printf "hostname=first\nhostname=-bad\n" > "$TMP/config"
   apply "$TMP/config"; check miyoo-flip
   [ ! -e "$TMP/executed" ] || fail "hostname executed shell code"
+
+  # mDNS is on unless set to exactly false; a later invalid duplicate resets it.
+  printf " mdns = false # off\r\n" > "$TMP/config"
+  apply "$TMP/config"; check miyoo-flip false
+  for v in "" False 0 no "true false" "\$(touch executed)"; do
+    printf "mdns=false\nmdns=%s\n" "$v" > "$TMP/config"
+    (cd "$TMP"; apply "$TMP/config"); check miyoo-flip true
+  done
+  [ ! -e "$TMP/executed" ] || fail "mdns executed shell code"
+  # The password never reaches the effective settings.
+  printf "ssh_password=hunter2\nmdns=false\n" > "$TMP/config"
+  apply "$TMP/config"; check miyoo-flip false
+  ! grep -rq hunter2 "$TMP/run" || fail "cleartext password in /run"
 
   # Passwords are literal: #, = and shell syntax kept, surrounding blanks trimmed.
   printf "%s\r\n" "ssh_password=  secret#=\$(touch nope) x  " > "$TMP/config"

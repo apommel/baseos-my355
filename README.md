@@ -117,12 +117,13 @@ prepare-stock.sh    NAND backup      → the same four files
 cache-pack.sh       work/my355/prepared/ → a bundle to publish
 build-all.sh        U-Boot → rootfs → image → the release .img.zip and .bosupd
 build-uboot.sh      mainline U-Boot + tools/uboot/ patches → uboot-mainline.itb
+build-avahi.sh      avahi 0.8 source → a static avahi-daemon, for <hostname>.local
 build-rootfs.sh     harvest + overlay/ + BusyBox → rootfs.tar
 build-image.sh      prepared + rootfs → baseos-my355.img
 build-update.sh     image → baseos-my355-<version>.bosupd, the A/B update payload
 flash-card.sh       image → an SD card, on macOS; refuses anything but removable media
 tests/              offline tests — card expansion, A/B slots, updates, preloader, harvest, fuel gauge,
-                    FAT repair, settings
+                    FAT repair, settings, mDNS
 overlay/            init, inittab, rcS, the frontend session — what makes it ours
 manifest/           the harvest allowlist, verified closed at prepare time
 tools/              GPT, FIT, Android boot image, preloader and bootlogo surgery;

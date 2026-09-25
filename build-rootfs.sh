@@ -30,6 +30,7 @@ case "$BASEOS_BUILD" in *-dirty) BASEOS_BUILD="$BASEOS_BUILD-$(date -u +%Y%m%d%H
 printf '%s\n' "$BASEOS_BUILD" > "$WORK/build-id"
 
 baseos_require_prepared "$PREPARED"
+[ -x "$WORK/avahi/avahi-daemon" ] || { echo "no avahi-daemon: run ./build-avahi.sh" >&2; exit 1; }
 baseos_require_aarch64
 
 DIAG="${MY355_DIAG:-0}"
@@ -39,7 +40,7 @@ case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
   -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" \
-  -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
+  -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro -v "$WORK/avahi":/avahi:ro \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
   alpine:3.20 sh -euc '
   apk add -q busybox-static
@@ -98,6 +99,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
     gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c
     strip "$R"/usr/sbin/"$t"
   done
+
+  # The mDNS responder for <hostname>.local, started by baseos-mdns on a lease.
+  cp /avahi/avahi-daemon "$R"/usr/sbin/avahi-daemon
 
   # Ships with debug_info: 2.3 MB on disk, 131 KB stripped. insmod reads the
   # whole file when bt_init.sh loads it.

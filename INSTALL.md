@@ -107,13 +107,18 @@ holds NextUI, and survive BaseOS updates.
 
 ```ini
 hostname=my-flip
+mdns=true
 ssh_password=a-password
 ```
 
 - **`hostname`**: the Flip's network name, which your router sees when it joins
   Wi-Fi. Defaults to `miyoo-flip`. Use 1–63 letters, digits or hyphens, with no
   hyphen at either end; anything else uses the default.
-- **`ssh_password`**: the password for `ssh root@<address>`. Defaults to `root`
+- **`mdns`**: reach the Flip as `<hostname>.local` over Wi-Fi, for example
+  `ssh root@miyoo-flip.local`. Enabled by default; set `false` to disable it. If
+  another device on the network already has the name, the Flip takes
+  `miyoo-flip-2.local` instead; give each Flip its own hostname to avoid that.
+- **`ssh_password`**: the password for `ssh root@miyoo-flip.local`. Defaults to `root`
   if omitted or empty. It is stored as plain text on the card, so don't reuse an
   important password. Write it without quotes; surrounding spaces are trimmed.
 

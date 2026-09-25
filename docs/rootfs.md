@@ -185,17 +185,29 @@ that this boot's crash record is not a crash ([diagnostics](diagnostics.md)).
 ### Settings come from the card
 
 `baseos.conf`, at the root of this card's FAT volume (`mmcblk1p5`), holds the
-settings a user may change: `hostname` (default `miyoo-flip`) and `ssh_password`
-(default `root`). The format and parser are upstream's; its `mdns` and
-`headphone_pop_fix` keys are not carried. `/etc/init.d/dev` runs `baseos-config`
+settings a user may change: `hostname` (default `miyoo-flip`), `mdns` (default
+`true`) and `ssh_password` (default `root`). The format and parser are upstream's;
+its `headphone_pop_fix` key is H700-only. `/etc/init.d/dev` runs `baseos-config`
 before it starts `dropbear`: it reads the file where `mount-frontend` mounted that
 volume, or mounts it read-only for the moment it takes. That is off the boot path,
-since `dev` is in the background and nothing before SSH needs either setting. The
+since `dev` is in the background and nothing before SSH or Wi-Fi needs them. The
 file is card data, parsed and never sourced; the cleartext password goes through
 `mkpasswd -P 0` into `/run/shadow`, built from the baked copy in
-`/usr/share/baseos/shadow`. `S41dhcpcd` sends the hostname with its DHCP requests,
-so the router can name the lease. `expand-storage` puts a commented template on
-the card on first boot, unless one is already there.
+`/usr/share/baseos/shadow`; the other settings are copied to `/run/baseos.conf`.
+`S41dhcpcd` sends the hostname with its DHCP requests, so the router can name the
+lease. `expand-storage` puts a commented template on the card on first boot,
+unless one is already there.
+
+`<hostname>.local` is answered by `avahi-daemon`, upstream's build: avahi 0.8
+linked statically against musl with no D-Bus, 526 KB, from `build-avahi.sh`.
+Stock has no mDNS responder to harvest. It runs as root, but still looks up an `avahi` user to own
+`/run/avahi-daemon` and refuses to start without one, so `passwd` carries it. The udhcpc event script runs
+`baseos-mdns refresh` in the background on every `bound`, `renew` and `deconfig`
+of `wlan0`. Under a lock, it starts the daemon when the interface is up with an
+address and `mdns` is not `false`, and stops it otherwise. Avahi publishes only
+the address records, no services, and follows later interface changes itself
+over netlink. A name already taken on the network gets a `-2` suffix for the
+session; the configured hostname is left alone.
 
 ### One log
 
@@ -533,7 +545,7 @@ platform. Useful when reading [upstream](https://github.com/pvaibhav/BaseOS) for
 | zoneinfo | whole tree | whole tree minus `right/` |
 | OS version string | not implemented for this platform in NextUI | `/usr/miyoo/version`, generated from `VERSION` |
 | service shims | `systemctl`, `timedatectl` | `/etc/init.d/S*` |
-| `baseos.conf` | applied by `rcS` before any service, sharing the update's mount of TF1; `hostname`, `mdns`, `ssh_password`, `headphone_pop_fix` | applied by the backgrounded `dev`; `hostname` and `ssh_password`, and the hostname also goes to DHCP |
+| `baseos.conf` | applied by `rcS` before any service, sharing the update's mount of TF1; `hostname`, `mdns`, `ssh_password`, `headphone_pop_fix` | applied by the backgrounded `dev`; all but `headphone_pop_fix`, and the hostname also goes to DHCP |
 
 NextUI's NTP preference is not a second mechanism competing with ours: it is
 stored in NextUI's config, which the OS cannot read, and acted on only when the

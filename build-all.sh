@@ -19,6 +19,8 @@ baseos_require_prepared "$WORK/prepared"
 
 # Its source tree is cached, so a rerun is an incremental make.
 if [ "${MY355_UBOOT:-mainline}" = mainline ]; then "$HERE/build-uboot.sh"; fi
+# Skipped unless its recipe changed.
+"$HERE/build-avahi.sh"
 "$HERE/build-rootfs.sh"
 "$HERE/build-image.sh"
 "$HERE/build-update.sh"
