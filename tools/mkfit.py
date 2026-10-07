@@ -344,6 +344,7 @@ def cmd_boot(a) -> int:
     if a.sd_uhs != "off":
         dtb = rk.set_sd_uhs(dtb, rk.SD_SLOT0_NODE, a.sd_uhs)
     dtb = rk.detach_sd_slot1_vqmmc(dtb)
+    dtb = rk.disable_wifi_ohci(dtb)
     # Bootloader-specific, and only this path needs it (rkbootimg.add_optee_reservation).
     dtb = rk.add_optee_reservation(dtb)
     dtb = rk.set_vop2_plane_masks(dtb)

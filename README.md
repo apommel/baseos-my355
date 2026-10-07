@@ -36,7 +36,7 @@ and the Flip boots stock, exactly as before. To install, see [INSTALL.md](INSTAL
 | power-on → | stock | **BaseOS** |
 |---|---|---|
 | the kernel's first line | 4.30 s | **0.99 s** |
-| frontend hand-off | 15.79 s | **1.94 s** |
+| frontend hand-off | 15.79 s | **1.99 s** |
 | `nextui.elf` starts | — | **2.40–2.42 s** |
 | NextUI's first frame | 31.50 s | **2.93–2.98 s** |
 

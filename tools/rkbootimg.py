@@ -592,6 +592,21 @@ def detach_sd_slot1_vqmmc(dtb: bytes) -> bytes:
     return fdt_nop_prop(dtb, SD_SLOT1_NODE, "vqmmc-supply")
 
 
+# The WiFi/BT chip's EHCI companion. The chip is high-speed and always attached,
+# so this OHCI serves nothing and its probe costs ~60 ms of kernel init. The top
+# USB-C port's companion, usb@fd840000, must stay (docs/boot-time.md).
+WIFI_OHCI_NODE = "usb@fd8c0000"
+
+
+def disable_wifi_ohci(dtb: bytes) -> bytes:
+    """Set the WiFi companion's status to "disabled". The new value is longer
+    than "okay", so the old property is NOPed and the new one inserted."""
+    if fdt_node_props(dtb, WIFI_OHCI_NODE).get("status") != b"okay\0":
+        raise ValueError(f"{WIFI_OHCI_NODE} is no longer enabled in the vendor tree")
+    out = fdt_nop_prop(dtb, WIFI_OHCI_NODE, "status")
+    return fdt_add_props(out, WIFI_OHCI_NODE, [("status", b"disabled\0")])
+
+
 def set_bootargs(dtb: bytes, new_args: str) -> bytes:
     """Rewrite /chosen/bootargs: in place, space-padded, when it fits; grown otherwise.
 
@@ -713,6 +728,7 @@ def cmd_setargs(a) -> int:
         if a.sd_uhs != "off":
             out = set_sd_uhs(out, SD_SLOT0_NODE, a.sd_uhs)
         out = detach_sd_slot1_vqmmc(out)
+        out = disable_wifi_ohci(out)
         print(f"  {name}")
         print(f"      old: {old}")
         print(f"      new: {new}")

@@ -15,15 +15,16 @@ Part 3). Three *warm* reboots on 2026-09-21, release U-Boot, with every change
 on this page in place; the first frame is from the boots just before the last
 two U-Boot changes, which took ~40 ms off. U-Boot's own timings match cold
 boots; the kernel phase has only been re-measured warm ([U-Boot](uboot.md),
-*Where U-Boot's time goes*).
+*Where U-Boot's time goes*). The `Run /init` and hand-off rows are from cold
+boots on 2026-10-07, after the top USB port's OHCI came back (+0.05 s).
 
 | phase | at power-on | source |
 |---|---|---|
 | bootrom + DDR + SPL + BL31 | 0.39 s | [boot chain](boot-chain.md) |
 | **mainline U-Boot hands off** | **0.94 s** | bootstage `start_kernel` |
 | first printk | 0.99 s | dmesg |
-| kernel → `Run /init` | **1.79–1.80 s** | dmesg |
-| **frontend hand-off — `exec updater`** | **1.94 s** | `/run/boot-frontend-exec` |
+| kernel → `Run /init` | **1.83 s** | dmesg |
+| **frontend hand-off — `exec updater`** | **1.99 s** | `/run/boot-frontend-exec` |
 | boot logo on the panel | 2.00–2.01 s | `dw_mipi_dsi_bridge_enable` |
 | `nextui.elf` start | **2.40–2.42 s** | `/proc/<pid>/stat` |
 | **first NextUI frame** | **2.93–2.98 s** | `baseos-frameprobe` (`MY355_DIAG=1`) |
@@ -115,7 +116,7 @@ time:
 |---|---|---|
 | `tracer_init_tracefs` | **0.383 s** | **yes** — tracefs is never mounted and nothing reads it |
 | `rk3x_i2c_driver_init` | 0.146 s | no — only the PMIC and muic buses are enabled already |
-| `ohci_platform_init` | 0.118 s | **yes** — the WiFi/BT chip is high-speed on EHCI and the USB-C port is on xHCI, so the OHCI companions serve nothing |
+| `ohci_platform_init` | 0.118 s | **no** — the top USB-C port is EHCI `fd800000`, and its OHCI companion takes full- and low-speed devices: gamepads, keyboards, mice. The WiFi chip's companion `usb@fd8c0000` serves nothing and is disabled in the DTB, halving the cost to ~0.06 s ([history](history.md), 2026-10-07) |
 | `alpu_init` | 0.112 s | **yes** — the anti-clone chip; nothing on BaseOS or NextUI uses it |
 | `deferred_probe_initcall` | 0.063 s | — |
 | `ehci_platform_init` | 0.033 s | no — the RTL8733BU WiFi/BT chip attaches here |
@@ -295,4 +296,4 @@ So of the 25.8 s saved to a first frame, the part BaseOS removes outright is the
 9.9 s of vendor userland; the rest is the same work done against faster storage,
 which is a consequence of where the harvest lives rather than of deleting
 anything. The claim that rests on nothing but our own code is the hand-off
-number, **1.94 s against 15.79 s**.
+number, **1.99 s against 15.79 s**.

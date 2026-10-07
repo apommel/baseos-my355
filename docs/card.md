@@ -230,7 +230,7 @@ the FDT property rather than padding it in place — the same relayout the
 ```
 console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait ro init=/init quiet
 cpufreq.default_governor=performance
-initcall_blacklist=tracer_init_tracefs,ohci_platform_init,alpu_init
+initcall_blacklist=tracer_init_tracefs,alpu_init
 ```
 
 (one line on the device). `quiet`, the governor and the initcall list are boot

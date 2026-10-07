@@ -91,6 +91,15 @@ card on resume ([history](history.md)).
 
 ---
 
+## USB port mapping — verified
+
+| port | controller | PHY | notes |
+|---|---|---|---|
+| top USB-C (host) | EHCI `fd800000` + OHCI `fd840000` | `usb2phy1` otg-port | VBUS from `vcc5v0_host`. OHCI is needed for full- and low-speed devices |
+| bottom USB-C (charge, adb) | dwc3 `fcc00000`, OTG | `usb2phy0` otg-port | gadget for adb; no VBUS out |
+| RTL8733BU WiFi/BT | EHCI `fd880000` | `usb2phy1` host-port | high-speed; its OHCI `fd8c0000` is disabled in the DTB |
+| none | dwc3 `fd000000`, xHCI | `usb2phy0` host-port + combphy | no connector |
+
 ## The preloader's SPL boot order
 
 Extracted from the FDT embedded in this unit's `mtd5` (two copies, at file offsets

@@ -96,10 +96,10 @@ case "$SD_UHS" in
 esac
 
 # Built-in initcalls skipped by name, so the kernel stays the vendor's
-# byte-for-byte: tracefs is never mounted (0.38 s), OHCI only serves the
-# high-speed WiFi/BT chip (0.12 s), alpu is the anti-clone chip (0.11 s).
+# byte-for-byte: tracefs is never mounted (0.38 s), alpu is the anti-clone
+# chip (0.11 s). OHCI stays: the top USB-C port needs it for full-speed devices.
 # MY355_INITCALL_BLACKLIST="" restores the vendor set. See docs/boot-time.md.
-INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,ohci_platform_init,alpu_init}"
+INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,alpu_init}"
 
 # The vendor command line fills its 100-byte slot; rkbootimg.py grows the FDT
 # when ours does not fit. `earlycon=` is dead weight on a unit with no UART
