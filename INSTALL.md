@@ -11,8 +11,7 @@ backed up to the card before anything is written.
 
 ## Before you start
 
-BaseOS for the Flip is a work in progress, and installing it writes to the device's
-internal storage. That carries real risk.
+Installing BaseOS writes to the device's internal storage. That carries real risk.
 
 The change is small and deliberately conservative. It touches 2 MiB, the preloader
 only, and leaves the stock system, its kernel and its bootloader alone. The installer
@@ -101,9 +100,9 @@ occasional second card works, and an empty one changes nothing.
 ## Settings
 
 Edit `baseos.conf` at the root of the BASEOS volume on the BaseOS card, then
-restart. The first boot puts a commented-out copy there; on a card set up with an
-earlier version, create the file. Settings stay on the BaseOS card whichever card
-holds NextUI, and survive BaseOS updates.
+restart. The first boot puts a commented-out copy there; if it is missing, create
+it. Settings stay on the BaseOS card whichever card holds NextUI, and survive BaseOS
+updates.
 
 ```ini
 hostname=my-flip

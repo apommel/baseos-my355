@@ -2,66 +2,72 @@
 
 A minimal Linux that boots the **Miyoo Flip** (Rockchip RK3566,
 `MIYOO RK3566 355 V10 Board`, NextUI platform id `my355`) as fast as the hardware
-allows, then hands off to a frontend. It has no interface of its own.
+allows, then hands off to a frontend such as NextUI. It has no interface of its own.
 
-The vendor kernel, BL31 and OP-TEE stay **byte-for-byte** — the kernel is
-stored compressed on the card, and the build asserts it decompresses to the
-vendor image. U-Boot proper is mainline, built from source, and the userland is
-replaced, with a BusyBox init over a measured harvest of the stock glibc stack.
-The one change to internal NAND is a 2 MiB preloader patch making the SPL try the
-SD card first — stock still boots when no BaseOS card is present.
+BaseOS runs from the SD card and leaves the stock system in place: take the card out
+and the Flip boots stock, exactly as before. To install, see [INSTALL.md](INSTALL.md).
+
+## Features
+
+- **Boots in under 2 seconds.** NextUI shows its first frame about 3 s after
+  power-on, against 31.5 s on stock.
+- **Installs itself from the card.** On first boot the card patches 2 MiB of the
+  preloader so the Flip looks at the SD card first, after backing up the original.
+  Nothing else in internal storage is touched.
+- **One or two cards.** NextUI can live on a second card in the left-hand slot,
+  which can be swapped while running, or share the BaseOS card. An existing NextUI
+  card works as is, and a fresh NextUI release installs itself on first boot.
+- **HDMI alongside the panel**, with hot-plug and hot-unplug — no reboot to switch.
+- **WiFi, Bluetooth audio, SSH and adb over USB**, with network time. Hostname and
+  SSH password are set in `baseos.conf` on the card.
+- **Safe updates.** Drop a `.bosupd` file on either card: the update is written
+  to a spare slot, and the Flip falls back to the previous version by itself if the
+  new one does not start. ROMs, saves and settings are left alone.
+- **Built to survive pulled power.** The system is mounted read-only, the cards'
+  FAT volumes are repaired at boot if they were not cleanly unmounted, and the
+  power key shuts down cleanly even without a frontend running.
+- **Battery care.** The charge LED stays lit while charging off, a flat battery is
+  refused rather than booted, and the battery gauge's bookkeeping is kept.
+- **A crash leaves a record**: the kernel log of a boot that panicked or hung is
+  kept in `/data/pstore/`.
 
 ## Startup time
 
-BaseOS hands off to the frontend **1.94 s** after power-on, and NextUI shows its
-first frame at **2.93–2.98 s**. Stock takes 15.79 s and 31.50 s.
+| power-on → | stock | **BaseOS** |
+|---|---|---|
+| the kernel's first line | 4.30 s | **0.99 s** |
+| frontend hand-off | 15.79 s | **1.94 s** |
+| `nextui.elf` starts | — | **2.40–2.42 s** |
+| NextUI's first frame | 31.50 s | **2.93–2.98 s** |
 
-| power-on → | stock | BaseOS 0.6.0 | **BaseOS 0.7.0** |
-|---|---|---|---|
-| the kernel's first line | 4.30 s | 2.85 s | **0.99 s** |
-| frontend hand-off | 15.79 s | 3.73 s | **1.94 s** |
-| `nextui.elf` starts | — | 4.19–4.23 s | **2.40–2.42 s** |
-| NextUI's first frame | 31.50 s | 5.74 s | **2.93–2.98 s** |
-| boot logo on the panel | — | ~1.0 s | 2.00 s |
+Measured with USB unplugged. The boot logo reaches the panel at 2.00 s.
 
-0.7.0 figures are warm reboots, whose U-Boot timings match cold boots; the first
-frame was last measured one step before the final U-Boot changes, which took
-~40 ms more off.
+Where the time goes:
 
-- **Vendor userland replaced by a BusyBox init**, deleting 9.9 s of stock boot
-  scripts.
-- **Kernel stored compressed: 1.86 s.** U-Boot reads ~12 MiB off the card instead
-  of 34.9 MiB.
-- **SD bus raised to SDR104 (0.2.0): 1.06 s.** The vendor device tree held the
-  boot slot at 50 MHz; reads go from 22 to 63 MB/s, at boot and after.
-- **Kernel init steps skipped (0.6.0): 0.71 s.** Three initcalls nothing uses,
-  halving the kernel's own initialisation.
-- **Mainline U-Boot (0.7.0): 1.8 s.** Built from source in place of the vendor
-  2017.09, it hands off at 0.94 s: data cache on before relocation, the SD card
-  at the 50 MHz it claimed, the GPT held in the block cache, and a zstd kernel
+- **The vendor userland is replaced by a BusyBox init**, deleting 9.9 s of stock
+  boot scripts.
+- **A mainline U-Boot**, built from source, hands off to the kernel at 0.94 s:
+  data cache on before relocation, the card read at full speed, and a zstd kernel
   decompressed at 1800 MHz ([docs/uboot.md](docs/uboot.md)).
-- **Vendor libraries on the boot card's ext4**, not the squashfs in SPI NAND.
-  NextUI's `launch.sh` loads them in 0.89 s against 12.45 s on stock.
+- **The kernel is stored compressed**: about 12 MiB read off the card instead of
+  34.9 MiB.
+- **The SD bus runs at SDR104.** The vendor device tree held the boot slot at
+  50 MHz; reads go from 22 to 63 MB/s, at boot and after.
+- **Unused kernel init steps are skipped**, halving the kernel's own
+  initialisation.
+- **Vendor libraries load from the card's ext4**, not the squashfs in SPI NAND.
+  NextUI's `launch.sh` takes 0.89 s against 12.45 s on stock.
 
-Mainline U-Boot has no display driver for this SoC, so the boot logo is drawn by
-`rcS` and reaches the panel at 2.00 s rather than ~1.0 s. What the vendor
-U-Boot did is redone here: the battery gauge's bookkeeping, the charge LED
-while charging off and the refusal to boot a flat battery; only its charge
-screen is gone. `MY355_UBOOT=vendor` still builds the 0.6.0 path. Where the rest goes, and
-what is left to try, is in [docs/boot-time.md](docs/boot-time.md).
+The full breakdown, and what is left to try, is in
+[docs/boot-time.md](docs/boot-time.md).
 
-## New in 0.7.0
+## How it works
 
-- **Mainline U-Boot**, above: 1.8 s faster to the frontend.
-- **HDMI alongside the panel**, with hot-plug and hot-unplug. Stock disables the
-  panel to use a TV and reboots to switch.
-- **The charge LED stays lit after a shutdown with the charger in**, until
-  the battery is full.
-- **The boot card no longer drops out after a suspend**, and adb reconnects
-  after one.
-- **A crash leaves a record**: the kernel log of a boot that panicked or hung is
-  kept in `/data/pstore/`.
-- **No more 0.3 s WiFi stall** on about half the boots, on either U-Boot.
+The vendor kernel, BL31 and OP-TEE stay **byte-for-byte** — the kernel is stored
+compressed on the card, and the build asserts it decompresses to the vendor image.
+U-Boot proper is mainline, built from source, and the userland is replaced, with a
+BusyBox init over a measured harvest of the stock glibc stack. The one change to
+internal NAND is the preloader patch making the SPL try the SD card first.
 
 ## Building
 
