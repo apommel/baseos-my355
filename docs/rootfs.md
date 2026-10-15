@@ -76,6 +76,9 @@ the list grows as more of the stack is exercised:
 | `alsa-lib/*_bluealsa.so` | alsa-lib `dlopen` | `audiomon` writes an `.asoundrc` naming `type bluealsa` for both pcm and ctl |
 | `modetest` | `libmsettings` `system()` | the panel's DRM `contrast` and `saturation` properties are set with `modetest -M rockchip -w 179:<prop>:<0-100>`; brightness is sysfs PWM and worked without it |
 | `fsck.fat` | `mount-frontend` | clears a card's FAT dirty flag before it is mounted (below). dosfstools 4.2, libc only |
+| `mkfs.ext4` | spruceOS `setup_32bit_libs.sh` | formats the image behind spruceOS's `/usr` overlay. `/etc/mke2fs.conf`, stock's, is in `overlay/` |
+| `bash` | spruceOS | PortMaster ports, and root's shell in spruceOS's `/etc/passwd`. `/etc/shells` lists it, in `overlay/` |
+| `bluealsa-aplay` | spruceOS `bt_audio_ready()` | detects a Bluetooth headset |
 
 Two layout notes. Zone files live in `posix/` and the top-level names symlink
 into it, so only `right/` can be dropped. `/etc/localtime` is a symlink to

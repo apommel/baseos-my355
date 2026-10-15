@@ -95,6 +95,19 @@
 ## mount-frontend clears a card's FAT dirty flag with it.
 /usr/sbin/fsck.fat
 
+## spruceOS formats its /usr overlay image with it.
+/usr/sbin/mkfs.ext4
+/usr/lib/libext2fs.so.2
+/usr/lib/libcom_err.so.2
+/usr/lib/libe2p.so.2
+/usr/lib/libuuid.so.1
+
+## spruceOS: PortMaster ports, and root's shell in its /etc/passwd.
+/usr/bin/bash
+
+## spruceOS checks for a Bluetooth headset with it.
+/usr/bin/bluealsa-aplay
+
 ## HTTP (popen): NextUI's common/http.c shells out to curl. OpenSSL and zlib
 ## are already here for wpa_supplicant. /etc/ssl/certs is curl's CA path and is
 ## two layers of symlinks into /usr/share/ca-certificates, which must come too.
