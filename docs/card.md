@@ -112,9 +112,9 @@ Users copy it to the root of either card and power on.
    `primary` if that is not already it (a read-only mount, on every boot)
 2  it must be built for my355, fit these slots, be newer than the running version
    (or a rebuild of it), and not already be in /data/update/history
-3  write all three slot images into the spare halves, 32 MiB at a time
-4  read each half back and hash it                        -> mismatch: stop here
-5  gptslot flip uboot boot rootfs                             <- the commit point
+3  write each changed slot image into its spare half, 32 MiB at a time
+4  read each written half back and hash it                -> mismatch: stop here
+5  gptslot flip <the written regions>                         <- the commit point
 6  record the commit, then reboot
 ```
 
@@ -123,10 +123,16 @@ at any earlier moment leaves the card byte-identical to before. `data` and
 `primary` are never written, which is the whole point: an update keeps ROMs,
 saves and settings that a reflash would destroy.
 
-All three regions are written every time, even when only the rootfs changed.
-Comparing first would save 48 MiB of writes. Since the rootfs is mounted
-read-only, the running slot still matches its own image, so this is no longer
-blocked; it is just not done.
+Only regions that change are written. Nothing writes to a running slot — the
+rootfs is mounted read-only — so hashing the active half of `uboot` and `boot`
+says whether the payload would change them, and both builds reproduce
+(`SOURCE_DATE_EPOCH=0`, FIT timestamp 0), so most releases leave them alone and
+skip 48 MiB of writes plus their read-back. A region left alone is not flipped,
+and a rollback flips back only what the update flipped (`regions=` in
+`/data/update/state`). The rootfs is never compared: it carries the build stamp,
+so every applicable payload changes it, and hashing 512 MiB to learn that would
+cost seconds. The payload still carries all three images, so it applies to a card
+on any earlier release.
 
 `gptslot` (from `src/gptslot.c`) does the arithmetic and derives the
 geometry from the table alone: the regions tile forward from LBA 16384 — the one

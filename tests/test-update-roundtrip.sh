@@ -47,9 +47,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
 
   sh /test/baseos-update apply
 
-  # Every region now runs from its second half.
+  # The payload came from this very image, so only the rootfs (which the check
+  # always rewrites) moves to its second half; uboot and boot already match.
   eval "$(gptslot /dev/mmcblk1 geometry)"
-  [ "$SLOT_UBOOT" = B ] && [ "$SLOT_BOOT" = B ] && [ "$SLOT_ROOTFS" = B ]
+  [ "$SLOT_UBOOT" = A ] && [ "$SLOT_BOOT" = A ] && [ "$SLOT_ROOTFS" = B ]
 
   # What is in them is what the payload declared.
   for region in uboot boot rootfs; do

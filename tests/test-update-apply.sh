@@ -129,10 +129,30 @@ PY
     grep -q "baseos-update: flipped to 0.4.0" "$f" || { echo "nothing logged to $f" >&2; exit 1; }
   done
 
+  grep -qx "regions=uboot boot rootfs" /data/update/state
+
   # Same payload still on the card next boot: recorded in history, never redone.
   rm -f /tmp/flip.log
   sh /test/baseos-update apply
   no_flip "an already-applied payload"
+
+  # Regions already running the payload image are neither written nor flipped,
+  # and a rollback restores only what was flipped. The rootfs is always written.
+  reset
+  payload my355 0.4.0 def
+  dd if=/tmp/expect-uboot.bin of=/dev/mmcblk1 bs=1M seek=0 conv=notrunc status=none
+  dd if=/tmp/expect-boot.bin of=/dev/mmcblk1 bs=1M seek=2 conv=notrunc status=none
+  sh /test/baseos-update apply
+  [ "$(cat /tmp/flip.log)" = "rootfs" ]
+  grep -qx "regions=rootfs" /data/update/state
+  for at in 1 3; do
+    dd if=/dev/mmcblk1 bs=1M skip="$at" count=1 of=/tmp/got.bin status=none
+    cmp /tmp/got.bin /tmp/zero.bin
+  done
+  rm -f /tmp/flip.log
+  sed -i "s/^attempts=.*/attempts=2/" /data/update/state
+  sh /test/baseos-update boot-check
+  [ "$(cat /tmp/flip.log)" = "rootfs" ]
 
   # Nor is one older than the running version, which would ping-pong.
   reset

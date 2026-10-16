@@ -3,11 +3,12 @@
 #
 # `uboot`, `boot` and `rootfs` each have twice their size reserved on the card,
 # and only one half of each is a partition at a time; the other is unallocated
-# space reached by raw offset. An update writes all three inactive halves,
-# verifies them by reading them back, and only then flips the GPT — so the flip
-# is the single commit point, and power loss before it leaves the card
-# byte-identical. `data` and `primary` are never touched, which is the point:
-# ROMs, saves and settings survive what would otherwise be a reflash.
+# space reached by raw offset. An update writes the inactive half of each region
+# it changes, verifies them by reading them back, and only then flips those
+# entries in the GPT — so the flip is the single commit point, and power loss
+# before it leaves the card byte-identical. `data` and `primary` are never
+# touched, which is the point: ROMs, saves and settings survive what would
+# otherwise be a reflash.
 #
 #   apply       find and apply a *.bosupd payload (rcS)
 #   boot-check  restore the previous slots if this one never reaches a session (rcS)
@@ -20,9 +21,9 @@
 # no signing key: it would be a single point of failure for every update, and
 # these images carry no secrets.
 #
-# All three regions are written every time, even when a release changes only the
-# rootfs. Comparing first would save about 48 MiB of writes; the rootfs is
-# mounted read-only, so its slot does still match its own image.
+# Only regions that changed are written and flipped. Nothing writes to a running
+# slot (the rootfs is mounted read-only), so hashing it tells whether the payload
+# would change it; the U-Boot and boot builds reproduce, so most releases do not.
 
 FORMAT=baseos-update/2
 REGIONS="uboot boot rootfs"
@@ -204,6 +205,16 @@ write_slot() {
 	}
 }
 
+# Does the running half of $1 already hold the payload's image? Never asked of
+# the rootfs: it carries the build stamp, so an applicable payload always
+# changes it, and reading 512 MiB to learn that would cost seconds.
+unchanged() {
+	[ "$1" != rootfs ] || return 1
+	[ "$(dd if="$DISK" bs=1M skip=$(( $(slot "$1" _ACTIVE) / 2048 )) \
+		count=$(( $(slot "$1" _SECTORS) / 2048 )) 2>/dev/null | sha256sum | cut -d' ' -f1)" \
+		= "$(field "$MANIFEST" "$1-sha256")" ]
+}
+
 # Hash an inactive half back off the card. The splash calls inside the group must
 # not write to stdout — that stream is the hash input.
 verify_slot() {
@@ -255,11 +266,20 @@ apply() {
 	log "applying $version ($build) from $payload"
 	splash "$WRITE_FROM" "UPDATING SYSTEM"
 
+	# Never empty: the rootfs is always written (see unchanged).
+	regions=""
 	total_mb=0
-	for r in $REGIONS; do total_mb=$((total_mb + $(slot "$r" _SECTORS) / 2048)); done
+	for r in $REGIONS; do
+		if unchanged "$r"; then
+			log "$r unchanged, keeping slot $(slot "$r" "")"
+			continue
+		fi
+		regions="${regions:+$regions }$r"
+		total_mb=$((total_mb + $(slot "$r" _SECTORS) / 2048))
+	done
 
 	done_mb=0
-	for r in $REGIONS; do
+	for r in $regions; do
 		write_slot "$r" || { fail "writing the $r slot failed"; return 1; }
 		done_mb=$((done_mb + $(slot "$r" _SECTORS) / 2048))
 	done
@@ -271,17 +291,17 @@ apply() {
 	( echo 3 > /proc/sys/vm/drop_caches ) 2>/dev/null || true
 
 	done_mb=0
-	for r in $REGIONS; do
+	for r in $regions; do
 		if [ "$(verify_slot "$r")" != "$(field "$MANIFEST" "$r-sha256")" ]; then
 			fail "the $r slot failed verification"
 			return 1
 		fi
 		done_mb=$((done_mb + $(slot "$r" _SECTORS) / 2048))
 	done
-	log "all slots verified"
+	log "verified: $regions"
 
 	# The commit. Everything above is reversible by doing nothing.
-	if ! /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$BASEOS_LOG" 2>&1; then
+	if ! /usr/sbin/gptslot "$DISK" flip $regions >> "$BASEOS_LOG" 2>&1; then
 		log "slot flip failed — still running the old slots"
 		splash -1 "UPDATE FAILED"
 		cleanup
@@ -298,6 +318,7 @@ apply() {
 		printf "attempts=0\n"
 		printf "sha=%s\n" "$want_sha"
 		printf "payload=%s\n" "$payload"
+		printf "regions=%s\n" "$regions"
 	} > "$STATE"
 	log "flipped to $version; rebooting"
 	sync
@@ -321,7 +342,10 @@ boot_check() {
 		log "no session in $attempts boots — restoring the previous slots;"
 		log "the payload that produced them stays on the card but is not retried"
 		splash -1 "RESTORING SYSTEM"
-		if /usr/sbin/gptslot "$DISK" flip $REGIONS >> "$BASEOS_LOG" 2>&1; then
+		# Only what the update flipped. A state written before regions= existed
+		# came from an update that flipped them all.
+		regions="$(field "$STATE" regions)"
+		if /usr/sbin/gptslot "$DISK" flip ${regions:-$REGIONS} >> "$BASEOS_LOG" 2>&1; then
 			rm -f "$STATE"
 			sync
 			reboot
