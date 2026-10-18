@@ -82,7 +82,7 @@ against the sizes and SHA-256 hashes in `manifest/prepared/source.json`.
 fetch-prepared.sh   download the stock files
 prepare-stock.sh    extract the stock files from a NAND backup
 cache-pack.sh       package the stock files for publishing
-build-all.sh        build everything: the release .img.zip and .bosupd
+build-all.sh        build everything: the release .img.zip, .bosupd and SHA256SUMS
 build-uboot.sh      build U-Boot
 build-rootfs.sh     build the root filesystem
 build-image.sh      build the SD card image

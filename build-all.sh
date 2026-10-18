@@ -31,7 +31,12 @@ zip -q -j -X "$archive" "$WORK/baseos-my355.img"
 echo
 echo "=== release artifacts for $VERSION ==="
 # The image is for a new card; the payload updates one that is already running.
+# SHA256SUMS is published with them, as upstream BaseOS does; frontends' updaters check it.
+sums="$WORK/SHA256SUMS"
+: > "$sums"
 for f in "$archive" "$WORK/baseos-my355-$VERSION.bosupd"; do
   printf "  %-40s %s\n" "$(basename "$f")" "$(du -h "$f" | cut -f1)"
   printf "  %s\n" "$(baseos_sha256 "$f")"
+  printf "%s  %s\n" "$(baseos_sha256 "$f")" "$(basename "$f")" >> "$sums"
 done
+printf "  %-40s\n" "SHA256SUMS"
