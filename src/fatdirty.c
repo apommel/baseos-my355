@@ -1,6 +1,6 @@
-// fatdirty DEVICE — exit 0 if the FAT's dirty flag is set, printing the size of
-// its FATs in 512-byte sectors; 1 if clean; 2 if not FAT or unreadable.
-// Linux never clears a flag it found set at mount, only fsck does.
+// fatdirty DEVICE — 0 if dirty (prints the FATs' size in sectors), 1 if clean,
+// 2 if not FAT, 3 if dirty but in use. Only fsck clears a flag found at mount.
+#include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,6 +30,8 @@ int main(int argc, char **argv) {
 	if (fat32) fatsz = le32(b + 36);
 	if (!fatsz) return 2;
 	if (!(b[fat32 ? 65 : 37] & 1)) return 1;
+	// Fails while any filesystem holds the device, even lazily unmounted.
+	if (open(argv[1], O_RDONLY | O_EXCL | O_CLOEXEC) < 0 && errno == EBUSY) return 3;
 	printf("%lu\n", b[16] * fatsz * (bps / 512));
 	return 0;
 }

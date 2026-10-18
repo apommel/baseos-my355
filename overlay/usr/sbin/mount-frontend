@@ -19,10 +19,12 @@ splash() { [ -x /usr/bin/baseos-splash ] && \
 
 # A dirty flag survives any number of clean mounts until fsck clears it.
 repair() {
-	fats=$(/usr/sbin/fatdirty "$1") || return 0
-	while read -r _dev _rest; do
-		[ "$_dev" = "$1" ] && { log "$1 dirty but mounted, not repairing"; return 0; }
-	done < /proc/mounts
+	fats=$(/usr/sbin/fatdirty "$1")
+	case $? in
+		0) ;;
+		3) log "$1 dirty but in use, not repairing"; return 0 ;;
+		*) return 0 ;;
+	esac
 	log "$1 was not cleanly unmounted, repairing"
 	splash 0
 	done=/run/fsck.done
