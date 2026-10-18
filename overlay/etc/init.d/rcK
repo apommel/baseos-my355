@@ -3,26 +3,42 @@
 # nothing itself, so stop the other processes and unmount here. Otherwise the
 # ext4 journals replay on the next boot.
 
-/bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null
-
 . /usr/share/baseos/log.sh
+
+# A frontend can mount over /usr from its card (spruceOS: an overlay on a loop
+# image), and this script would then hold the card. Detach and run again.
+m=$(/usr/bin/awk '$2 ~ /^\/usr(\/|$)/ { print $2 }' /proc/mounts | /usr/bin/tac)
+if [ -n "$m" ] && [ -z "$RCK_DETACHED" ]; then
+	log "detaching mounts over /usr"
+	for p in $m; do /bin/umount -l "$p"; done
+	RCK_DETACHED=1 exec /etc/init.d/rcK
+fi
+
+/bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null
 
 # init gives this script its own session, which killall5 spares.
 read -r _l < /proc/$$/stat
 set -- ${_l##*) }
 SID=$4
 
-# Is any process left besides init, kernel threads, zombies and this session?
-# Sets $LEFT to its name.
-others() {
-	for _p in /proc/[0-9]*; do
-		[ "$_p" = /proc/1 ] && continue
-		read -r _l < "$_p/stat" 2>/dev/null || continue
-		LEFT=${_l#*(}
-		LEFT=${LEFT%%)*}
-		set -- ${_l##*) }
-		case "$1:$4" in Z:*|*:0|*:"$SID") continue ;; esac
-		return 0
+# Waits up to $1 tenths of a second for all other processes to go; sets $LEFT.
+# Zombies count: a killed one's other threads still hold its files until reaped.
+wait_others() {
+	_max=$1 _n=0
+	while [ "$_n" -lt "$_max" ]; do
+		LEFT=""
+		for _p in /proc/[0-9]*; do
+			[ "$_p" = /proc/1 ] && continue
+			read -r _l < "$_p/stat" 2>/dev/null || continue
+			set -- ${_l##*) }
+			case "$4" in 0|"$SID") continue ;; esac
+			LEFT=${_l#*(}
+			LEFT=${LEFT%%)*}
+			break
+		done
+		[ -z "$LEFT" ] && return 0
+		/bin/usleep 100000
+		_n=$((_n + 1))
 	done
 	return 1
 }
@@ -31,13 +47,14 @@ log "shutdown"
 [ -e /run/baseos-charge ] && log "charger in: restarting to charge"
 # ntpd can ignore SIGTERM for seconds (S49ntp), which would use up the wait below.
 [ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp stop
+# NextUI exits on SIGTERM after its 2 s power-off screen.
 /sbin/killall5 -15
-i=0
-while others && [ "$i" -lt 10 ]; do /bin/usleep 100000; i=$((i + 1)); done
-if [ "$i" -lt 10 ]; then log "all exited"; else log "killing, $LEFT still running"; fi
+if wait_others 50; then log "all exited"; else log "killing, $LEFT still running"; fi
 /sbin/killall5 -9
-i=0
-while others && [ "$i" -lt 10 ]; do /bin/usleep 50000; i=$((i + 1)); done
+wait_others 10 || log "$LEFT still there after SIGKILL"
+
+# A swap file on the card would keep it from unmounting.
+/sbin/swapoff -a 2>/dev/null
 
 # Tells the next rcS this boot ended here, so its ramoops record is not a crash.
 : > /data/clean-shutdown 2>/dev/null
@@ -47,16 +64,7 @@ while others && [ "$i" -lt 10 ]; do /bin/usleep 50000; i=$((i + 1)); done
 log "unmounting"
 /bin/sync
 for m in $(/usr/bin/awk '$2 != "/" && $2 !~ /^\/(proc|sys|dev)(\/|$)/ && $2 !~ /^\/(run|tmp|var)$/ { print $2 }' /proc/mounts | /usr/bin/tac); do
-	# The kernel can hold a killed process's files a moment after it is gone
-	# (nextui.elf's, with no process left holding the card), so retry, up to 2 s.
-	i=0
-	until /bin/umount "$m" 2>/dev/null; do
-		i=$((i + 1))
-		[ "$i" -le 40 ] || break
-		/bin/usleep 50000
-	done
-	[ "$i" -eq 0 ] && continue
-	if [ "$i" -le 40 ]; then log "umount $m took $i retries"; continue; fi
+	/bin/umount "$m" 2>/dev/null && continue
 	/bin/mount -o remount,ro "$m" 2>/dev/null && r="read-only" || r="still writable"
 	log "umount $m failed, left $r"
 done

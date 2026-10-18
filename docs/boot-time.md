@@ -196,7 +196,7 @@ anything and unmounts nothing itself, and the old `rcK` tried to unmount `/data`
 and the card while `adbd` and the frontend still held them — so **every boot
 replayed both ext4 journals**, costing 96–137 ms on the root mount and 80–100 ms
 on `/data`. `rcK` now stops everything outside its own session (SIGTERM, at most
-1 s, SIGKILL), unmounts in reverse mount order and remounts `/` read-only. No
+5 s, SIGKILL), unmounts in reverse mount order and remounts `/` read-only. No
 boot has replayed a journal since. The root has since been mounted read-only
 ([rootfs](rootfs.md)), so its journal cannot need a replay even after a power-off
 that skips `rcK`; only `/data` still depends on a clean shutdown.

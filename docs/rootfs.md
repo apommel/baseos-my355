@@ -154,18 +154,32 @@ read-only mount of this card's FAT partition, about 20–30 ms
 ([the card](card.md)).
 
 `rcK` does the shutdown work busybox init leaves out. It stops every other
-process (SIGTERM, at most 1 s, SIGKILL), unmounts the frontend's binds, the card
+process (SIGTERM, at most 5 s, SIGKILL), unmounts the frontend's binds, the card
 and `/data`, and puts `/` back to read-only in case it was remounted for
 development. Without that, the `/data` journal replays on every boot.
 
-An unmount that fails is retried every 50 ms for up to 2 s before `rcK` settles
-for read-only. A shutdown that does not come from NextUI (`reboot` over adb, for
-one) finds `nextui.elf` still running. It catches SIGTERM and carries on, so it
-is killed, and for 0.15–0.2 s after that the card stays busy although no process
-holds anything on it any more. Before the retry, that left the card writable and
-its FAT dirty flag set. Shutdowns from NextUI's own menu never hit this:
-`nextui.elf` has already exited. A card left dirty anyway, by a power cut or a
-hard power-off, is repaired at the next mount ([below](#nextui-compatibility)).
+The 5 s are for the frontend. A shutdown that does not come from NextUI
+(`reboot` over adb, for one) finds `nextui.elf` still running, and SDL turns its
+SIGTERM into `SDL_QUIT`, which NextUI handles as its own power-off: the
+"Powering off" screen, a 2 s pause, then a clean exit. A 1 s limit killed it
+halfway; given 5 s, it exits by itself in 2.7 s. A killed process also shows as a zombie while its other threads are
+still letting go of its files: `nextui.elf` killed this way stayed `Z` with 2
+threads for about 0.3 s, which is why the card stayed busy after nothing seemed
+to hold it. So `rcK` waits for zombies too, until init reaps
+them. An unmount that still fails is left read-only. A card left dirty anyway, by
+a power cut or a hard power-off, is repaired at the next mount
+([below](#nextui-compatibility)).
+
+A frontend can also stack mounts on the card. spruceOS puts an overlay over
+`/usr` whose upper layer is an ext4 image on the card, mounts squashfs images
+from it, and can swap to a file on it. `rcK` would then run its own shell from
+the card and keep it busy, so it first lazily detaches whatever is mounted over
+`/usr` and runs itself again from the root filesystem's `/usr`. It turns swap
+off before unmounting. Checked on the device with spruceOS running: `reboot` over
+adb left the card clean, where a process running from such an overlay keeps the
+card from unmounting. So a frontend needs no unmount of its own: calling
+`poweroff` or `reboot` is enough, and init stops respawning `frontend-session`
+once it has started `rcK`.
 
 ### The root is read-only
 
@@ -333,7 +347,8 @@ Before each mount, `fatdirty` (`src/fatdirty.c`) reads the boot sector and
 tests the flag where the kernel reads it (offset 65 on FAT32, 37 on FAT12/16),
 and a set flag runs the stock `fsck.fat -a` under `REPAIRING SD CARD`. A clean
 card costs one exec, 1.8 ms measured on the device; a volume that is not FAT, or
-is mounted elsewhere, is left alone. The repair took 5.0 s on a 115 GiB card
+is in use is left alone: `fatdirty` opens the device `O_EXCL`, which fails while
+any filesystem holds it, including one lazily unmounted but still held. The repair took 5.0 s on a 115 GiB card
 with 5,704 files in the left slot, about 1.5 s of it reading the two FATs. The
 bar follows the partition's own sector counters: the FATs, whose size `fatdirty`
 prints, fill it to half, and the directories, of unknown size, only creep it
