@@ -160,6 +160,25 @@ PY
   sh /test/baseos-update apply
   no_flip "an older payload"
 
+  # A release beats its own pre-releases, which order semver-style. Pairs are
+  # payload:running.
+  release() {
+    printf "BASEOS_TARGET=my355\nBASEOS_VERSION=%s\nBASEOS_BUILD=abc\n" "$1" > /etc/baseos-release
+  }
+  for pair in 0.4.0:0.4.0-beta.1 0.4.0-beta.2:0.4.0-beta.1 0.4.0-beta.10:0.4.0-beta.9 \
+      0.4.0-rc.1:0.4.0-beta.2 0.4.0-beta.1:0.4.0-beta 0.4.0-beta.1:0.3.0 0.4.1-beta.1:0.4.0; do
+    reset; release "${pair#*:}"; payload my355 "${pair%:*}" def
+    sh /test/baseos-update apply
+    [ -e /tmp/flip.log ] || { echo "not taken: $pair" >&2; exit 1; }
+  done
+  for pair in 0.4.0-beta.1:0.4.0 0.4.0-beta.1:0.4.0-beta.2 0.4.0-beta:0.4.0-beta.1 \
+      0.4.0-beta.2:0.4.0-rc.1 0.3.0:0.4.0-beta.1; do
+    reset; release "${pair#*:}"; payload my355 "${pair%:*}" def
+    sh /test/baseos-update apply
+    no_flip "$pair"
+  done
+  release 0.3.0
+
   # The trial: two quiet boots, then the third restores the previous slots.
   reset
   mkdir -p /data/update
