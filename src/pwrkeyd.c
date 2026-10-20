@@ -17,7 +17,7 @@
 #include <sys/ioctl.h>
 
 #define KEY_DEVICE "rk805 pwrkey"
-#define HOLD_MS 2000	// as U-Boot's charge mode asks to boot (the vendor's KEY_LONG_DOWN_MS)
+#define HOLD_MS 2000	// longer than the 500 ms that boots, so turning off stays deliberate
 
 static long long now_ms(void) {
 	struct timespec t;

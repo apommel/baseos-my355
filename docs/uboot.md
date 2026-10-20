@@ -840,7 +840,8 @@ same without the screen:
   CC/CV, dark while a charge is paused or refused, which the PMIC resumes on
   its own. The PMIC is powered off when it reads terminated or when the cable
   is pulled; U-Boot stays up otherwise, powered by the charger. Holding the
-  power key for 2 s, the vendor's `KEY_LONG_DOWN_MS`, boots instead, with the
+  power key for 500 ms, the hold the PMIC itself asks of a cold boot
+  (`PWRON_ON_TIME`, `0xf7` bit 7 clear), boots instead, with the
   `work` LED lit again: `INT_STS0` latches the press (`PWRON_FALL`) and the
   release (`PWRON_RISE`), both cleared as they are read, and both in one poll
   count as a short press.
@@ -869,9 +870,10 @@ two deliberate differences. The vendor stays up once full, handing over to
 a *charging-full* LED the Flip does not have; this powers off, as dark as a
 normal shutdown. And the vendor idles in PSCI system suspend, with
 the regulators in their sleep states, which needs interrupts and a wake-up
-source mainline U-Boot does not have here; WFE is the step short of that. The
-rest matches: the 2 s press to boot, the exit on unplug, the low-battery
-guard, `reboot charge` (`BOOT_CHARGING`, cleared once read), the gauge saved before powering off, and on termination the full
+source mainline U-Boot does not have here; WFE is the step short of that. And
+the press to boot is 500 ms, as on a cold boot, where the vendor's
+`KEY_LONG_DOWN_MS` asks for 2 s. The rest matches: the exit on unplug, the
+low-battery guard, `reboot charge` (`BOOT_CHARGING`, cleared once read), the gauge saved before powering off, and on termination the full
 capacity loaded into the counter (`rk817_bat_finish_chrg`), though the vendor
 walks the SOC up to 100% where this writes it at once.
 

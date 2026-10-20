@@ -490,7 +490,7 @@ index 0000000..1dea617
 +#define MY355_CHARGE_LED	"A18"	/* gpio0 PC2 */
 +#define MY355_WORK_LED		"A12"	/* gpio0 PB4, lit from power-on */
 +#define MY355_CHARGE_POLL_MS	100
-+#define MY355_LONG_PRESS_MS	2000	/* the vendor's KEY_LONG_DOWN_MS */
++#define MY355_LONG_PRESS_MS	500	/* as a cold boot: the PMIC's PWRON_ON_TIME */
 +/* The vendor tree's uboot-low-power-voltage, plus the 50 mV it adds */
 +#define MY355_LOW_MV		3400
 +#define MY355_VOL_MIN_MV	2500	/* below: not a battery reading */
