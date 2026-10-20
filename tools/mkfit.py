@@ -345,6 +345,7 @@ def cmd_boot(a) -> int:
         dtb = rk.set_sd_uhs(dtb, rk.SD_SLOT0_NODE, a.sd_uhs)
     dtb = rk.detach_sd_slot1_vqmmc(dtb)
     dtb = rk.disable_wifi_ohci(dtb)
+    dtb = rk.drop_dmc_touchboost(dtb)
     # Bootloader-specific, and only this path needs it (rkbootimg.add_optee_reservation).
     dtb = rk.add_optee_reservation(dtb)
     dtb = rk.set_vop2_plane_masks(dtb)
@@ -361,6 +362,7 @@ def cmd_boot(a) -> int:
         print(f"      sd: {rk.SD_SLOT0_NODE} += {', '.join(rk.SD_UHS_MODES[a.sd_uhs][0])}, "
               f"{rk.SD_TUNING_PHASES} tuning steps")
     print(f"      sd: {rk.SD_SLOT1_NODE} -= vqmmc-supply (shared with {rk.SD_SLOT0_NODE})")
+    print("      dmc: -= touch boost (input events held the DDR at its top rate)")
     print(f"      old: {old}")
     print(f"      new: {new}")
 
@@ -441,6 +443,9 @@ def cmd_boot(a) -> int:
         assert phases == struct.pack(">I", rk.SD_TUNING_PHASES), "SD tuning steps not readable back"
     assert "vqmmc-supply" not in rk.fdt_node_props(back, rk.SD_SLOT1_NODE), \
         "slot 1 vqmmc-supply still in the written FIT"
+    levels = rk.fdt_node_props(back, rk.DMC_NODE)["system-status-level"]
+    assert rk.SYS_STATUS_BOOST not in struct.unpack(f">{len(levels) // 4}I", levels)[::2], \
+        "DMC touch boost still in the written FIT"
     print(f"  wrote {a.out}: header + {sectors} sectors ({SECTOR + len(blob)} bytes)")
     print("  verified: kernel round-trips, bootargs, OP-TEE reservation, VOP2 planes, "
           f"panel timings{' and SD tuning' if a.sd_uhs != 'off' else ''} read back")

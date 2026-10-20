@@ -607,6 +607,30 @@ def disable_wifi_ohci(dtb: bytes) -> bytes:
     return fdt_add_props(out, WIFI_OHCI_NODE, [("status", b"disabled\0")])
 
 
+# The DMC driver boosts the DDR to its top rate for 500 ms on every EV_KEY or
+# EV_ABS event. miyoo_inputd re-reports stick noise ~87 times a second at rest,
+# so the boost never lapses: 1056 MHz at 2% load, ~80-180 mW on battery
+# (docs/power.md). Load-based scaling (auto-freq-en) still raises the rate.
+DMC_NODE = "dmc"
+SYS_STATUS_BOOST = 1 << 12
+
+
+def drop_dmc_touchboost(dtb: bytes) -> bytes:
+    """Remove SYS_STATUS_BOOST from the DMC's system-status-level. With no
+    boost_rate, rockchip_dmcfreq_boost_init() registers no input handler."""
+    raw = fdt_node_props(dtb, DMC_NODE).get("system-status-level")
+    if raw is None or len(raw) % 8:
+        raise ValueError(f"{DMC_NODE}: no system-status-level pairs")
+    pairs = [struct.unpack_from(">II", raw, i) for i in range(0, len(raw), 8)]
+    kept = [p for p in pairs if p[0] != SYS_STATUS_BOOST]
+    if len(kept) != len(pairs) - 1:
+        raise ValueError(f"{DMC_NODE}: expected one SYS_STATUS_BOOST entry, "
+                         f"found {len(pairs) - len(kept)}")
+    out = fdt_nop_prop(dtb, DMC_NODE, "system-status-level")
+    return fdt_add_props(out, DMC_NODE, [
+        ("system-status-level", b"".join(struct.pack(">II", *p) for p in kept))])
+
+
 def set_bootargs(dtb: bytes, new_args: str) -> bytes:
     """Rewrite /chosen/bootargs: in place, space-padded, when it fits; grown otherwise.
 
@@ -729,6 +753,7 @@ def cmd_setargs(a) -> int:
             out = set_sd_uhs(out, SD_SLOT0_NODE, a.sd_uhs)
         out = detach_sd_slot1_vqmmc(out)
         out = disable_wifi_ohci(out)
+        out = drop_dmc_touchboost(out)
         print(f"  {name}")
         print(f"      old: {old}")
         print(f"      new: {new}")
