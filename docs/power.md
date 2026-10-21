@@ -106,6 +106,13 @@ One race is closed by hand: `launch.sh` can release WiFi just after
 `bt_init.sh` loaded `rtk_btusb` and before `wifibtd` saw it, and the cut then
 unloads it. `want bt` therefore reloads the module when it is missing.
 
+WiFi after a sleep: NextUI's `suspend` runs `wifi_init.sh stop`, which kills
+`wpa_supplicant` last, just before the freeze, so on wake it can still be a
+zombie until init reaps it (about once a second). `wifi_init.sh start` checks
+`pidof wpa_supplicant`, took the zombie for a running one and started none:
+`wlan0` came up with nothing to scan, twice in a row. `S36` start now waits, at
+most 2 s, while a `wpa_supplicant` zombie exists.
+
 `tests/test-wifibt-power.sh` covers the decisions offline. spruceOS's own WiFi
 and Bluetooth scripts have not been checked against this.
 
