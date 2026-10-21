@@ -425,7 +425,7 @@ BaseOS has to answer to the names; the contents are ours. Stock's `rcS` runs
 
 | script | BaseOS | at boot? |
 |---|---|---|
-| `S36load_wifi_modules` | seeds `/userdata/cfg/wpa_supplicant.conf`; no modules, the driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs) | no — the frontend calls it when WiFi goes on |
+| `S36load_wifi_modules` | seeds `/userdata/cfg/wpa_supplicant.conf`; no modules, the driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs). Also WiFi's side of the WiFi/BT chip's power ([power](power.md)) | no — the frontend calls it when WiFi goes on or off |
 | `S41dhcpcd` | BusyBox `udhcpc`, not the vendor `dhcpcd` | no — the frontend calls it when WiFi goes on |
 | `S49ntp` | BusyBox `ntpd`, not stock's 757 KB one | yes — TLS depends on the clock |
 | `S40bluetooth` | `bluetoothd`, after bringing the system bus up | no — the frontend calls it when Bluetooth goes on |
@@ -490,6 +490,10 @@ handing off, so there is no race with the frontend.
 NextUI's `my355.sh` shadows that directory with a tmpfs because FAT32
 rejects BlueZ's MAC-named files — so as on stock, pairings do not survive a
 reboot.
+
+BaseOS also cuts the WiFi/BT chip's power while both radios are off, which
+`bt_init.sh` cannot see: `wifibtd` turns its `insmod` and its rfkill switching
+into the Bluetooth half of that decision ([power](power.md)).
 
 Exercised on BaseOS: `bt_init.sh` loads `rtk_btusb` from the harvested
 `/lib/modules`, `hci0` comes up with the same BD address as stock (so the

@@ -6,11 +6,15 @@
 #
 # The template is ours: stock's placeholder network={ ssid="SSID" } stanza would
 # show up in the frontend as a saved network the user never added.
+#
+# It is also where WiFi's side of the chip's power is decided (wifibt-power):
+# start comes before wifi_init.sh waits for wlan0, stop after it stops DHCP.
 
 CONF=/userdata/cfg/wpa_supplicant.conf
 
 case "$1" in
   start|"")
+	/usr/sbin/wifibt-power want wifi
 	# Before the frontend binds /userdata this would seed the root
 	# filesystem, shadowing the card's copy on every later boot.
 	grep -q ' /userdata ' /proc/mounts || exit 0
@@ -21,6 +25,7 @@ case "$1" in
 	;;
   stop)
 	# wifi_init.sh blocks the radio itself, with its own rfkill.elf.
+	/usr/sbin/wifibt-power release wifi
 	;;
 esac
 

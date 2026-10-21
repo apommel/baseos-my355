@@ -49,7 +49,65 @@ deepest station power save already (`LPS mode: MAX`); `rtw_lps_level` is 0
 is already weak. NextUI's WiFi and BT off are rfkill soft blocks (`wifi_init.sh`,
 `bt_init.sh`), which leave the chip powered and enumerated. The vendor
 `wlan-platdata` driver exposes `/sys/class/rkwifi/wifi_power` and
-`wifi_bt_vbat`; what cutting them saves over the soft block is not measured yet.
+`wifi_bt_vbat`; writing 0 to both drops the chip off USB, and writing 1 brings
+it back (`wifi_power` reads 0 whatever the state, so its read-back means
+nothing). Developer Pak in front, BT never bound, two runs agreeing within
+20 mW:
+
+| WiFi | mW |
+|---|---|
+| on, associated | 2511 |
+| NextUI's off (`wifi_init.sh stop`: rfkill, `wpa_supplicant` and `dhcpcd` stopped) | 2356 (−155) |
+| the same, plus the chip's power cut | 2033 (−478) |
+
+So **off is not off**: the powered, enumerated chip costs ~320 mW more than
+cutting it.
+
+### Cutting the chip when both are off
+
+`wifibt-power want|release wifi|bt` holds the two intents and is the only thing
+that touches the switch: off when WiFi is released and Bluetooth is not wanted,
+on as soon as either is wanted. It decides from whether the chip is on the USB
+bus (`2-1`), and writes the switches only to change them. A `flock` serialises
+callers, because `launch.sh` starts WiFi and Bluetooth in parallel.
+
+| | wanted | released |
+|---|---|---|
+| WiFi | `S36load_wifi_modules start`, before `wifi_init.sh` waits for `wlan0` | `S36load_wifi_modules stop` |
+| Bluetooth | `rtk_btusb` loading, or the BT rfkill switch unblocked (`wifibtd`) | the BT rfkill switch blocked (`wifibtd`) |
+
+Defaults: WiFi wanted, Bluetooth not. A frontend that never calls `S36` stop
+never loses the chip; and Bluetooth needs no default, because of the rule
+below.
+
+Bluetooth is the hard side. `bt_init.sh start` waits up to 7 s for `hci0`
+*before* it calls `S40bluetooth`, and `bt_init.sh stop` calls nothing of ours, so
+no hook is early enough. What it does do is `insmod rtk_btusb` whenever `lsmod`
+lacks it. Hence the rule: **the chip is only cut once `rtk_btusb` is unloaded**,
+so the next Bluetooth start always loads it, and `wifibtd` (`src/wifibtd.c`)
+turns that module's `add` uevent into power. If the module will not unload in
+2 s, the chip stays on and the log says so. `wifibtd` also reads `/dev/rfkill`
+for the Bluetooth switch, and `rcS` respawns it.
+
+A Bluetooth block is only believed if it still holds 2 s later. `hci0`
+registers into the global Bluetooth state, which the last `bt_init.sh stop` left
+blocked, and `bt_init.sh` only unblocks it 0.5 s after its `insmod`: taken at
+its word, that block cut the chip in the middle of the start it belonged to.
+Waiting also keeps a quick off-and-on from cycling the chip.
+
+A cut never outlives a boot: the kernel powers the chip at probe, and it
+enumerates at ~1.7 s whatever state it was left in.
+
+Exercised on the device through NextUI's own `wifi_init.sh` and `bt_init.sh`:
+every on/off order of the two, each with exactly one power change where one is
+due and none elsewhere, and both radios working in every state.
+
+One race is closed by hand: `launch.sh` can release WiFi just after
+`bt_init.sh` loaded `rtk_btusb` and before `wifibtd` saw it, and the cut then
+unloads it. `want bt` therefore reloads the module when it is missing.
+
+`tests/test-wifibt-power.sh` covers the decisions offline. spruceOS's own WiFi
+and Bluetooth scripts have not been checked against this.
 
 ## The battery gauge
 

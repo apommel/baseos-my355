@@ -116,6 +116,10 @@ mark /run/boot-dbus-start
 # waits for the socket before handing off.
 /usr/bin/dbus-daemon --system 2>/dev/null &
 
+# Bluetooth's side of the WiFi/BT chip's power (wifibt-power). Respawned: without
+# it, a BT start could not power the chip back on.
+{ while :; do /usr/sbin/wifibtd; sleep 1; done; } 2>/dev/null &
+
 # Clock, from the RTC (-u: it holds UTC) then NTP. Backgrounded; TLS validates
 # certificates against it, so every HTTPS request depends on this.
 /sbin/hwclock -u -s 2>/dev/null &
