@@ -452,8 +452,12 @@ only an event script: `usr/share/udhcpc/default.script` sets the address,
 default route and
 `/run/resolv.conf`, with `/etc/resolv.conf` a baked symlink to it.
 
-Two details. `wifi_init.sh` starts DHCP *before* `wpa_supplicant`, so `udhcpc`
-runs with `-b` rather than blocking the WiFi toggle while `wlan0` has no carrier.
+Two details. `wifi_init.sh` starts DHCP *before* `wpa_supplicant`, so `wlan0`
+has no carrier yet. `udhcpc -b` looked right and was not: it backgrounds only
+after a whole round of DISCOVERs fails (3 × 5 s), then pauses 20 s, so turning
+WiFi on blocked for 17.8 s and the address came at 37.5 s. `S41` now runs
+`udhcpc -f` in the background itself and retries every second (`-T 1 -A 2`):
+2.5 s and 9.4 s, of which association is 7.5 s.
 And stock's `S41dhcpcd` wraps the daemon in `start-stop-daemon`, which Alpine's
 `busybox-static` does not build, so the script invokes `udhcpc` directly.
 
