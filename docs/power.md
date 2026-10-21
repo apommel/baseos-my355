@@ -123,4 +123,5 @@ and Bluetooth scripts have not been checked against this.
 
 The tree allows 2500 mA input and 2500 mA charge at 4.2 V. The kernel takes
 1500 mA input on a CDP (a computer port) and `max_input_current` on a DCP.
-`my355 charge` (charging while off) always sets 1500 mA ([U-Boot](uboot.md)).
+`my355 charge` (charging while off) cannot tell the port apart and sets 2500 mA,
+with the 4.5 V input floor backing it off on a source that sags ([U-Boot](uboot.md)).

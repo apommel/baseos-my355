@@ -827,14 +827,16 @@ same without the screen:
   the first charge-mode session measured ~340 mA reaching the battery once the
   SoC had taken its share: 113 mAh in 20 minutes (2026-09-22). The kernel
   raises the limits at probe, which is why charging is fast under BaseOS, and
-  the vendor U-Boot raises them too. `my355 charge` now writes the same
-  `USB_CTRL` the kernel ends up with — input 1500 mA, input voltage floor
-  4.5 V — and, like the vendor, leaves the charge current register alone: it
-  only sets that from a temperature-compensation table the Flip's tree does
-  not have. The floor is what makes 1500 mA safe on a port that cannot supply
-  it, since the PMIC backs off as the source sags; the vendor would use 450 mA
-  for a port its USB detection calls a plain one, which needs a USB PHY driver
-  this build does not have. Both registers are logged.
+  the vendor U-Boot raises them too. `my355 charge` writes `USB_CTRL` with
+  the input at 2500 mA and the input voltage floor at 4.5 V (`0xde`), and, like
+  the vendor, leaves the charge current register alone: it only sets that from
+  a temperature-compensation table the Flip's tree does not have. 2500 mA is
+  the kernel's limit on a wall charger (`max_input_current`, for a DCP); it
+  takes 1500 on a computer's charging port and 450 on a plain one, but telling
+  them apart needs a USB PHY driver this build does not have. Until 2026-10-21
+  this wrote 1500 for every port. The floor is what makes the higher limit
+  safe on a port that cannot supply it, since the PMIC backs off as the source
+  sags. Both registers are logged.
 - **Then** the `work` LED (`gpio0 PB4`, lit from power-on) goes off, and
   every 100 ms the charge LED follows `CHRG_STS`: lit for dead, trickle and
   CC/CV, dark while a charge is paused or refused, which the PMIC resumes on
