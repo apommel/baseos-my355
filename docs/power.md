@@ -41,6 +41,29 @@ another. The wake-ups themselves cost nothing measurable; the rate does.
 the driver's load-based path (`auto-freq-en`, upthreshold 40%, 324 MHz floor)
 plus the VOP's bandwidth requests (`vop-bw-dmc-freq`), both unchanged.
 
+In games, NextUI on battery, each pair back to back in the same scene, the old
+behaviour reproduced by holding `devfreq/dmc/min_freq` at 1056 MHz:
+
+| game | DDR, load-based | W | held at 1056 MHz | difference |
+|---|---|---|---|---|
+| Game Boy (gambatte) | 324 MHz throughout | 2.70 | 2.85 | −153 mW |
+| PS1, 3D scene (pcsx_rearmed) | 780 MHz ⅔, 528 ⅓ | 3.11 | 3.25 | −137 mW |
+
+The 3D scene never asked for 1056 MHz, and played the same either way (no FPS
+counter). About 5% of play time, more at idle.
+
+The boost lived in `dmc_ondemand` alone (`devfreq_dmc_ondemand_func`), so
+frontends that set the DMC governor keep working: spruceOS pins `powersave` at
+324 MHz in its smart mode and `performance` in overclock, and its performance
+mode, `dmc_ondemand` capped at 1056 MHz, now scales with load instead of
+sitting at 1056.
+
+Reading `scaling_cur_freq` every 2 s in a game is not a measure of the CPU's
+clock: the sampler's own processes push `schedutil` over the 600 → 1416 MHz
+step, and 40% of samples said 1416 MHz where `stats/time_in_state` said 2%.
+`schedutil` (Rockchip's, `target_load` 80, `rate_limit_us` 10000) changes the
+rate about 87 times a second in NextUI's menu.
+
 ## WiFi and Bluetooth
 
 One Realtek RTL8733BU on USB (`2-1`) carries both. WiFi runs at the driver's
