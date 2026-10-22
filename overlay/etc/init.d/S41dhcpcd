@@ -8,10 +8,10 @@ PIDFILE=/run/udhcpc.$IFACE.pid
 case "$1" in
   start)
 	[ -s "$PIDFILE" ] && [ -d "/proc/$(cat "$PIDFILE")" ] && exit 0
-	# -b: background rather than block until the first lease; wifi_init.sh
-	# starts us before wpa_supplicant, so wlan0 has no carrier yet.
-	# The hostname lets the router name the lease, and often resolve it.
-	/sbin/udhcpc -i "$IFACE" -b -p "$PIDFILE" -x hostname:"$(/bin/hostname)" >/dev/null 2>&1
+	# Called before wpa_supplicant, so -b would block 15 s then pause 20 s
+	# (docs/rootfs.md). The hostname lets the router name the lease.
+	/usr/bin/setsid /sbin/udhcpc -f -i "$IFACE" -T 1 -A 2 -p "$PIDFILE" \
+		-x hostname:"$(/bin/hostname)" >/dev/null 2>&1 &
 	;;
   stop)
 	[ -s "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null

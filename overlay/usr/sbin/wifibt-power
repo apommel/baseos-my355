@@ -1,0 +1,71 @@
+#!/bin/sh
+# One switch powers the RTL8733BU, which is both WiFi and Bluetooth. Cut it
+# when both are off and restore it when either comes on: off but powered, the
+# chip costs ~320 mW (docs/power.md).
+#
+#   wifibt-power want|release wifi|bt
+#
+# WiFi: S36load_wifi_modules start/stop, which NextUI's wifi_init.sh calls.
+# Bluetooth: wifibtd, from rtk_btusb loading and the BT rfkill switch.
+# WiFi counts as wanted until a frontend says otherwise, so a frontend that
+# never calls S36 never loses the chip. Bluetooth does not, because every BT
+# start insmods rtk_btusb when it is not loaded — which is why the module is
+# unloaded before the cut, and the cut refused if it will not go.
+
+. /usr/share/baseos/log.sh
+
+SYS=${WIFIBT_SYS:-/sys}
+RUN=${WIFIBT_RUN:-/run/wifibt}
+MODULES=${WIFIBT_MODULES:-/proc/modules}
+KO=/lib/modules/rtk_btusb.ko
+RK=$SYS/class/rkwifi
+# The chip's place on the WiFi EHCI: present exactly while it is powered.
+CHIP=$SYS/bus/usb/devices/2-1
+
+btusb_loaded() { grep -q '^rtk_btusb ' "$MODULES"; }
+
+power_on() {
+	if [ ! -e "$CHIP" ]; then
+		echo 1 > "$RK/wifi_bt_vbat"
+		echo 1 > "$RK/wifi_power"
+		i=0
+		while [ ! -e "$CHIP" ] && [ $i -lt 50 ]; do usleep 100000; i=$((i + 1)); done
+		[ -e "$CHIP" ] && log "chip powered on for $1" || log "chip did not come back for $1"
+	fi
+	# A concurrent cut may have unloaded the module this BT start just loaded.
+	[ "$2" = want ] && [ "$1" = bt ] && ! btusb_loaded && insmod "$KO" 2>/dev/null
+	return 0
+}
+
+power_off() {
+	[ -e "$CHIP" ] || return 0
+	i=0
+	while btusb_loaded; do
+		[ $i -lt 20 ] || { log "chip kept on: rtk_btusb will not unload"; return 0; }
+		rmmod rtk_btusb 2>/dev/null || usleep 100000
+		i=$((i + 1))
+	done
+	echo 0 > "$RK/wifi_power"
+	echo 0 > "$RK/wifi_bt_vbat"
+	log "chip powered off: WiFi and Bluetooth both off"
+}
+
+mkdir -p "$RUN"
+exec 9> "$RUN/lock"
+flock 9
+
+case "$1 $2" in
+	"want wifi")    rm -f "$RUN/wifi-off" ;;
+	"release wifi") : > "$RUN/wifi-off" ;;
+	"want bt")      : > "$RUN/bt-on" ;;
+	"release bt")   rm -f "$RUN/bt-on" ;;
+	*) echo "usage: wifibt-power want|release wifi|bt" >&2; exit 2 ;;
+esac
+
+if [ -e "$RUN/wifi-off" ] && [ ! -e "$RUN/bt-on" ]; then
+	power_off
+elif [ "$1" = want ]; then
+	# Only a want powers on: a release finding the chip cut means another owner
+	# of the rail (spruceOS) cut it.
+	power_on "$2" "$1"
+fi

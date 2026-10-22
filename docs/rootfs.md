@@ -425,7 +425,7 @@ BaseOS has to answer to the names; the contents are ours. Stock's `rcS` runs
 
 | script | BaseOS | at boot? |
 |---|---|---|
-| `S36load_wifi_modules` | seeds `/userdata/cfg/wpa_supplicant.conf`; no modules, the driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs) | no — the frontend calls it when WiFi goes on |
+| `S36load_wifi_modules` | seeds `/userdata/cfg/wpa_supplicant.conf`; no modules, the driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs). Also WiFi's side of the WiFi/BT chip's power ([power](power.md)) | no — the frontend calls it when WiFi goes on or off |
 | `S41dhcpcd` | BusyBox `udhcpc`, not the vendor `dhcpcd` | no — the frontend calls it when WiFi goes on |
 | `S49ntp` | BusyBox `ntpd`, not stock's 757 KB one | yes — TLS depends on the clock |
 | `S40bluetooth` | `bluetoothd`, after bringing the system bus up | no — the frontend calls it when Bluetooth goes on |
@@ -452,8 +452,12 @@ only an event script: `usr/share/udhcpc/default.script` sets the address,
 default route and
 `/run/resolv.conf`, with `/etc/resolv.conf` a baked symlink to it.
 
-Two details. `wifi_init.sh` starts DHCP *before* `wpa_supplicant`, so `udhcpc`
-runs with `-b` rather than blocking the WiFi toggle while `wlan0` has no carrier.
+Two details. `wifi_init.sh` starts DHCP *before* `wpa_supplicant`, so `wlan0`
+has no carrier yet. `udhcpc -b` looked right and was not: it backgrounds only
+after a whole round of DISCOVERs fails (3 × 5 s), then pauses 20 s, so turning
+WiFi on blocked for 17.8 s and the address came at 37.5 s. `S41` now runs
+`udhcpc -f` in the background itself and retries every second (`-T 1 -A 2`):
+2.5 s and 9.4 s, of which association is 7.5 s.
 And stock's `S41dhcpcd` wraps the daemon in `start-stop-daemon`, which Alpine's
 `busybox-static` does not build, so the script invokes `udhcpc` directly.
 
@@ -490,6 +494,10 @@ handing off, so there is no race with the frontend.
 NextUI's `my355.sh` shadows that directory with a tmpfs because FAT32
 rejects BlueZ's MAC-named files — so as on stock, pairings do not survive a
 reboot.
+
+BaseOS also cuts the WiFi/BT chip's power while both radios are off, which
+`bt_init.sh` cannot see: `wifibtd` turns its `insmod` and its rfkill switching
+into the Bluetooth half of that decision ([power](power.md)).
 
 Exercised on BaseOS: `bt_init.sh` loads `rtk_btusb` from the harvested
 `/lib/modules`, `hci0` comes up with the same BD address as stock (so the
