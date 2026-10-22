@@ -23,7 +23,14 @@ NextUI or the Developer Pak in front, WiFi associated, brightness at ~2% duty:
 | `wlan0` down | −310 |
 
 About 1.9 W is left with all of those off: SoC, display pipeline, panel and
-rails. That is why CPU undervolting (`feat/undervolting`) moved little at idle —
+rails.
+
+Three RK817 rails stay on with nothing using them: the 5 V boost (`always-on`;
+its only consumer is `otg_switch`, the port's host-mode VBUS) and the RK3566
+EVB's camera LDOs `vcc1v8_dvp` and `vcc2v8_dvp` (`always-on`), which nothing in
+the tree references. Switched off through `rk8xx_dbg`, nothing broke (buttons,
+sticks, lid, sound, panel, HDMI hotplug), and six 30 s on/off pairs gave 2587
+against 2571 mW: within the noise, so they are left as the vendor set them. That is why CPU undervolting (`feat/undervolting`) moved little at idle —
 `vdd_cpu` is not where idle power goes.
 
 ## The DDR touch boost — removed
