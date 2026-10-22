@@ -64,6 +64,8 @@ esac
 
 if [ -e "$RUN/wifi-off" ] && [ ! -e "$RUN/bt-on" ]; then
 	power_off
-else
+elif [ "$1" = want ]; then
+	# Only a want powers on: a release finding the chip cut means another owner
+	# of the rail (spruceOS) cut it.
 	power_on "$2" "$1"
 fi

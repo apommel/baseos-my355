@@ -97,8 +97,8 @@ EOF
     "power=1 vbat=1 chip=present module=yes calls=insmod,"
 
   setup absent unloaded; sh $P release bt
-  check "BT off while WiFi still counts as on: chip restored" \
-    "power=1 vbat=1 chip=present module=no calls="
+  check "BT off with the chip cut by another rail owner: left cut" \
+    "power=untouched vbat=untouched chip=absent module=no calls="
 
   setup present unloaded; sh $P bogus wifi && exit 1 || true
   check "unknown command: nothing touched" \

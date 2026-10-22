@@ -4,7 +4,10 @@ What the Flip draws on battery, where it goes, and what BaseOS can change.
 Measured 2026-10-20 on battery from `current_now` × `voltage_now`, with a probe
 that runs detached and changes one thing per point. The gauge refreshes
 `current_now` about every 5 s, so a 20 s point holds 3–4 real readings and
-differences under ~100 mW are noise.
+differences under ~100 mW are noise. The CPU's time per rate comes from
+`cpufreq/policy0/stats/time_in_state`: sampling `scaling_cur_freq` every 2 s in
+a game pushes `schedutil` over the 600 → 1416 MHz step with the sampler's own
+processes, 40% of samples at 1416 MHz where the counters said 2%.
 
 ## Idle, screen on
 
@@ -50,19 +53,12 @@ behaviour reproduced by holding `devfreq/dmc/min_freq` at 1056 MHz:
 | PS1, 3D scene (pcsx_rearmed) | 780 MHz ⅔, 528 ⅓ | 3.11 | 3.25 | −137 mW |
 
 The 3D scene never asked for 1056 MHz, and played the same either way (no FPS
-counter). About 5% of play time, more at idle.
+counter).
 
-The boost lived in `dmc_ondemand` alone (`devfreq_dmc_ondemand_func`), so
-frontends that set the DMC governor keep working: spruceOS pins `powersave` at
-324 MHz in its smart mode and `performance` in overclock, and its performance
-mode, `dmc_ondemand` capped at 1056 MHz, now scales with load instead of
-sitting at 1056.
-
-Reading `scaling_cur_freq` every 2 s in a game is not a measure of the CPU's
-clock: the sampler's own processes push `schedutil` over the 600 → 1416 MHz
-step, and 40% of samples said 1416 MHz where `stats/time_in_state` said 2%.
-`schedutil` (Rockchip's, `target_load` 80, `rate_limit_us` 10000) changes the
-rate about 87 times a second in NextUI's menu.
+The boost lived in `dmc_ondemand` alone (`devfreq_dmc_ondemand_func`), so a
+frontend that sets the DMC governor itself is unaffected: spruceOS pins
+`powersave` at 324 MHz in its smart mode and `performance` in overclock, and its
+performance mode, `dmc_ondemand` up to 1056 MHz, now scales with load too.
 
 ## WiFi and Bluetooth
 
@@ -136,8 +132,13 @@ zombie until init reaps it (about once a second). `wifi_init.sh start` checks
 `wlan0` came up with nothing to scan, twice in a row. `S36` start now waits, at
 most 2 s, while a `wpa_supplicant` zombie exists.
 
-`tests/test-wifibt-power.sh` covers the decisions offline. spruceOS's own WiFi
-and Bluetooth scripts have not been checked against this.
+`tests/test-wifibt-power.sh` covers the decisions offline.
+
+spruceOS calls neither `S36` nor `bt_init.sh` on the Flip: it loads `rtk_btusb`
+at boot and turns WiFi off by writing `wifi_power` 0 itself. So WiFi always
+counts as wanted and BaseOS never cuts the chip under it, and only a want powers
+the chip on, so a Bluetooth release never undoes spruceOS's cut. Not run on
+the device under spruceOS.
 
 ## The battery gauge
 
@@ -151,7 +152,8 @@ and Bluetooth scripts have not been checked against this.
 
 ## Charging
 
-The tree allows 2500 mA input and 2500 mA charge at 4.2 V. The kernel takes
-1500 mA input on a CDP (a computer port) and `max_input_current` on a DCP.
+The tree allows 2500 mA input and 2500 mA charge at 4.2 V. The kernel's input
+limit follows the USB PHY's BC1.2 detection: 450 mA on a computer port (SDP),
+1500 mA on a charging one (CDP), `max_input_current` on a wall charger (DCP).
 `my355 charge` (charging while off) cannot tell the port apart and sets 2500 mA,
 with the 4.5 V input floor backing it off on a source that sags ([U-Boot](uboot.md)).
