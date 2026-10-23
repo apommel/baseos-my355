@@ -15,6 +15,8 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 - **Easy install.** Put the image on a card and boot: it sets itself up.
 - **Safe updates.** If a new version fails to start, the Flip goes back to the
   previous one. ROMs, saves and settings are kept.
+- **Longer battery life.** With WiFi and Bluetooth off the radio chip is powered
+  down, and the memory no longer runs at full speed all the time.
 - **Read-only rootfs.** Pulling the battery or a crash won't corrupt the system
   or the cards.
 - **The essentials work:** HDMI, WiFi, Bluetooth audio, SSH and adb.
