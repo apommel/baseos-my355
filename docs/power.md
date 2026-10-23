@@ -148,6 +148,25 @@ counts as wanted and BaseOS never cuts the chip under it, and only a want powers
 the chip on, so a Bluetooth release never undoes spruceOS's cut. Not run on
 the device under spruceOS.
 
+## The speaker amplifier
+
+The amplifier's enable is the codec's `spk-ctl-gpios` (GPIO4_C2, gpio-146). The
+vendor `rk817_codec` raises it only when a playback stream starts with
+`Playback Path` at `SPK`, and drops it a few seconds after the stream closes.
+Volume, `Speaker Switch` and `Playback Path` changes during the stream leave it
+as it is.
+
+NextUI's `SetRawVolume` sets `Playback Path` to `OFF` at volume 0, so:
+
+- in the menu no stream is open, and the amplifier is off at any volume;
+- a game started at volume 0 keeps it off;
+- turning the volume to 0 during a game leaves it on until the game exits.
+
+Idle, it draws **~85 mW**: six 30 s on/off pairs under the same stream of
+silence at volume 0, frontend stopped, gave +24 to +175 mW, every pair positive.
+The silence has to be real: `/dev/dsp` is unsigned 8-bit by default, so
+`/dev/zero` is full-scale negative DC, and that cost ~800 mW with the amplifier on.
+
 ## The battery gauge
 
 - **Capacity is never learned.** The RK817 driver in this kernel writes
