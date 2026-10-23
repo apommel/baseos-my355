@@ -26,7 +26,6 @@ btusb_loaded() { grep -q '^rtk_btusb ' "$MODULES"; }
 
 power_on() {
 	if [ ! -e "$CHIP" ]; then
-		echo 1 > "$RK/wifi_bt_vbat"
 		echo 1 > "$RK/wifi_power"
 		i=0
 		while [ ! -e "$CHIP" ] && [ $i -lt 50 ]; do usleep 100000; i=$((i + 1)); done
@@ -46,7 +45,6 @@ power_off() {
 		i=$((i + 1))
 	done
 	echo 0 > "$RK/wifi_power"
-	echo 0 > "$RK/wifi_bt_vbat"
 	log "chip powered off: WiFi and Bluetooth both off"
 }
 

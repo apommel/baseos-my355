@@ -39,7 +39,7 @@ EOF
   # $1 chip present|absent, $2 module loaded|unloaded; intents start at the defaults.
   setup() {
     rm -rf /t; mkdir -p $RK /t/run; : > /t/calls; : > /t/modules
-    echo untouched > $RK/wifi_power; echo untouched > $RK/wifi_bt_vbat
+    echo untouched > $RK/wifi_power
     [ "$1" = present ] && mkdir -p $CHIP
     [ "$2" = loaded ] && echo "rtk_btusb 1 0 - Live" > /t/modules
     return 0
@@ -47,7 +47,7 @@ EOF
   state() {
     m=no; grep -q "^rtk_btusb " /t/modules && m=yes
     c=absent; [ -e $CHIP ] && c=present
-    echo "power=$(cat $RK/wifi_power) vbat=$(cat $RK/wifi_bt_vbat) chip=$c module=$m calls=$(tr "\n" , < /t/calls)"
+    echo "power=$(cat $RK/wifi_power) chip=$c module=$m calls=$(tr "\n" , < /t/calls)"
   }
   n=0
   check() {
@@ -58,51 +58,51 @@ EOF
 
   setup present unloaded; sh $P want wifi
   check "default, WiFi on: nothing touched" \
-    "power=untouched vbat=untouched chip=present module=no calls="
+    "power=untouched chip=present module=no calls="
 
   setup present unloaded; sh $P release wifi
   check "WiFi off, BT never started: cut" \
-    "power=0 vbat=0 chip=present module=no calls="
+    "power=0 chip=present module=no calls="
 
   setup present loaded; sh $P release wifi
   check "WiFi off, rtk_btusb loaded but BT off: unloaded, then cut" \
-    "power=0 vbat=0 chip=present module=no calls=rmmod,"
+    "power=0 chip=present module=no calls=rmmod,"
 
   setup present loaded; touch /t/busy; sh $P release wifi
   check "rtk_btusb will not unload: kept on" \
-    "power=untouched vbat=untouched chip=present module=yes calls=$(printf "rmmod,%.0s" $(seq 20))"
+    "power=untouched chip=present module=yes calls=$(printf "rmmod,%.0s" $(seq 20))"
 
   setup present loaded; sh $P want bt; sh $P release wifi
   check "WiFi off while BT on: kept on" \
-    "power=untouched vbat=untouched chip=present module=yes calls="
+    "power=untouched chip=present module=yes calls="
 
   setup present loaded; sh $P want bt; sh $P release wifi; sh $P release bt
   check "then BT off too: unloaded, then cut" \
-    "power=0 vbat=0 chip=present module=no calls=rmmod,"
+    "power=0 chip=present module=no calls=rmmod,"
 
   setup present loaded; sh $P want bt; sh $P release bt
   check "BT off while WiFi on: kept on, module left alone" \
-    "power=untouched vbat=untouched chip=present module=yes calls="
+    "power=untouched chip=present module=yes calls="
 
   setup absent unloaded; sh $P release wifi; sh $P want wifi
   check "chip cut, WiFi on: restored, no BT module" \
-    "power=1 vbat=1 chip=present module=no calls="
+    "power=1 chip=present module=no calls="
 
   setup absent loaded; sh $P release wifi; sh $P want bt
   check "chip cut, BT on (bt_init.sh loaded rtk_btusb): restored" \
-    "power=1 vbat=1 chip=present module=yes calls="
+    "power=1 chip=present module=yes calls="
 
   setup absent unloaded; sh $P release wifi; sh $P want bt
   check "chip cut, BT on after a cut unloaded its module: restored and reloaded" \
-    "power=1 vbat=1 chip=present module=yes calls=insmod,"
+    "power=1 chip=present module=yes calls=insmod,"
 
   setup absent unloaded; sh $P release bt
   check "BT off with the chip cut by another rail owner: left cut" \
-    "power=untouched vbat=untouched chip=absent module=no calls="
+    "power=untouched chip=absent module=no calls="
 
   setup present unloaded; sh $P bogus wifi && exit 1 || true
   check "unknown command: nothing touched" \
-    "power=untouched vbat=untouched chip=present module=no calls="
+    "power=untouched chip=present module=no calls="
 
   echo "all $n passed"
 '

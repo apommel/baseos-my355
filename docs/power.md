@@ -74,10 +74,11 @@ deepest station power save already (`LPS mode: MAX`); `rtw_lps_level` is 0
 (`LPS_NORMAL`), with clock- and power-gated levels left alone because the link
 is already weak. NextUI's WiFi and BT off are rfkill soft blocks (`wifi_init.sh`,
 `bt_init.sh`), which leave the chip powered and enumerated. The vendor
-`wlan-platdata` driver exposes `/sys/class/rkwifi/wifi_power` and
-`wifi_bt_vbat`; writing 0 to both drops the chip off USB, and writing 1 brings
-it back (`wifi_power` reads 0 whatever the state, so its read-back means
-nothing). Developer Pak in front, BT never bound, two runs agreeing within
+`wlan-platdata` driver exposes `/sys/class/rkwifi/wifi_power`: writing 0
+drops the chip off USB (`WIFI,poweren_gpio`), and writing 1 brings it back
+(it reads 0 whatever the state, so its read-back means nothing). Its
+`wifi_bt_vbat` does nothing here: the tree has no `WIFI,vbat_gpio`, and the
+chip stayed on USB with it at 0. Developer Pak in front, BT never bound, two runs agreeing within
 20 mW:
 
 | WiFi | mW |
