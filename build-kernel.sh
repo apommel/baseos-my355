@@ -114,10 +114,21 @@ EOF
 
 config JOYSTICK_MIYOO_PLAYER1
 	tristate "Miyoo Flip gamepad, presented as MIYOO Player1"
-	depends on INPUT_JOYSTICK && SERIAL_DEV_BUS && OF
+	depends on INPUT_JOYSTICK && SERIAL_DEV_BUS && GPIOLIB && OF
 EOF
     echo "obj-\$(CONFIG_JOYSTICK_MIYOO_PLAYER1) += miyoo-player1.o" \
       >> drivers/input/joystick/Makefile
+  fi
+  cp /kernel/drivers/hall-mh248.c drivers/input/misc/
+  if ! grep -q INPUT_HALL_MH248 drivers/input/misc/Kconfig; then
+    cat >> drivers/input/misc/Kconfig <<EOF
+
+config INPUT_HALL_MH248
+	tristate "Miyoo Flip lid sensor, as hall-mh248"
+	depends on INPUT_MISC && GPIOLIB && OF
+EOF
+    echo "obj-\$(CONFIG_INPUT_HALL_MH248) += hall-mh248.o" \
+      >> drivers/input/misc/Makefile
   fi
   cp /kernel/dts/*.dts arch/arm64/boot/dts/rockchip/
 
