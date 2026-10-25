@@ -1,0 +1,12 @@
+#!/bin/sh
+# Stands in for the stock daemon frontends start: on mainline, MIYOO Player1 is
+# the kernel's miyoo-player1 driver. Like the daemon at start, it hands over the
+# stock calibration files, then idles so the frontend still finds it running.
+for n in /sys/class/input/input*/name; do
+	[ "$(cat "$n" 2>/dev/null)" = "MIYOO Player1" ] && d=${n%/name}/device
+done
+if [ -n "$d" ]; then
+	[ -f /userdata/joypad.config ] && cat /userdata/joypad.config > "$d/calibration_left"
+	[ -f /userdata/joypad_right.config ] && cat /userdata/joypad_right.config > "$d/calibration_right"
+fi
+exec /bin/sleep 2147483647

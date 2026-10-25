@@ -115,6 +115,9 @@ fi
 # FAT32 rejects BlueZ's MAC-named directories.
 /bin/ln -sf /run/machine-id /var/lib/dbus/machine-id
 /bin/ln -sf /userdata/bluetooth /var/lib/bluetooth
+# Carry entropy across boots, credited, before dbus-daemon: it blocks on the
+# crng, which mainline only has ready at ~3 s (the vendor kernel before init).
+/usr/sbin/seedrng /data/random-seed 2>/dev/null
 mark /run/boot-dbus-start
 # The system bus, as stock's S30dbus does: NextUI's audiomon.elf connects to it
 # at frontend start whether or not Bluetooth is ever used, and exits if it
@@ -130,13 +133,6 @@ mark /run/boot-dbus-start
 # certificates against it, so every HTTPS request depends on this.
 /sbin/hwclock -u -s 2>/dev/null &
 [ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp start &
-
-# Carry entropy across boots. Off the critical path: the kernel's crng is
-# initialised before init runs, so nothing here waits for it.
-{
-	[ -f /data/random-seed ] && /bin/cat /data/random-seed > /dev/urandom
-	/bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1
-} 2>/dev/null &
 
 # First boot only: grow this card's FAT partition to fill the card. Must run
 # before it is mounted, and after /data, which holds the staged contents. The
