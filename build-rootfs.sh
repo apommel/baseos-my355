@@ -10,7 +10,8 @@
 #      MY355_DIAG=1 overlay-diag/ on top: boot-timing probes, not for release
 #
 # MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental), and
-# overlay-mainline/ for the stock binaries its drivers replace; the vendor
+# overlay-mainline/: the stock files its drivers replace, WiFi's regulatory
+# database, and stock's Bluetooth firmware under btrtl's names. The vendor
 # kernel has everything built in.
 #
 # fbsplash is built from src/fbsplash.c: this device has no console, so a status
@@ -128,7 +129,14 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   cp -a /overlay/. "$R"/
   if [ "$DIAG" = 1 ]; then cp -a /overlay-diag/. "$R"/; fi
   # Stock binaries the mainline drivers stand in for (miyoo_inputd).
-  if [ "$KERNEL" = mainline ]; then cp -a /overlay-mainline/. "$R"/; fi
+  if [ "$KERNEL" = mainline ]; then
+    cp -a /overlay-mainline/. "$R"/
+    # bt_init.sh insmods this path: the stand-in that loads mainline btusb.
+    cp "$R"/usr/lib/modules/*/kernel/drivers/bluetooth/rtk_btusb.ko "$R"/usr/lib/modules/
+    # cfg80211 reads it at load, or every channel stays at the world limits.
+    apk add -q wireless-regdb
+    cp /lib/firmware/regulatory.db /lib/firmware/regulatory.db.p7s "$R"/usr/lib/firmware/
+  fi
 
   # All three from VERSION so they cannot drift. NextUI reads
   # /usr/miyoo/version for its About screen.

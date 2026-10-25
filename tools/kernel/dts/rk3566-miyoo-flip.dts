@@ -4,7 +4,7 @@
  *
  * Hardware description after zlyme/ROCKNIX; every name stock-built software
  * reads follows the vendor DTB instead (docs/mainline-compat.md). Deferred:
- * suspend, DMC, WiFi power.
+ * suspend, DMC.
  */
 /dts-v1/;
 
@@ -189,6 +189,25 @@
 		regulator-boot-on;
 		regulator-min-microvolt = <3800000>;
 		regulator-max-microvolt = <3800000>;
+	};
+
+	/* The RTL8733BU's power (WiFi and Bluetooth): GPIO0_A0, active low. */
+	vcc_wifi: vcc-wifi-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_wifi";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		gpio = <&gpio0 RK_PA0 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&wifi_enable_h>;
+	};
+
+	/* Stock's node, for drivers/rkwifi.c: /sys/class/rkwifi over vcc_wifi. */
+	wireless-wlan {
+		compatible = "wlan-platdata";
+		wifi_chip_type = "rtl8733bu";
+		power-supply = <&vcc_wifi>;
 	};
 
 	vcc5v0_host: vcc5v0-host-regulator {
@@ -616,6 +635,13 @@
 				<3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PC2 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PC3 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	wireless-wlan {
+		/* Pulled up, so off while undriven. */
+		wifi_enable_h: wifi-enable-h {
+			rockchip,pins = <0 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 

@@ -94,9 +94,9 @@ constrains the design.
 
 ## BaseOS-owned (ours to change)
 
-- `/sys/class/rkwifi/wifi_power` and `/sys/bus/usb/devices/2-1`, used by
-  `wifibt-power`. Mainline would use zlyme's `rtl8733bu-power` module or
-  rfkill.
+- `wifibt-power`, which writes `/sys/class/rkwifi/wifi_power` (also written by
+  spruceOS, so stock-facing) and finds the chip by its USB ID, `0bda:b733`:
+  it is `2-1` on the vendor kernel and `3-1` on mainline.
 - `S36load_wifi_modules`, `S40bluetooth`, `S41dhcpcd`, `wifibtd`.
 - The rootfs copies of `modetest` and `amixer`, which is where the wrappers
   would go.
@@ -216,11 +216,32 @@ Different from stock, found on the first boots:
   `BT` is silent. Read back, `Playback Path` is `OFF`, `SPK` or `HP`.
   `Resume Path` is left out. rcS sets `Playback Mux` to `SPK` and turns the
   headphones off at boot, where the vendor driver starts on `OFF`.
+- **WiFi and Bluetooth.** The RTL8733BU's WiFi has no mainline driver: it
+  is Realtek's `8733bu`, built out of tree at zlyme's pin with zlyme's seven
+  patches (ROCKNIX's crash and suspend fixes, one `wlan0`, WPA3, the 7.2
+  port) and its module options. Bluetooth is mainline's `btusb` and `btrtl`
+  (patch 0010), with stock's firmware linked under the names `btrtl` asks
+  for. The chip's power is a `vcc_wifi` regulator on GPIO0_A0. Stock's
+  layer:
+  - `/sys/class/rkwifi/wifi_power`, from `drivers/rkwifi.c`, matched on
+    stock's `wlan-platdata` node and switching that regulator;
+  - `/lib/modules/rtk_btusb.ko`, the module `bt_init.sh` insmods: a
+    stand-in that loads `8733bu` then `btusb`, since `btusb` first resets
+    the chip and drops `wlan0`, and whose loading is what tells `wifibtd`
+    to power the chip;
+  - `S36load_wifi_modules` loads `8733bu`, where `wifi_init.sh`'s vendor
+    insmod fails.
+  Each radio's on/off is its driver's rfkill, which NextUI's `rfkill.elf`
+  already targets. zlyme's `rtl8733bu-power`, its own pair of rfkills
+  cutting the chip, is left out: BaseOS's `wifibt-power` already decides
+  that. Its finding that the cut for suspend has to come in the late phase
+  is for the suspend work. `wireless-regdb` is in the rootfs.
 - **event0 IDs.** Bus `0019`, `0001:0001`, where stock has `045e:028e`.
 
 Still to do:
 
 - the `modetest` connector id
 - SD UHS
-- WiFi power, suspend, DMC
+- suspend, DMC
+- WiFi and Bluetooth tested on the device
 - the Panfrost switch
