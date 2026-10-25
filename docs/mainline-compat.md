@@ -36,6 +36,14 @@ NextCommander).
 
 ## Strategy, in order of preference
 
+Mainline's own interface is the base, and stock's is a layer on top that
+forwards to it: mainline tools keep working, and the stock view stays thin.
+The layer is in the kernel wherever stock software reaches the kernel
+directly. Stock's name replaces mainline's only where there can be just one,
+such as a card id, a supply name or an event number. Where mainline would
+claim a resource that stock software drives itself, such as the headphone
+detect pin, userspace keeps it.
+
 1. **Match stock's names in the device tree or in a driver.** This is free at
    run time, and nothing stock can tell the difference.
 2. **A small compatibility driver**, when stock reads an attribute that only
@@ -126,6 +134,7 @@ It boots to BaseOS with adb, checked on 2026-11-04. These match stock:
 - GPIO chips at 0, 32, 64, 96 and 128, so `gpio150` and `gpio20` are free
 - `MIYOO Player1`: name, IDs, keys, axes and ranges, from a kernel driver
 - ALSA `rockchiprk817` as card 0, `rockchiphdmi` as card 1
+- the codec's `Playback Path`, `Capture MIC Path` and `SPK Volume`
 - the reboot modes, so a shutdown with the charger in restarts into charge mode
 - `/dev/mali0` (r54p2), `card0` with `DSI-1` and `HDMI-A-1`
 
@@ -185,11 +194,21 @@ Different from stock, found on the first boots:
   event1 as on stock, and `launch.sh` moves it aside instead of the power key.
   Its `KEY_POWER` comes on every lid move: stock's comes on close with the
   screen on and on open with it off, which needs the vendor fb notifier.
+- **Codec controls.** Mainline's codec has `Playback Mux` (`HP`, `SPK`),
+  which nothing stock sets, and it starts on `HP`, so the speaker was silent.
+  A patch adds the vendor's `Playback Path` (all eleven entries),
+  `Capture MIC Path` and `SPK Volume` first, as views of the mainline
+  controls: `Playback Mux`, the card's `Speaker Switch`, `Headphone Switch`
+  and `Mic Jack Switch` pin switches, and `Master Playback Volume`. The
+  `SPK` entries pick the speaker, the `HP` ones the headphones. `SPK_HP` and
+  `RING_SPK_HP` play on the speaker only, as the two outputs share a pin, and
+  `BT` is silent. Read back, `Playback Path` is `OFF`, `SPK` or `HP`.
+  `Resume Path` is left out. rcS sets `Playback Mux` to `SPK` and turns the
+  headphones off at boot, where the vendor driver starts on `OFF`.
 - **event0 IDs.** Bus `0019`, `0001:0001`, where stock has `045e:028e`.
 
 Still to do:
 
-- the codec's stock controls
 - the `modetest` connector id
 - SD UHS
 - WiFi power, suspend, DMC
