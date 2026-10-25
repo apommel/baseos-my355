@@ -119,7 +119,8 @@ in the rootfs and the kernel in the boot FIT, and rcS loads `mali_kbase`.
 It boots to BaseOS with adb, checked on 2026-11-04. These match stock:
 
 - `mmcblk1` for the boot slot, `mmcblk2` for the second slot
-- event0 `gpio-keys-polled`, stock's pins and codes
+- event0 `gpio-keys-polled` with stock's codes for menu and volume
+- event1 `hall wake key` and `hallvalue`, from a `hall-mh248` driver
 - LEDs `work` and `charger`, supplies `battery` and `usb`
 - `pwmchip0` (the backlight) and `backlight`
 - GPIO chips at 0, 32, 64, 96 and 128, so `gpio150` and `gpio20` are free
@@ -166,8 +167,8 @@ Different from stock, found on the first boots:
 - **The gamepad.** Stock's `miyoo_inputd` builds `MIYOO Player1` through
   uinput, from the vendor `/dev/miyooio` (the `gpio-keys-polled` pins) and the
   stick MCU on `ttyS1`. The `miyoo-player1` driver presents the same device:
-  it listens to event0's keys, which stay as on stock for keymon, and reads the
-  MCU as a serdev, so there is no `/dev/ttyS1`. It registers last, after every
+  it polls the game buttons' GPIOs, takes menu from event0 and reads the MCU
+  as a serdev, so there is no `/dev/ttyS1`. It registers last, after every
   other input device. `miyoo_inputd` is a shim that hands the driver
   `/userdata/joypad.config` and `joypad_right.config` (sysfs
   `calibration_left`, `calibration_right`, same format) and idles. Turbo
@@ -176,14 +177,18 @@ Different from stock, found on the first boots:
 - **Backlight hand-over.** `launch.sh` reads the duty from
   `/sys/kernel/debug/pwm` in the vendor format. Mainline's differs, so the
   panel stays dark until keymon sets the brightness.
-- **event1 is `rk805 pwrkey`.** On stock it is `hall wake key`, and
-  `launch.sh` moves `event1` aside, so under NextUI it would disable the power
-  key. The hall driver has to register before the power key.
+- **event0 has three keys.** On stock it also types every game button as a
+  keyboard key, so anything reading both devices saw each press twice. It
+  keeps menu and volume for keymon, and the game buttons are only on
+  `MIYOO Player1`. Menu is on both, as keymon needs it.
+- **The lid.** `hall-mh248` probes before the PMIC's power key, so it is
+  event1 as on stock, and `launch.sh` moves it aside instead of the power key.
+  Its `KEY_POWER` comes on every lid move: stock's comes on close with the
+  screen on and on open with it off, which needs the vendor fb notifier.
 - **event0 IDs.** Bus `0019`, `0001:0001`, where stock has `045e:028e`.
 
 Still to do:
 
-- the `hall-mh248` driver, and input ordering
 - the codec's stock controls
 - the `modetest` connector id
 - SD UHS
