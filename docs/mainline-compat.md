@@ -124,7 +124,8 @@ It boots to BaseOS with adb, checked on 2026-11-04. These match stock:
 - `pwmchip0` (the backlight) and `backlight`
 - GPIO chips at 0, 32, 64, 96 and 128, so `gpio150` and `gpio20` are free
 - `/dev/ttyS1` for the stick MCU
-- ALSA `rockchiprk817`
+- ALSA `rockchiprk817` as card 0, `rockchiphdmi` as card 1
+- the reboot modes, so a shutdown with the charger in restarts into charge mode
 - `/dev/mali0` (r54p2), `card0` with `DSI-1` and `HDMI-A-1`
 
 Different from stock, found on the first boots:
@@ -138,12 +139,33 @@ Different from stock, found on the first boots:
   fails EP0 (`failed to enable ep0out`), as zlyme found in its Phase 12D
   research. `peripheral` mode didn't help. `usb-gadget-adb` waits for the OTG
   PHY's extcon to report SDP or CDP, then binds. The port stays `otg`.
+  Booted without the cable, the port is suspended, and charger detection run
+  in that state reports a DCP, so a computer plugged in later was never bound.
+  The PHY driver now powers the port on before detecting.
 - **GPU rail.** `mali_kbase` disables `vdd_gpu` on runtime suspend without
   having enabled it, and the unused-regulator cleanup then cut the rail. It
   is always-on again, as in zlyme.
 - **HDMI sound.** No `rockchiphdmi` card: dw-hdmi only registers its audio
   codec with `DRM_DW_HDMI_I2S_AUDIO` built in, and it was a module. Built in
-  now, not yet checked on the device.
+  now.
+- **Black screen under NextUI.** `launch.sh` unbinds `pwm-backlight` to drive
+  the PWM itself. Mainline links the panel to its backlight, so the unbind took
+  the panel, the DSI host and all of DRM with it. The link is patched out.
+- **Card order.** HDMI probed first and became card 0, the default device
+  NextUI's sound goes to. A `sound` alias now sets the number, as stock has it.
+- **Restart.** Mainline restarts the RK817 by PMIC reset, which power-cycles
+  the SoC and clears the reboot-mode flag. A shutdown with the charger in then
+  booted the system again. It restarts through PSCI now, as the vendor
+  kernel does, and the device tree has the stock reboot modes.
+- **Boot time.** The framebuffer console's first modeset held kernel init for
+  1.2 s, mostly the panel's power-up waits. The console is off, as on the
+  vendor kernel, and the waits are shortened as on the vendor path.
+- **Buttons.** Only the volume keys work under NextUI: `miyoo_inputd` takes the
+  buttons from the vendor `/dev/miyooio`, which reads the `gpio-keys-polled`
+  pins, and only the sticks from `ttyS1`.
+- **Backlight hand-over.** `launch.sh` reads the duty from
+  `/sys/kernel/debug/pwm` in the vendor format. Mainline's differs, so the
+  panel stays dark until keymon sets the brightness.
 - **event1 is `rk805 pwrkey`.** On stock it is `hall wake key`, and
   `launch.sh` moves `event1` aside, so under NextUI it would disable the power
   key. The hall driver has to register before the power key.

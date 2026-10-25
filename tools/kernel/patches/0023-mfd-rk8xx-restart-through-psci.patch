@@ -1,0 +1,18 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] mfd: rk8xx: restart the RK817 through PSCI, as the vendor kernel
+
+A PMIC reset power-cycles the SoC and clears PMU_GRF_OS_REG0, where the
+reboot-mode driver leaves the flag U-Boot reads: "reboot charge" then boots
+the system again instead of charge mode.
+
+---
+--- a/drivers/mfd/rk8xx-core.c
++++ b/drivers/mfd/rk8xx-core.c
+@@ -883,7 +883,6 @@
+ 
+ 		switch (rk808->variant) {
+ 		case RK809_ID:
+-		case RK817_ID:
+ 			ret = devm_register_sys_off_handler(dev,
+ 							    SYS_OFF_MODE_RESTART, SYS_OFF_PRIO_HIGH,
+ 							    &rk808_restart, rk808);

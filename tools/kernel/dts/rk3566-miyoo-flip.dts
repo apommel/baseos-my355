@@ -23,6 +23,9 @@
 	aliases {
 		mmc1 = &sdmmc0;
 		mmc2 = &sdmmc1;
+		/* The codec is card 0, ALSA's default device, as on stock. */
+		sound0 = &rk817_sound;
+		sound1 = &hdmi_sound;
 	};
 
 	chosen {
@@ -210,7 +213,7 @@
 	 * ALSA card id "rockchiprk817", which libmsettings looks for. No
 	 * hp-det-gpios: GPIO4_C6 stays free for userspace as gpio150.
 	 */
-	rk817-sound {
+	rk817_sound: rk817-sound {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "rockchip-rk817";
 		simple-audio-card,format = "i2s";
@@ -373,14 +376,18 @@
 		};
 	};
 
-	/* FT8006M, 640x480, 2 lanes; init sequence from the vendor DTB. */
+	/*
+	 * FT8006M, 640x480, 2 lanes; init sequence from the vendor DTB. Waits
+	 * shortened as on the vendor path (docs/uboot.md): 120 ms after sleep-out,
+	 * none after display-on.
+	 */
 	panel: panel@0 {
 		compatible = "rocknix,generic-dsi";
 		reg = <0>;
 		panel_description =
-			"G size=68,121 delays=0,160,200,200,20 format=rgb888 lanes=2 flags=0xa03",
+			"G size=68,121 delays=0,10,120,0,20 format=rgb888 lanes=2 flags=0xa03",
 			"M clock=32000 horizontal=640,150,120,120 vertical=480,20,6,12 default=1",
-			"I seq=11 wait=250",
+			"I seq=11 wait=120",
 			"I seq=29 wait=32",
 			"I seq=b9f11287",
 			"I seq=b2780470",
@@ -716,6 +723,26 @@
 		vcc_sd2_h: vcc-sd2-h {
 			rockchip,pins = <2 RK_PB1 RK_FUNC_GPIO &pcfg_pull_down>;
 		};
+	};
+};
+
+/*
+ * The stock modes. U-Boot reads PMU_GRF_OS_REG0 and enters charge mode on
+ * "reboot charge", which a shutdown with the charger in turns into.
+ */
+&pmugrf {
+	reboot-mode {
+		compatible = "syscon-reboot-mode";
+		offset = <0x200>;
+		mode-normal = <0x5242c300>;
+		mode-bootloader = <0x5242c301>;
+		mode-loader = <0x5242c301>;
+		mode-recovery = <0x5242c303>;
+		mode-panic = <0x5242c307>;
+		mode-watchdog = <0x5242c308>;
+		mode-fastboot = <0x5242c309>;
+		mode-charge = <0x5242c30b>;
+		mode-ums = <0x5242c30c>;
 	};
 };
 
