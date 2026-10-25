@@ -14,12 +14,20 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   mkdir -p /usr/share/baseos /data /stub
   cp /overlay/usr/share/baseos/log.sh /usr/share/baseos/
   export WIFIBT_SYS=/t/sys WIFIBT_RUN=/t/run WIFIBT_MODULES=/t/modules
-  CHIP=/t/sys/bus/usb/devices/2-1 RK=/t/sys/class/rkwifi
+  CHIP=/t/sys/bus/usb/devices/3-1 RK=/t/sys/class/rkwifi
+  # Found by its ID, beside another device the chip must not be taken for.
+  cat > /stub/mkchip <<"EOF"
+#!/bin/sh
+d=/t/sys/bus/usb/devices
+mkdir -p $d/3-1 $d/1-1
+echo 0bda > $d/3-1/idVendor; echo b733 > $d/3-1/idProduct
+echo 0bda > $d/1-1/idVendor; echo 8153 > $d/1-1/idProduct
+EOF
 
   # The chip enumerates on the first poll after power returns.
   cat > /stub/usleep <<"EOF"
 #!/bin/sh
-[ "$(cat /t/sys/class/rkwifi/wifi_power)" = 1 ] && mkdir -p /t/sys/bus/usb/devices/2-1
+[ "$(cat /t/sys/class/rkwifi/wifi_power)" = 1 ] && mkchip
 exit 0
 EOF
   cat > /stub/insmod <<"EOF"
@@ -40,7 +48,7 @@ EOF
   setup() {
     rm -rf /t; mkdir -p $RK /t/run; : > /t/calls; : > /t/modules
     echo untouched > $RK/wifi_power
-    [ "$1" = present ] && mkdir -p $CHIP
+    [ "$1" = present ] && mkchip
     [ "$2" = loaded ] && echo "rtk_btusb 1 0 - Live" > /t/modules
     return 0
   }

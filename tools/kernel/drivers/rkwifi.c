@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Stock's /sys/class/rkwifi/wifi_power, over the vcc_wifi regulator that
+ * powers the RTL8733BU: above 0 powers the chip, 0 cuts it, as the vendor's
+ * rfkill-wlan reads it. spruceOS and BaseOS's wifibt-power write it; each
+ * radio's own switch is its driver's rfkill, as on mainline.
+ */
+#include <linux/device.h>
+#include <linux/kstrtox.h>
+#include <linux/module.h>
+#include <linux/mutex.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
+
+static DEFINE_MUTEX(rkwifi_lock);
+static struct regulator *rkwifi_supply;
+static bool rkwifi_on;
+
+static ssize_t wifi_power_show(const struct class *class,
+			       const struct class_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%d\n", rkwifi_on);
+}
+
+static ssize_t wifi_power_store(const struct class *class,
+				const struct class_attribute *attr,
+				const char *buf, size_t count)
+{
+	long val;
+	bool on;
+	int ret;
+
+	ret = kstrtol(buf, 10, &val);
+	if (ret)
+		return ret;
+	on = val > 0;
+
+	mutex_lock(&rkwifi_lock);
+	if (on != rkwifi_on) {
+		ret = on ? regulator_enable(rkwifi_supply) :
+			   regulator_disable(rkwifi_supply);
+		if (!ret)
+			rkwifi_on = on;
+	}
+	mutex_unlock(&rkwifi_lock);
+	return ret ?: count;
+}
+static CLASS_ATTR_RW(wifi_power);
+
+static struct attribute *rkwifi_class_attrs[] = {
+	&class_attr_wifi_power.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(rkwifi_class);
+
+static const struct class rkwifi_class = {
+	.name = "rkwifi",
+	.class_groups = rkwifi_class_groups,
+};
+
+static int rkwifi_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	int ret;
+
+	if (rkwifi_supply)
+		return -EBUSY;
+	rkwifi_supply = devm_regulator_get(dev, "power");
+	if (IS_ERR(rkwifi_supply)) {
+		ret = PTR_ERR(rkwifi_supply);
+		rkwifi_supply = NULL;
+		return dev_err_probe(dev, ret, "no power-supply\n");
+	}
+
+	/* On from probe, as on stock: a cut never outlives a boot. */
+	ret = regulator_enable(rkwifi_supply);
+	if (ret)
+		goto err;
+	rkwifi_on = true;
+
+	ret = class_register(&rkwifi_class);
+	if (ret) {
+		regulator_disable(rkwifi_supply);
+		goto err;
+	}
+	return 0;
+
+err:
+	rkwifi_supply = NULL;
+	return ret;
+}
+
+static void rkwifi_remove(struct platform_device *pdev)
+{
+	class_unregister(&rkwifi_class);
+	if (rkwifi_on)
+		regulator_disable(rkwifi_supply);
+	rkwifi_on = false;
+	rkwifi_supply = NULL;
+}
+
+static const struct of_device_id rkwifi_of_match[] = {
+	{ .compatible = "wlan-platdata" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, rkwifi_of_match);
+
+static struct platform_driver rkwifi_driver = {
+	.driver = {
+		.name = "rkwifi",
+		.of_match_table = rkwifi_of_match,
+	},
+	.probe = rkwifi_probe,
+	.remove = rkwifi_remove,
+};
+module_platform_driver(rkwifi_driver);
+
+MODULE_DESCRIPTION("Stock's rkwifi wifi_power, over a regulator");
+MODULE_LICENSE("GPL");

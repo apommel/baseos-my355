@@ -95,7 +95,8 @@ cutting it.
 `wifibt-power want|release wifi|bt` holds the two intents and is the only thing
 that touches the switch: off when WiFi is released and Bluetooth is not wanted,
 on as soon as either is wanted. It decides from whether the chip is on the USB
-bus (`2-1`), and writes the switches only to change them. A `flock` serialises
+bus, found by its ID `0bda:b733` (`2-1` on the vendor kernel, `3-1` on
+mainline), and writes the switches only to change them. A `flock` serialises
 callers, because `launch.sh` starts WiFi and Bluetooth in parallel.
 
 | | wanted | released |

@@ -19,17 +19,23 @@ RUN=${WIFIBT_RUN:-/run/wifibt}
 MODULES=${WIFIBT_MODULES:-/proc/modules}
 KO=/lib/modules/rtk_btusb.ko
 RK=$SYS/class/rkwifi
-# The chip's place on the WiFi EHCI: present exactly while it is powered.
-CHIP=$SYS/bus/usb/devices/2-1
 
 btusb_loaded() { grep -q '^rtk_btusb ' "$MODULES"; }
+# On USB exactly while it is powered: 2-1 on the vendor kernel, 3-1 on mainline.
+chip_present() {
+	for d in "$SYS"/bus/usb/devices/*; do
+		[ "$(cat "$d/idVendor" "$d/idProduct" 2>/dev/null)" = "0bda
+b733" ] && return 0
+	done
+	return 1
+}
 
 power_on() {
-	if [ ! -e "$CHIP" ]; then
+	if ! chip_present; then
 		echo 1 > "$RK/wifi_power"
 		i=0
-		while [ ! -e "$CHIP" ] && [ $i -lt 50 ]; do usleep 100000; i=$((i + 1)); done
-		[ -e "$CHIP" ] && log "chip powered on for $1" || log "chip did not come back for $1"
+		while ! chip_present && [ $i -lt 50 ]; do usleep 100000; i=$((i + 1)); done
+		chip_present && log "chip powered on for $1" || log "chip did not come back for $1"
 	fi
 	# A concurrent cut may have unloaded the module this BT start just loaded.
 	[ "$2" = want ] && [ "$1" = bt ] && ! btusb_loaded && insmod "$KO" 2>/dev/null
@@ -37,7 +43,7 @@ power_on() {
 }
 
 power_off() {
-	[ -e "$CHIP" ] || return 0
+	chip_present || return 0
 	i=0
 	while btusb_loaded; do
 		[ $i -lt 20 ] || { log "chip kept on: rtk_btusb will not unload"; return 0; }
