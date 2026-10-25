@@ -330,6 +330,78 @@ def check_dram_map(image_size: int, fit_bytes: int) -> None:
                          f"{other} at 0x{olo:x}..0x{ohi:x}")
 
 
+def write_boot_fit(a, raw: bytes, dtb: bytes, bootargs: str,
+                   kernel_desc: str, fdt_desc: str) -> bytes:
+    """Write header + FIT to a.out; return the device tree as read back from it."""
+    if raw[56:60] != b"ARM\x64":
+        sys.exit("mkfit: the kernel is not an arm64 Image")
+    # image_size includes the BSS cleared past the end of the file.
+    image_size = struct.unpack_from("<Q", raw, 16)[0]
+    payload = compress_kernel(raw, a.compress)
+    assert decompress_kernel(payload, a.compress) == raw, \
+        "compressed kernel does not round-trip"
+    print(f"  kernel: {a.compress} {len(raw)} -> {len(payload)} bytes "
+          f"({100 * len(payload) / len(raw):.0f}%)")
+
+    root = Node("")
+    root.string("description", "BaseOS my355")
+    # Mandatory once a build has CMD_DATE; fixed, so the FIT reproduces.
+    root.u32("timestamp", 0)
+    root.u32("#address-cells", 1)
+    node_images = root.node("images")
+    kernel = node_images.node("kernel")
+    kernel.string("description", kernel_desc)
+    kernel.string("type", "kernel")
+    kernel.string("os", "linux")
+    kernel.string("arch", "arm64")
+    kernel.string("compression", a.compress)
+    kernel.u32("load", KERNEL_LOAD_ADDR)
+    kernel.u32("entry", KERNEL_LOAD_ADDR)
+    kernel.raw("data", payload)
+    # The command line rides in the tree: fdt_chosen() only rewrites
+    # /chosen/bootargs when the `bootargs` variable is set, and ours never is.
+    fdt = node_images.node("fdt")
+    fdt.string("description", fdt_desc)
+    fdt.string("type", "flat_dt")
+    fdt.string("arch", "arm64")
+    fdt.string("compression", "none")
+    fdt.raw("data", dtb)
+    # No hash nodes: bootm treats them as optional, and a sha256 over the whole
+    # kernel is the kind of work this path exists to delete.
+    node_conf = root.node("configurations")
+    node_conf.string("default", "conf")
+    one = node_conf.node("conf")
+    one.string("description", "BaseOS my355")
+    one.string("kernel", "kernel")
+    one.string("fdt", "fdt")
+
+    blob = build_fdt(root)
+    blob += b"\0" * (-len(blob) % SECTOR)
+    sectors = len(blob) // SECTOR
+    check_dram_map(image_size, len(blob))
+    if a.slot_sectors and 1 + sectors > a.slot_sectors - LOG_SECTORS:
+        sys.exit(f"mkfit: header + FIT is {1 + sectors} sectors; the slot holds "
+                 f"{a.slot_sectors} less {LOG_SECTORS} for the log")
+
+    header = bytearray(SECTOR)
+    struct.pack_into("<8sIII", header, 0, BOOT_HDR_MAGIC, sectors, len(blob),
+                     BOOT_HDR_VERSION)
+    with open(a.out, "wb") as fh:
+        fh.write(bytes(header) + blob)
+
+    got = parse_fdt(blob)["nodes"]["images"]["nodes"]
+    assert decompress_kernel(image_data(blob, got["kernel"]), a.compress) == raw, \
+        "kernel does not round-trip out of the written FIT"
+    back = image_data(blob, got["fdt"])
+    boff, blen = rk.fdt_find_prop(back, "chosen", "bootargs")
+    assert back[boff:boff + blen].split(b"\0")[0].decode().strip() == bootargs.strip(), \
+        "bootargs read back wrong"
+    assert rk.fdt_node_props(back, f"optee@{rk.OPTEE_BASE:x}")["no-map"] == b"", \
+        "OP-TEE reservation not readable back"
+    print(f"  wrote {a.out}: header + {sectors} sectors ({SECTOR + len(blob)} bytes)")
+    return back
+
+
 def cmd_boot(a) -> int:
     boot, res = rk.load(a.bootimg)
     off, size = res.get("rk-kernel.dtb")
@@ -366,72 +438,8 @@ def cmd_boot(a) -> int:
     print(f"      old: {old}")
     print(f"      new: {new}")
 
-    raw = boot.kernel
-    if raw[56:60] != b"ARM\x64":
-        sys.exit("mkfit: the boot image's kernel is not an arm64 Image")
-    # image_size includes the BSS cleared past the end of the file.
-    image_size = struct.unpack_from("<Q", raw, 16)[0]
-    payload = compress_kernel(raw, a.compress)
-    assert decompress_kernel(payload, a.compress) == raw, \
-        "compressed kernel does not round-trip to the vendor image"
-    print(f"  kernel: {a.compress} {len(raw)} -> {len(payload)} bytes "
-          f"({100 * len(payload) / len(raw):.0f}%)")
-
-    root = Node("")
-    root.string("description", "BaseOS my355")
-    # Mandatory once a build has CMD_DATE; fixed, so the FIT reproduces.
-    root.u32("timestamp", 0)
-    root.u32("#address-cells", 1)
-    node_images = root.node("images")
-    kernel = node_images.node("kernel")
-    kernel.string("description", "vendor Linux 5.10.160")
-    kernel.string("type", "kernel")
-    kernel.string("os", "linux")
-    kernel.string("arch", "arm64")
-    kernel.string("compression", a.compress)
-    kernel.u32("load", KERNEL_LOAD_ADDR)
-    kernel.u32("entry", KERNEL_LOAD_ADDR)
-    kernel.raw("data", payload)
-    # The command line rides in the tree: fdt_chosen() only rewrites
-    # /chosen/bootargs when the `bootargs` variable is set, and ours never is.
-    fdt = node_images.node("fdt")
-    fdt.string("description", "rk-kernel.dtb for BaseOS")
-    fdt.string("type", "flat_dt")
-    fdt.string("arch", "arm64")
-    fdt.string("compression", "none")
-    fdt.raw("data", dtb)
-    # No hash nodes: bootm treats them as optional, and a sha256 over the whole
-    # kernel is the kind of work this path exists to delete.
-    node_conf = root.node("configurations")
-    node_conf.string("default", "conf")
-    one = node_conf.node("conf")
-    one.string("description", "BaseOS my355")
-    one.string("kernel", "kernel")
-    one.string("fdt", "fdt")
-
-    blob = build_fdt(root)
-    blob += b"\0" * (-len(blob) % SECTOR)
-    sectors = len(blob) // SECTOR
-    check_dram_map(image_size, len(blob))
-    if a.slot_sectors and 1 + sectors > a.slot_sectors - LOG_SECTORS:
-        sys.exit(f"mkfit: header + FIT is {1 + sectors} sectors; the slot holds "
-                 f"{a.slot_sectors} less {LOG_SECTORS} for the log")
-
-    header = bytearray(SECTOR)
-    struct.pack_into("<8sIII", header, 0, BOOT_HDR_MAGIC, sectors, len(blob),
-                     BOOT_HDR_VERSION)
-    with open(a.out, "wb") as fh:
-        fh.write(bytes(header) + blob)
-
-    got = parse_fdt(blob)["nodes"]["images"]["nodes"]
-    assert decompress_kernel(image_data(blob, got["kernel"]), a.compress) == raw, \
-        "kernel does not round-trip out of the written FIT"
-    back = image_data(blob, got["fdt"])
-    boff, blen = rk.fdt_find_prop(back, "chosen", "bootargs")
-    assert back[boff:boff + blen].split(b"\0")[0].decode().strip() == new.strip(), \
-        "bootargs read back wrong"
-    assert rk.fdt_node_props(back, f"optee@{rk.OPTEE_BASE:x}")["no-map"] == b"", \
-        "OP-TEE reservation not readable back"
+    back = write_boot_fit(a, boot.kernel, dtb, new, "vendor Linux 5.10.160",
+                          "rk-kernel.dtb for BaseOS")
     for encoder, (mask, _primary) in rk.VOP2_DISPLAYS:
         port = rk.fdt_node_props(back, f"{rk.VOP2_NODE}/ports/{rk.vop2_port_of(back, encoder)}")
         assert port["rockchip,plane-mask"] == struct.pack(">I", mask), \
@@ -446,9 +454,23 @@ def cmd_boot(a) -> int:
     levels = rk.fdt_node_props(back, rk.DMC_NODE)["system-status-level"]
     assert rk.SYS_STATUS_BOOST not in struct.unpack(f">{len(levels) // 4}I", levels)[::2], \
         "DMC touch boost still in the written FIT"
-    print(f"  wrote {a.out}: header + {sectors} sectors ({SECTOR + len(blob)} bytes)")
     print("  verified: kernel round-trips, bootargs, OP-TEE reservation, VOP2 planes, "
           f"panel timings{' and SD tuning' if a.sd_uhs != 'off' else ''} read back")
+    return 0
+
+
+def cmd_boot_mainline(a) -> int:
+    """The same FIT around a mainline Image and our own device tree (build-kernel.sh)."""
+    raw = open(a.kernel, "rb").read()
+    dtb = open(a.dtb, "rb").read()
+    print(f"mainline kernel {a.kernel}, {a.dtb}")
+    # The tree is ours and already right; only the command line is per image.
+    new = " ".join(filter(None, [f"root={a.root}",
+                                 a.rootfstype and f"rootfstype={a.rootfstype}", a.append]))
+    dtb = rk.set_bootargs(dtb, new)
+    print(f"      bootargs: {new}")
+    write_boot_fit(a, raw, dtb, new, f"Linux {a.release}", "rk3566-miyoo-flip.dtb")
+    print("  verified: kernel round-trips, bootargs, OP-TEE reservation read back")
     return 0
 
 
@@ -546,6 +568,19 @@ def main() -> int:
     p.add_argument("--slot-sectors", type=int, default=0,
                    help="refuse a FIT that does not leave the log sectors free")
     p.set_defaults(func=cmd_boot)
+
+    p = sub.add_parser("boot-mainline", help="`boot` FIT around a mainline kernel")
+    p.add_argument("kernel", help="arm64 Image (work/my355/kernel/Image)")
+    p.add_argument("dtb", help="work/my355/kernel/rk3566-miyoo-flip.dtb")
+    p.add_argument("out")
+    p.add_argument("--release", required=True, help="the kernel release, for the FIT")
+    p.add_argument("--root", required=True)
+    p.add_argument("--rootfstype")
+    p.add_argument("--append")
+    p.add_argument("--compress", choices=("zstd", "gzip"), default="zstd")
+    p.add_argument("--slot-sectors", type=int, default=0,
+                   help="refuse a FIT that does not leave the log sectors free")
+    p.set_defaults(func=cmd_boot_mainline)
 
     p = sub.add_parser("addresses", help="the DRAM map and header, as shell variables")
     p.set_defaults(func=cmd_addresses)

@@ -1,0 +1,303 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zetarancio <zetarancio@users.noreply.github.com>
+Date: Sun, 13 Sep 2026 00:00:00 +0000
+Subject: [PATCH] drm/rockchip: vop2 BCSH via DRM TV properties
+
+Port BSP vop2_tv_config_update / vop2_bcsh_reg_update so brightness,
+contrast, saturation and hue (0-100, identity 50) apply after composition.
+Every DRM client inherits the result. Neutral 50 disables BCSH.
+
+DSI uses drm_bridge_connector: pull the CRTC into the commit when TV
+B/C/S/H change so vop2_crtc_atomic_flush reprograms BCSH. Do not set
+connectors_changed (that modesets and blanks the panel).
+
+Signed-off-by: Zetarancio <zetarancio@users.noreply.github.com>
+---
+diff -Naur a/drivers/gpu/drm/display/drm_bridge_connector.c b/drivers/gpu/drm/display/drm_bridge_connector.c
+--- a/drivers/gpu/drm/display/drm_bridge_connector.c	2026-04-27 15:30:19.000000000 +0200
++++ b/drivers/gpu/drm/display/drm_bridge_connector.c	2026-09-13 15:34:57.346905578 +0200
+@@ -10,6 +10,7 @@
+ #include <linux/property.h>
+ #include <linux/slab.h>
+ 
++#include <drm/drm_atomic.h>
+ #include <drm/drm_atomic_state_helper.h>
+ #include <drm/drm_bridge.h>
+ #include <drm/drm_bridge_connector.h>
+@@ -274,6 +275,7 @@
+ 	if (bridge_connector->bridge_hdmi)
+ 		__drm_atomic_helper_connector_hdmi_reset(connector,
+ 							 connector->state);
++	drm_atomic_helper_connector_tv_reset(connector);
+ }
+ 
+ static const struct drm_connector_funcs drm_bridge_connector_funcs = {
+@@ -375,9 +377,41 @@
+ {
+ 	struct drm_bridge_connector *bridge_connector =
+ 		to_drm_bridge_connector(connector);
++	struct drm_connector_state *old_conn_state;
++	struct drm_connector_state *new_conn_state;
++	struct drm_crtc_state *crtc_state;
++	struct drm_crtc *crtc;
++	int ret;
++
++	if (bridge_connector->bridge_hdmi) {
++		ret = drm_atomic_helper_connector_hdmi_check(connector, state);
++		if (ret)
++			return ret;
++	}
+ 
+-	if (bridge_connector->bridge_hdmi)
+-		return drm_atomic_helper_connector_hdmi_check(connector, state);
++	new_conn_state = drm_atomic_get_new_connector_state(state, connector);
++	if (!new_conn_state || !new_conn_state->crtc)
++		return 0;
++
++	crtc = new_conn_state->crtc;
++	crtc_state = drm_atomic_get_crtc_state(state, crtc);
++	if (IS_ERR(crtc_state))
++		return PTR_ERR(crtc_state);
++
++	old_conn_state = drm_atomic_get_old_connector_state(state, connector);
++	if (!old_conn_state)
++		return 0;
++
++	/*
++	 * Analog TV helpers set connectors_changed for B/C/S/H, which
++	 * modesets the CRTC and blanks the DSI panel. Pull the CRTC in so
++	 * vop2_crtc_atomic_flush reprograms BCSH without a modeset.
++	 */
++	if (old_conn_state->tv.brightness != new_conn_state->tv.brightness ||
++	    old_conn_state->tv.contrast != new_conn_state->tv.contrast ||
++	    old_conn_state->tv.saturation != new_conn_state->tv.saturation ||
++	    old_conn_state->tv.hue != new_conn_state->tv.hue)
++		crtc_state->color_mgmt_changed = true;
+ 
+ 	return 0;
+ }
+diff -Naur a/drivers/gpu/drm/rockchip/rockchip_drm_drv.c b/drivers/gpu/drm/rockchip/rockchip_drm_drv.c
+--- a/drivers/gpu/drm/rockchip/rockchip_drm_drv.c	2026-04-27 15:30:19.000000000 +0200
++++ b/drivers/gpu/drm/rockchip/rockchip_drm_drv.c	2026-09-13 15:34:57.346821071 +0200
+@@ -18,6 +18,7 @@
+ #include <linux/iommu.h>
+ 
+ #include <drm/clients/drm_client_setup.h>
++#include <drm/drm_connector.h>
+ #include <drm/drm_drv.h>
+ #include <drm/drm_fbdev_dma.h>
+ #include <drm/drm_gem_dma_helper.h>
+@@ -142,6 +143,40 @@
+ 	iommu_domain_free(private->domain);
+ }
+ 
++
++static void rockchip_drm_attach_tv_props(struct drm_device *drm)
++{
++	struct drm_connector_list_iter conn_iter;
++	struct drm_connector *connector;
++
++	if (drm_mode_create_tv_properties_legacy(drm, 0, NULL))
++		return;
++
++	drm_connector_list_iter_begin(drm, &conn_iter);
++	drm_for_each_connector_iter(connector, &conn_iter) {
++		drm_object_attach_property(&connector->base,
++					   drm->mode_config.tv_brightness_property, 50);
++		drm_object_attach_property(&connector->base,
++					   drm->mode_config.tv_contrast_property, 50);
++		drm_object_attach_property(&connector->base,
++					   drm->mode_config.tv_saturation_property, 50);
++		drm_object_attach_property(&connector->base,
++					   drm->mode_config.tv_hue_property, 50);
++	}
++	drm_connector_list_iter_end(&conn_iter);
++}
++
++static void rockchip_drm_tv_reset_all(struct drm_device *drm)
++{
++	struct drm_connector_list_iter conn_iter;
++	struct drm_connector *connector;
++
++	drm_connector_list_iter_begin(drm, &conn_iter);
++	drm_for_each_connector_iter(connector, &conn_iter)
++		drm_atomic_helper_connector_tv_reset(connector);
++	drm_connector_list_iter_end(&conn_iter);
++}
++
+ static int rockchip_drm_bind(struct device *dev)
+ {
+ 	struct drm_device *drm_dev;
+@@ -182,6 +217,8 @@
+ 	if (ret)
+ 		goto err_free;
+ 
++	rockchip_drm_attach_tv_props(drm_dev);
++
+ 	ret = rockchip_drm_init_iommu(drm_dev);
+ 	if (ret)
+ 		goto err_unbind_all;
+@@ -191,6 +228,7 @@
+ 		goto err_iommu_cleanup;
+ 
+ 	drm_mode_config_reset(drm_dev);
++	rockchip_drm_tv_reset_all(drm_dev);
+ 
+ 	/* init kms poll for handling hpd */
+ 	drm_kms_helper_poll_init(drm_dev);
+diff -Naur a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c
+--- a/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c	2026-04-27 15:30:19.000000000 +0200
++++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop2.c	2026-09-13 15:34:57.346724242 +0200
+@@ -23,6 +23,7 @@
+ #include <drm/drm_atomic.h>
+ #include <drm/drm_atomic_uapi.h>
+ #include <drm/drm_blend.h>
++#include <drm/drm_connector.h>
+ #include <drm/drm_crtc.h>
+ #include <linux/debugfs.h>
+ #include <drm/drm_debugfs.h>
+@@ -1547,6 +1548,128 @@
+ 				DITHER_DOWN_ALLEGRO);
+ }
+ 
++
++static int vop2_bcsh_interp(int x1, int y1, int x2, int y2, int x)
++{
++	return y1 + (y2 - y1) * (x - x1) / (x2 - x1);
++}
++
++/* sin/cos * 256 for 0..30 degrees (BSP hue window). */
++static const u16 vop2_bcsh_sin256[] = {
++	0, 4, 9, 13, 18, 22, 27, 31, 36, 40, 45, 49, 53, 58, 62,
++	66, 71, 75, 79, 83, 88, 91, 96, 100, 104, 108, 112, 116, 120, 124, 128
++};
++static const u16 vop2_bcsh_cos256[] = {
++	256, 256, 256, 256, 255, 255, 255, 254, 254, 253, 252, 251, 250, 249, 248,
++	247, 246, 245, 243, 242, 241, 239, 237, 236, 234, 232, 230, 228, 226, 224, 222
++};
++
++#define VOP2_BCSH_CTRL_Y2R		BIT(0)
++#define VOP2_BCSH_CTRL_Y2R_CSC		GENMASK(3, 2)
++#define VOP2_BCSH_CTRL_R2Y		BIT(4)
++#define VOP2_BCSH_CTRL_R2Y_CSC		GENMASK(7, 6)
++#define VOP2_BCSH_BCS_BRIGHTNESS	GENMASK(7, 0)
++#define VOP2_BCSH_BCS_CONTRAST		GENMASK(16, 8)
++#define VOP2_BCSH_BCS_SATURATION	GENMASK(29, 20)
++#define VOP2_BCSH_BCS_OUT_MODE		GENMASK(31, 30)
++#define VOP2_BCSH_H_SIN			GENMASK(8, 0)
++#define VOP2_BCSH_H_COS			GENMASK(24, 16)
++#define VOP2_BCSH_COLOR_EN		BIT(31)
++#define VOP2_BCSH_OUT_MODE_NORMAL	0
++
++static void vop2_bcsh_update(struct drm_crtc *crtc)
++{
++	struct vop2_video_port *vp = to_vop2_video_port(crtc);
++	struct rockchip_crtc_state *vcstate = to_rockchip_crtc_state(crtc->state);
++	struct drm_connector_list_iter conn_iter;
++	struct drm_connector *connector;
++	struct drm_connector_state *conn_state = NULL;
++	unsigned int brightness = 50, contrast = 50, saturation = 50, hue = 50;
++	bool enable, yuv_out, yuv_ovl, out_10;
++	int bri, con, sat, hue_deg, sin_hue, cos_hue;
++	u32 ctrl = 0, bcs, hreg;
++
++	if (!crtc->state)
++		return;
++
++	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
++	drm_for_each_connector_iter(connector, &conn_iter) {
++		if (crtc->state->connector_mask & drm_connector_mask(connector)) {
++			conn_state = connector->state;
++			break;
++		}
++	}
++	drm_connector_list_iter_end(&conn_iter);
++
++	if (conn_state) {
++		brightness = conn_state->tv.brightness;
++		contrast = conn_state->tv.contrast;
++		saturation = conn_state->tv.saturation;
++		hue = conn_state->tv.hue;
++	}
++
++	/* Uninitialized TV state is 0; treat as identity (prop default 50). */
++	if (!brightness && !contrast && !saturation && !hue)
++		brightness = contrast = saturation = hue = 50;
++
++	enable = brightness != 50 || contrast != 50 || saturation != 50 || hue != 50;
++	yuv_out = is_yuv_output(vcstate->bus_format);
++	yuv_ovl = vcstate->yuv_overlay;
++	out_10 = vp->data->feature & VOP2_VP_FEATURE_OUTPUT_10BIT;
++
++	if (enable) {
++		if (!yuv_ovl)
++			ctrl |= VOP2_BCSH_CTRL_R2Y;
++		if (!yuv_out)
++			ctrl |= VOP2_BCSH_CTRL_Y2R;
++	} else {
++		if (!yuv_ovl && yuv_out)
++			ctrl |= VOP2_BCSH_CTRL_R2Y;
++		if (yuv_ovl && !yuv_out)
++			ctrl |= VOP2_BCSH_CTRL_Y2R;
++	}
++
++	vop2_vp_write(vp, RK3568_VP_BCSH_CTRL, ctrl);
++
++	if (!enable) {
++		vop2_vp_write(vp, RK3568_VP_BCSH_COLOR_BAR, 0);
++		return;
++	}
++
++	if (out_10)
++		bri = vop2_bcsh_interp(0, -128, 100, 127, brightness);
++	else
++		bri = vop2_bcsh_interp(0, -32, 100, 31, brightness);
++	con = vop2_bcsh_interp(0, 0, 100, 511, contrast);
++	sat = vop2_bcsh_interp(0, 0, 100, 511, saturation);
++	hue_deg = vop2_bcsh_interp(0, -30, 100, 30, hue);
++	if (hue_deg < -30)
++		hue_deg = -30;
++	if (hue_deg > 30)
++		hue_deg = 30;
++
++	if (hue_deg < 0) {
++		sin_hue = 0x100 - vop2_bcsh_sin256[-hue_deg];
++		cos_hue = vop2_bcsh_cos256[-hue_deg];
++	} else {
++		sin_hue = vop2_bcsh_sin256[hue_deg];
++		cos_hue = vop2_bcsh_cos256[hue_deg];
++	}
++
++	sat = sat * con / 0x100;
++
++	bcs = FIELD_PREP(VOP2_BCSH_BCS_BRIGHTNESS, bri & 0xff) |
++	      FIELD_PREP(VOP2_BCSH_BCS_CONTRAST, con & 0x1ff) |
++	      FIELD_PREP(VOP2_BCSH_BCS_SATURATION, sat & 0x3ff) |
++	      FIELD_PREP(VOP2_BCSH_BCS_OUT_MODE, VOP2_BCSH_OUT_MODE_NORMAL);
++	hreg = FIELD_PREP(VOP2_BCSH_H_SIN, sin_hue & 0x1ff) |
++	       FIELD_PREP(VOP2_BCSH_H_COS, cos_hue & 0x1ff);
++
++	vop2_vp_write(vp, RK3568_VP_BCSH_BCS, bcs);
++	vop2_vp_write(vp, RK3568_VP_BCSH_H, hreg);
++	vop2_vp_write(vp, RK3568_VP_BCSH_COLOR_BAR, VOP2_BCSH_COLOR_EN);
++}
++
+ static void vop2_post_config(struct drm_crtc *crtc)
+ {
+ 	struct vop2_video_port *vp = to_vop2_video_port(crtc);
+@@ -1784,6 +1907,7 @@
+ 	clk_set_rate(vp->dclk, clock);
+ 
+ 	vop2_post_config(crtc);
++	vop2_bcsh_update(crtc);
+ 
+ 	vop2_cfg_done(vp);
+ 
+@@ -1866,6 +1990,7 @@
+ 		vop2_crtc_atomic_try_set_gamma_locked(vop2, vp, crtc, crtc_state);
+ 
+ 	vop2_post_config(crtc);
++	vop2_bcsh_update(crtc);
+ 
+ 	vop2_cfg_done(vp);
+ 

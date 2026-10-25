@@ -125,3 +125,13 @@ image ([rootfs](rootfs.md)).
 - **spruceOS as a frontend.** Its card would be mounted and its `updater`
   executed, but whether it finds the userland it expects in the harvest is
   unchecked.
+- **A mainline kernel, for Panfrost and PanVK.** Revisits the first settled
+  decision, as an opt-in build path for now: `./build-kernel.sh`, then
+  `MY355_KERNEL=mainline` for `build-rootfs.sh` and `build-image.sh`. It builds
+  Linux 7.2.10 with ROCKNIX's `mali_kbase` beside Panfrost, so the stock
+  libmali stays usable. The device tree is ours, and every name stock-built
+  software reads follows the vendor DTB, not zlyme's. The full list is
+  [mainline-compat.md](mainline-compat.md). It boots to BaseOS with adb, with
+  the SD slot at high speed instead of SDR104. Missing pieces: the gamepad and
+  hall drivers, the codec's stock mixer controls, SD UHS, suspend, DMC and
+  WiFi.

@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zetarancio <zetarancio@users.noreply.github.com>
+Date: Sat, 5 Apr 2026 00:00:00 +0000
+Subject: [PATCH] power: supply: rk817: clear SYS_CAN_SD to fix ~8 mA
+ off-state drain
+
+The RK817 PMIC's SYS_CAN_SD bit (bit 7 of CHRG_TERM, register 0xe6)
+allows the charger block to autonomously cut the system power rail.
+The BSP kernel unconditionally clears this bit during charger probe
+(rk817_charge_sys_can_sd_disable), but the mainline driver never
+touches it, leaving the hardware-default value (set) in place.
+
+When SYS_CAN_SD is left set the charger monitoring circuitry remains
+active after system-off, drawing ~8 mA from the battery.  Clearing the
+single bit drops off-state drain to ~0.05 mA, matching stock firmware.
+
+The bit could equally be cleared from U-Boot, in rk817_init_reg[] in
+drivers/power/pmic/rk8xx.c, which today writes only BUCK4_CMIN.  The
+kernel was chosen for three reasons: it is where the BSP does it, from
+rk817_charge_sys_can_sd_disable() via rk817_charge_pre_init(); it keeps
+the fix independent of which bootloader happens to be in SPI, which
+matters on a board that can boot a stock preloader from SPI ahead of our
+own U-Boot from SD; and it fixes every RK817 board rather than only the
+configurations we build a bootloader for.
+
+Worth recording that no bootloader in this chain clears it today, since
+that is easy to assume and wrong.  Measured at the U-Boot prompt after a
+genuine power-on reset (battery physically disconnected, so the PMIC
+registers really did return to defaults) with the stock 2017.09 SPL in
+the boot chain: 0xe6 reads 0xc5, bit 7 set.  Both the stock SPL and
+ROCKNIX U-Boot leave it that way and hand it to the kernel.
+
+Signed-off-by: Zetarancio <zetarancio@users.noreply.github.com>
+---
+ drivers/power/supply/rk817_charger.c | 10 ++++++++++
+ include/linux/mfd/rk808.h            |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/drivers/power/supply/rk817_charger.c b/drivers/power/supply/rk817_charger.c
+index 5a2cba3..66484d6 100644
+--- a/drivers/power/supply/rk817_charger.c
++++ b/drivers/power/supply/rk817_charger.c
+@@ -1012,6 +1012,16 @@ static int rk817_battery_init(struct rk817_charger *charger,
+ 	regmap_write_bits(rk808->regmap, RK817_PMIC_CHRG_TERM,
+ 			  RK817_CHRG_TERM_ANA_SEL, chg_term_i_reg);
+ 
++	/*
++	 * Clear SYS_CAN_SD to prevent the PMIC from autonomously cutting
++	 * the system power rail.  The BSP kernel always clears this bit
++	 * (rk817_charge_sys_can_sd_disable); mainline never touched it,
++	 * leaving the hardware default (set) in place.  When set, the
++	 * charger block stays active after system-off, causing ~8 mA drain.
++	 */
++	regmap_write_bits(rk808->regmap, RK817_PMIC_CHRG_TERM,
++			  RK817_SYS_CAN_SD, 0);
++
+ 	ret = rk817_read_or_set_full_charge_on_boot(charger, bat_info);
+ 	if (ret < 0)
+ 		return ret;
+diff --git a/include/linux/mfd/rk808.h b/include/linux/mfd/rk808.h
+index 7ffc904..db59da0 100644
+--- a/include/linux/mfd/rk808.h
++++ b/include/linux/mfd/rk808.h
+@@ -1297,6 +1297,7 @@ enum rk809_reg_id {
+ #define RK817_PMIC_CHRG_TERM		0xe6
+ #define RK817_CHRG_TERM_ANA_DIG		(0x01 << 2)
+ #define RK817_CHRG_TERM_ANA_SEL		(0x03 << 0)
++#define RK817_SYS_CAN_SD		(0x01 << 7)
+ #define RK817_CHRG_EN			(0x01 << 6)
+ 
+ #define RK817_PMIC_CHRG_STS		0xeb

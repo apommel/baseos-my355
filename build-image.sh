@@ -14,6 +14,10 @@
 #               identical, only the DTB's bootargs and logo are rewritten
 #
 # Environment:
+#   MY355_KERNEL     vendor (default): the stock 5.10 kernel and DTB.
+#                    mainline: ./build-kernel.sh's kernel and device tree
+#                    (experimental; docs/mainline-compat.md). Needs MY355_UBOOT=mainline
+#                    and a rootfs built with the same MY355_KERNEL.
 #   MY355_UBOOT      mainline (default): ./build-uboot.sh's FIT, booting a FIT
 #                    of the vendor kernel (docs/uboot.md). vendor: the stock
 #                    U-Boot FIT verbatim, booting a rewritten Android boot image.
@@ -55,6 +59,19 @@ case "$UBOOT" in
     # Its boot script bakes in mkfit.py's DRAM map and header layout.
     python3 "$HERE/tools/mkfit.py" verify-uboot "$WORK/uboot-mainline.json" "$UBOOT_IMG" ;;
   *) echo "MY355_UBOOT must be vendor or mainline (got '$UBOOT')" >&2; exit 1 ;;
+esac
+
+KERNEL="${MY355_KERNEL:-vendor}"
+case "$KERNEL" in
+  vendor) ;;
+  mainline)
+    [ "$UBOOT" = mainline ] || { echo "MY355_KERNEL=mainline needs MY355_UBOOT=mainline" >&2; exit 1; }
+    [ -f "$WORK/kernel/kernel.json" ] || { echo "missing $WORK/kernel (run ./build-kernel.sh)" >&2; exit 1; }
+    KREL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["kernelrelease"])' "$WORK/kernel/kernel.json")"
+    # The rootfs carries the modules for one kernel release; booting another loses the GPU.
+    tar -tf "$ROOTFS_TAR" | grep -qE "^(\./)?usr/lib/modules/$KREL/modules\.dep$" || {
+      echo "$ROOTFS_TAR has no modules for $KREL (MY355_KERNEL=mainline ./build-rootfs.sh)" >&2; exit 1; } ;;
+  *) echo "MY355_KERNEL must be vendor or mainline (got '$KERNEL')" >&2; exit 1 ;;
 esac
 
 [ -f "$ROOTFS_TAR" ] || { echo "missing $ROOTFS_TAR (run ./build-rootfs.sh)" >&2; exit 1; }
@@ -136,25 +153,36 @@ python3 "$HERE/tools/mkbootlogo.py" "$MY355_LOGO_ASSET" \
 # release rather than from whatever the host has installed.
 if [ "$UBOOT" = vendor ]; then
   echo "== repointing the vendor boot image at the card =="
-  set -- rkbootimg.py setargs --logo /work/baseos-logo.bmp --compress-kernel "$COMPRESS"
+  set -- rkbootimg.py setargs /work/prepared/boot.img --logo /work/baseos-logo.bmp --compress-kernel "$COMPRESS"
 else
   # A FIT names its compression, so zstd is reachable here and not on the
   # vendor path. No logo: mainline U-Boot has no display driver for this SoC.
   case "$COMPRESS" in zstd|gzip) ;; *)
     echo "the mainline path stores the kernel as zstd or gzip" >&2; exit 1 ;; esac
-  echo "== packing the vendor kernel and device tree as a FIT =="
-  set -- mkfit.py boot --compress "$COMPRESS" --slot-sectors "$MY355_BOOT_SLOT_SECTORS"
+  if [ "$KERNEL" = mainline ]; then
+    echo "== packing the mainline kernel ($KREL) and device tree as a FIT =="
+    set -- mkfit.py boot-mainline /work/kernel/Image /work/kernel/rk3566-miyoo-flip.dtb \
+      --release "$KREL" --compress "$COMPRESS" --slot-sectors "$MY355_BOOT_SLOT_SECTORS"
+  else
+    echo "== packing the vendor kernel and device tree as a FIT =="
+    set -- mkfit.py boot /work/prepared/boot.img --compress "$COMPRESS" \
+      --slot-sectors "$MY355_BOOT_SLOT_SECTORS"
+  fi
+fi
+set -- "$@" "/work/$(basename "$BOOT_IMG")" --root "$MY355_ROOT_DEV" --rootfstype ext4
+if [ "$KERNEL" = mainline ]; then
+  # Our own tree carries the SD modes, and there is no vendor command line or
+  # initcall to edit. rootwait: the card probes asynchronously.
+  set -- "$@" --append "rootwait ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0"
+else
+  set -- "$@" --drop "$DROP" --append "$APPEND" --sd-uhs "$SD_UHS"
 fi
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$WORK":/work -v "$HERE/tools":/tools:ro \
   alpine:3.20 sh -euc '
   apk add -q python3 libdeflate-utils zstd
-  tool=$1 cmd=$2; shift 2
-  python3 "/tools/$tool" "$cmd" "/work/prepared/boot.img" "$@"' sh \
-  "$@" "/work/$(basename "$BOOT_IMG")" \
-  --root "$MY355_ROOT_DEV" --rootfstype ext4 \
-  --drop "$DROP" --append "$APPEND" \
-  --sd-uhs "$SD_UHS"
+  tool=$1; shift
+  python3 "/tools/$tool" "$@"' sh "$@"
 
 # Both go in an A/B slot, and an update writes a whole slot, so overflowing one
 # would corrupt the reserved half rather than just this partition.
@@ -187,8 +215,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   dd if="/work/$UBOOT_IMG" of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none
   dd if="/work/$BOOT_IMG"  of="$OUT" bs=512 seek="$BOOT_START"  conv=notrunc status=none
 
-  # This kernel is 5.10.160. orphan_file needs 5.15+, so it must be off; the
-  # other modern features are fine.
+  # The vendor kernel is 5.10.160 and orphan_file needs 5.15+, so it is off on
+  # both paths: a card can be flashed for either kernel. The rest is fine.
   EXT4_OPTS="^orphan_file"
 
   R=/tmp/r; rm -rf "$R"; mkdir "$R"

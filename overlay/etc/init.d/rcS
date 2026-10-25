@@ -3,8 +3,8 @@
 #
 # Budget: well under a second on a normal boot. Nothing sleeps; anything slow
 # runs in the background. The vendor kernel already mounts /dev
-# (CONFIG_DEVTMPFS_MOUNT=y) and carries Mali and the panel built in, so there is
-# nothing to insmod here.
+# (CONFIG_DEVTMPFS_MOUNT=y) and carries Mali and the panel built in; a mainline
+# kernel needs only its GPU driver loaded (below).
 #
 # Boot forensics land in /run/boot-* and one log on /data, because this device
 # has neither a UART attached nor a framebuffer console — see docs/diagnostics.md.
@@ -21,6 +21,12 @@ grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 /bin/mount -t tmpfs -o mode=755,size=32m   tmpfs /run
 
 mark /run/boot-rcS-start
+
+# Mainline only: the GPU driver is a module, so the stock libmali (mali_kbase)
+# and Mesa (panfrost) stay a choice. Backgrounded: nothing in rcS draws with it.
+if [ -f "/lib/modules/$(uname -r)/modules.dep" ]; then
+	{ /sbin/modprobe mali_kbase && mark /run/boot-gpu; } &
+fi
 
 # The boot logo and backlight, unless the vendor U-Boot handed its own logo to
 # the kernel (logo,offset). In the background: its pan waits for the panel.

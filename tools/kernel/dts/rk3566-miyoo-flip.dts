@@ -1,0 +1,855 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Miyoo Flip (my355) for BaseOS on mainline Linux.
+ *
+ * Hardware description after zlyme/ROCKNIX; every name stock-built software
+ * reads follows the vendor DTB instead (docs/mainline-compat.md). Deferred:
+ * suspend, DMC, WiFi power, the gamepad and hall drivers.
+ */
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/pinctrl/rockchip.h>
+#include <dt-bindings/soc/rockchip,vop2.h>
+#include "rk3566.dtsi"
+
+/ {
+	model = "Miyoo Flip";
+	chassis-type = "handset";
+	compatible = "miyoo,flip", "rockchip,rk3566";
+
+	/* As the vendor kernel: the boot slot is mmcblk1, the second slot mmcblk2. */
+	aliases {
+		mmc1 = &sdmmc0;
+		mmc2 = &sdmmc1;
+	};
+
+	chosen {
+		/* mkfit.py rewrites this in place, so it must exist. */
+		bootargs = "";
+		stdout-path = "serial2:1500000n8";
+	};
+
+	reserved-memory {
+		/* The vendor OP-TEE, which mainline U-Boot does not describe. */
+		optee@8400000 {
+			reg = <0x0 0x08400000 0x0 0x01000000>;
+			no-map;
+		};
+	};
+
+	/* Stock's table: software writes 0-255 and expects the same light. */
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm4 0 1250000 0>;
+		brightness-levels = <
+			  0  20  20  21  21  22  22  23  23  24  24  25  25  26  26  27
+			 27  28  28  29  29  30  30  31  31  32  32  33  33  34  34  35
+			 35  36  36  37  37  38  38  39  40  41  42  43  44  45  46  47
+			 48  49  50  51  52  53  54  55  56  57  58  59  60  61  62  63
+			 64  65  66  67  68  69  70  71  72  73  74  75  76  77  78  79
+			 80  81  82  83  84  85  86  87  88  89  90  91  92  93  94  95
+			 96  97  98  99 100 101 102 103 104 105 106 107 108 109 110 111
+			112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127
+			128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143
+			144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159
+			160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175
+			176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191
+			192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207
+			208 209 210 211 212 213 214 215 216 217 218 219 220 221 222 223
+			224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239
+			240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255>;
+		default-brightness-level = <200>;
+	};
+
+	/*
+	 * event0 for keymon: stock's node, codes and pins. First under / so it
+	 * registers before the other input devices.
+	 */
+	gpio-keys-polled {
+		compatible = "gpio-keys-polled";
+		autorepeat;
+		poll-interval = <10>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&btn_pins>;
+
+		a-button {
+			gpios = <&gpio3 RK_PC3 GPIO_ACTIVE_LOW>;
+			label = "a";
+			linux,code = <KEY_SPACE>;
+		};
+		b-button {
+			gpios = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
+			label = "b";
+			linux,code = <KEY_LEFTCTRL>;
+		};
+		down-button {
+			gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_LOW>;
+			label = "down";
+			linux,code = <KEY_DOWN>;
+		};
+		l1-button {
+			gpios = <&gpio3 RK_PB1 GPIO_ACTIVE_LOW>;
+			label = "l1";
+			linux,code = <KEY_TAB>;
+		};
+		l2-button {
+			gpios = <&gpio3 RK_PB2 GPIO_ACTIVE_LOW>;
+			label = "l2";
+			linux,code = <KEY_PAGEUP>;
+		};
+		l3-button {
+			gpios = <&gpio2 RK_PC1 GPIO_ACTIVE_HIGH>;
+			label = "l3";
+			linux,code = <KEY_RIGHTALT>;
+		};
+		left-button {
+			gpios = <&gpio3 RK_PA5 GPIO_ACTIVE_LOW>;
+			label = "left";
+			linux,code = <KEY_LEFT>;
+		};
+		mode-button {
+			gpios = <&gpio3 RK_PA1 GPIO_ACTIVE_LOW>;
+			label = "menu";
+			linux,code = <KEY_ESC>;
+		};
+		r1-button {
+			gpios = <&gpio3 RK_PB3 GPIO_ACTIVE_LOW>;
+			label = "r1";
+			linux,code = <KEY_BACKSPACE>;
+		};
+		r2-button {
+			gpios = <&gpio3 RK_PB4 GPIO_ACTIVE_LOW>;
+			label = "r2";
+			linux,code = <KEY_PAGEDOWN>;
+		};
+		r3-button {
+			gpios = <&gpio2 RK_PC0 GPIO_ACTIVE_HIGH>;
+			label = "r3";
+			linux,code = <KEY_RIGHTSHIFT>;
+		};
+		right-button {
+			gpios = <&gpio3 RK_PA6 GPIO_ACTIVE_LOW>;
+			label = "right";
+			linux,code = <KEY_RIGHT>;
+		};
+		select-button {
+			gpios = <&gpio3 RK_PB6 GPIO_ACTIVE_LOW>;
+			label = "select";
+			linux,code = <KEY_RIGHTCTRL>;
+		};
+		start-button {
+			gpios = <&gpio3 RK_PB5 GPIO_ACTIVE_LOW>;
+			label = "start";
+			linux,code = <KEY_ENTER>;
+		};
+		up-button {
+			gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_LOW>;
+			label = "up";
+			linux,code = <KEY_UP>;
+		};
+		vol-down-button {
+			gpios = <&gpio3 RK_PB0 GPIO_ACTIVE_LOW>;
+			label = "vol down";
+			linux,code = <KEY_VOLUMEDOWN>;
+		};
+		vol-up-button {
+			gpios = <&gpio3 RK_PA7 GPIO_ACTIVE_LOW>;
+			label = "vol up";
+			linux,code = <KEY_VOLUMEUP>;
+		};
+		x-button {
+			gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_LOW>;
+			label = "x";
+			linux,code = <KEY_LEFTSHIFT>;
+		};
+		y-button {
+			gpios = <&gpio3 RK_PC0 GPIO_ACTIVE_LOW>;
+			label = "y";
+			linux,code = <KEY_LEFTALT>;
+		};
+	};
+
+	/*
+	 * Stock's node, verbatim, for the hall-mh248 driver still to come
+	 * (hallvalue, "hall wake key" at event1). Until then the lid is unread.
+	 */
+	hall-mh248 {
+		compatible = "hall-mh248";
+		hall-active = <1>;
+		irq-gpio = <&gpio0 RK_PC6 (GPIO_ACTIVE_LOW | GPIO_SINGLE_ENDED)>;
+	};
+
+	/* Named as on stock: the Status LED pak writes work/ and charger/. */
+	leds {
+		compatible = "gpio-leds";
+
+		charger {
+			gpios = <&gpio0 RK_PC2 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "battery-charging";
+			retain-state-suspended;
+		};
+
+		work {
+			gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "default-on";
+		};
+	};
+
+	spk_amp: audio-amplifier {
+		compatible = "simple-audio-amplifier";
+		VCC-supply = <&vccio_acodec>;
+		enable-gpios = <&gpio4 RK_PC2 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&spk_amp_enable_h>;
+		sound-name-prefix = "Speaker Amp";
+	};
+
+	/*
+	 * ALSA card id "rockchiprk817", which libmsettings looks for. No
+	 * hp-det-gpios: GPIO4_C6 stays free for userspace as gpio150.
+	 */
+	rk817-sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "rockchip-rk817";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,aux-devs = <&spk_amp>;
+		simple-audio-card,mclk-fs = <256>;
+		simple-audio-card,widgets =
+			"Microphone", "Mic Jack",
+			"Headphone", "Headphones",
+			"Speaker", "Internal Speakers";
+		simple-audio-card,routing =
+			"MICL", "Mic Jack",
+			"Headphones", "HPOL",
+			"Headphones", "HPOR",
+			"Speaker Amp INL", "SPKO",
+			"Speaker Amp INR", "SPKO",
+			"Internal Speakers", "Speaker Amp OUTL",
+			"Internal Speakers", "Speaker Amp OUTR";
+
+		simple-audio-card,cpu {
+			sound-dai = <&i2s1_8ch>;
+		};
+		simple-audio-card,codec {
+			sound-dai = <&rk817>;
+		};
+	};
+
+	battery: battery {
+		compatible = "simple-battery";
+		charge-full-design-microamp-hours = <3000000>;
+		charge-term-current-microamp = <150000>;
+		/* RK817 has no 1.8 A step. */
+		constant-charge-current-max-microamp = <1500000>;
+		constant-charge-voltage-max-microvolt = <4250000>;
+		factory-internal-resistance-micro-ohms = <100000>;
+		voltage-max-design-microvolt = <4250000>;
+		voltage-min-design-microvolt = <3200000>;
+		ocv-capacity-celsius = <20>;
+		ocv-capacity-table-0 =
+			<4250000 100>, <4057000 95>,  <3998000 90>,  <3967000 85>,  <3930000 80>,
+			<3883000 75>,  <3849000 70>,  <3816000 65>,  <3773000 60>,  <3722000 55>,
+			<3676000 50>,  <3638000 45>,  <3609000 40>,  <3587000 35>,  <3566000 30>,
+			<3547000 25>,  <3525000 20>,  <3500000 15>,  <3469000 10>,  <3426000 5>,
+			<3200000 0>;
+	};
+
+	vccsys: vccsys {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v8_sys";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <3800000>;
+		regulator-max-microvolt = <3800000>;
+	};
+
+	vcc5v0_host: vcc5v0-host-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc5v0_host";
+		enable-active-high;
+		gpio = <&gpio4 RK_PC5 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&dcdc_boost>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc5v0_host_en>;
+	};
+
+	/* U-Boot already switched it on (build-uboot.sh PANEL). */
+	vcc3v3_lcd0_n: vcc3v3-lcd0-n {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_lcd0_n";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-active-high;
+		gpio = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vcc_3v3>;
+		regulator-boot-on;
+	};
+
+	/*
+	 * boot-on as on stock, so probe never cuts the card U-Boot booted from: a
+	 * card cut and repowered on this board may not answer (docs/uboot.md).
+	 */
+	vcc_sd: vcc-sd {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_sd";
+		regulator-boot-on;
+		enable-active-low;
+		gpio = <&gpio0 RK_PA5 GPIO_ACTIVE_LOW>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc_sd_h>;
+	};
+
+	vcc_sd2: vcc-sd2 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_sd2";
+		regulator-boot-on;
+		enable-active-low;
+		gpio = <&gpio2 RK_PB1 GPIO_ACTIVE_LOW>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc_sd2_h>;
+	};
+};
+
+&cpu0 {
+	cpu-supply = <&vdd_cpu>;
+};
+
+&cpu1 {
+	cpu-supply = <&vdd_cpu>;
+};
+
+&cpu2 {
+	cpu-supply = <&vdd_cpu>;
+};
+
+&cpu3 {
+	cpu-supply = <&vdd_cpu>;
+};
+
+&cru {
+	assigned-clocks = <&pmucru CLK_RTC_32K>, <&cru PLL_GPLL>,
+			  <&pmucru PLL_PPLL>, <&cru PLL_VPLL>;
+	assigned-clock-rates = <32768>, <1200000000>,
+			       <200000000>, <1200000000>;
+};
+
+&gpu {
+	mali-supply = <&vdd_gpu>;
+	status = "okay";
+};
+
+/* Stock's top step, which the vendor BL31 serves; mainline stops at 800 MHz. */
+&gpu_opp_table {
+	opp-900000000 {
+		opp-hz = /bits/ 64 <900000000>;
+		opp-microvolt = <1000000 1000000 1000000>;
+	};
+};
+
+&dsi0 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	ports {
+		dsi0_in: port@0 {
+			reg = <0>;
+			dsi0_in_vp1: endpoint {
+				remote-endpoint = <&vp1_out_dsi0>;
+			};
+		};
+
+		dsi0_out: port@1 {
+			reg = <1>;
+			mipi_out_panel: endpoint {
+				remote-endpoint = <&mipi_in_panel>;
+			};
+		};
+	};
+
+	/* FT8006M, 640x480, 2 lanes; init sequence from the vendor DTB. */
+	panel: panel@0 {
+		compatible = "rocknix,generic-dsi";
+		reg = <0>;
+		panel_description =
+			"G size=68,121 delays=0,160,200,200,20 format=rgb888 lanes=2 flags=0xa03",
+			"M clock=32000 horizontal=640,150,120,120 vertical=480,20,6,12 default=1",
+			"I seq=11 wait=250",
+			"I seq=29 wait=32",
+			"I seq=b9f11287",
+			"I seq=b2780470",
+			"I seq=b31010282803ff00000000",
+			"I seq=b480",
+			"I seq=b50a0a",
+			"I seq=b82622f013",
+			"I seq=ba318105f90e0e2000000000000000442500910a0000014f01000037",
+			"I seq=bc47",
+			"I seq=bf0211008004",
+			"I seq=c0737350500000127300",
+			"I seq=c17300323277f47777ccccffff1111000032",
+			"I seq=c710000a0000000000edc500a5",
+			"I seq=c810401e03",
+			"I seq=cc0b",
+			"I seq=e0000509293c3f3b37050a0c10131013121a000509293c3f3b37050a0c10131013121a",
+			"I seq=e111119100000000",
+			"I seq=e307070b0b0b0b00000000ff04c010",
+			"I seq=e9c810020000b0b11131232880b0b127080004020000000004020000008888ba60240888888888888888ba713518888888888800000001000000000000000000",
+			"I seq=ea970a820203070000000000008188ba17538888888888888088ba064288888888888823000002a500000000000000000000000000000000000000000000",
+			"I seq=a500",
+			"I seq=efffff01";
+		pinctrl-names = "default";
+		pinctrl-0 = <&lcd_rst>;
+		reset-gpios = <&gpio4 RK_PA0 GPIO_ACTIVE_LOW>;
+		backlight = <&backlight>;
+		iovcc-supply = <&vcc3v3_lcd0_n>;
+		vdd-supply = <&vcc3v3_lcd0_n>;
+
+		port {
+			mipi_in_panel: endpoint {
+				remote-endpoint = <&mipi_out_panel>;
+			};
+		};
+	};
+};
+
+&dsi_dphy0 {
+	status = "okay";
+};
+
+&vp1 {
+	vp1_out_dsi0: endpoint@ROCKCHIP_VOP2_EP_MIPI0 {
+		reg = <ROCKCHIP_VOP2_EP_MIPI0>;
+		remote-endpoint = <&dsi0_in_vp1>;
+	};
+};
+
+&vp0 {
+	vp0_out_hdmi: endpoint@ROCKCHIP_VOP2_EP_HDMI0 {
+		reg = <ROCKCHIP_VOP2_EP_HDMI0>;
+		remote-endpoint = <&hdmi_in_vp0>;
+	};
+};
+
+&vop {
+	status = "okay";
+	assigned-clocks = <&cru DCLK_VOP0>, <&cru DCLK_VOP1>;
+	assigned-clock-parents = <&pmucru PLL_HPLL>, <&cru PLL_VPLL>;
+};
+
+&vop_mmu {
+	status = "okay";
+};
+
+&hdmi {
+	status = "okay";
+	avdd-0v9-supply = <&vdda_0v9>;
+	avdd-1v8-supply = <&vcc_1v8>;
+};
+
+&hdmi_in {
+	hdmi_in_vp0: endpoint {
+		remote-endpoint = <&vp0_out_hdmi>;
+	};
+};
+
+/* ALSA card id "rockchiphdmi", which libmsettings switches to on HDMI. */
+&hdmi_sound {
+	simple-audio-card,name = "rockchip,hdmi";
+	status = "okay";
+};
+
+&i2s0_8ch {
+	status = "okay";
+};
+
+&i2s1_8ch {
+	status = "okay";
+	rockchip,trcm-sync-tx-only;
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s1m0_sclktx &i2s1m0_lrcktx &i2s1m0_sdi0 &i2s1m0_sdo0>;
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <100000>;
+
+	vdd_cpu: regulator@40 {
+		compatible = "rockchip,rk8600";
+		reg = <0x40>;
+		vin-supply = <&vccsys>;
+		regulator-name = "vdd_cpu";
+		regulator-min-microvolt = <712500>;
+		regulator-max-microvolt = <1390000>;
+		regulator-ramp-delay = <2300>;
+		/* A wrong selector drops the CPU rail right after probe. */
+		fcs,suspend-voltage-selector = <1>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	rk817: pmic@20 {
+		compatible = "rockchip,rk817";
+		reg = <0x20>;
+		interrupt-parent = <&gpio0>;
+		interrupts = <RK_PA3 IRQ_TYPE_LEVEL_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pmic_int_l>, <&i2s1m0_mclk>, <&pmic_pins>;
+		system-power-controller;
+		wakeup-source;
+		#clock-cells = <1>;
+		#sound-dai-cells = <0>;
+		clock-output-names = "rk808-clkout1", "rk808-clkout2";
+		clock-names = "mclk";
+		clocks = <&cru I2S1_MCLKOUT_TX>;
+		assigned-clocks = <&cru I2S1_MCLKOUT_TX>;
+		assigned-clock-parents = <&cru CLK_I2S1_8CH_TX>;
+		assigned-clock-rates = <12288000>;
+
+		vcc1-supply = <&vccsys>;
+		vcc2-supply = <&vccsys>;
+		vcc3-supply = <&vccsys>;
+		vcc4-supply = <&vccsys>;
+		vcc5-supply = <&vccsys>;
+		vcc6-supply = <&vccsys>;
+		vcc7-supply = <&vccsys>;
+		vcc8-supply = <&vccsys>;
+		/* Not dcdc_boost: that would be a pmic -> BOOST -> pmic devlink cycle. */
+		vcc9-supply = <&vccsys>;
+
+		pwrkey {
+			status = "okay";
+		};
+
+		regulators {
+			vdd_logic: DCDC_REG1 {
+				regulator-name = "vdd_logic";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <500000>;
+				regulator-max-microvolt = <1350000>;
+				regulator-ramp-delay = <6001>;
+				regulator-initial-mode = <0x2>;
+			};
+
+			/*
+			 * Always-on: mali_kbase disables it on runtime suspend without
+			 * having enabled it, and the unused-regulator cleanup then cuts it.
+			 */
+			vdd_gpu: DCDC_REG2 {
+				regulator-name = "vdd_gpu";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <500000>;
+				regulator-max-microvolt = <1350000>;
+				regulator-ramp-delay = <6001>;
+				regulator-initial-mode = <0x2>;
+			};
+
+			vcc_ddr: DCDC_REG3 {
+				regulator-name = "vcc_ddr";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-initial-mode = <0x2>;
+			};
+
+			vcc_3v3: DCDC_REG4 {
+				regulator-name = "vcc_3v3";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-initial-mode = <0x2>;
+			};
+
+			vcca1v8_pmu: LDO_REG1 {
+				regulator-name = "vcca1v8_pmu";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
+
+			vdda_0v9: LDO_REG2 {
+				regulator-name = "vdda_0v9";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <900000>;
+			};
+
+			vdda0v9_pmu: LDO_REG3 {
+				regulator-name = "vdda0v9_pmu";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <900000>;
+			};
+
+			vccio_acodec: LDO_REG4 {
+				regulator-name = "vccio_acodec";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			vccio_sd: LDO_REG5 {
+				regulator-name = "vccio_sd";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			vcc3v3_pmu: LDO_REG6 {
+				regulator-name = "vcc3v3_pmu";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			vcc_1v8: LDO_REG7 {
+				regulator-name = "vcc_1v8";
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
+
+			vcc1v8_dvp: LDO_REG8 {
+				regulator-name = "vcc1v8_dvp";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
+
+			vcc2v8_dvp: LDO_REG9 {
+				regulator-name = "vcc2v8_dvp";
+				regulator-min-microvolt = <2800000>;
+				regulator-max-microvolt = <2800000>;
+			};
+
+			dcdc_boost: BOOST {
+				regulator-name = "boost";
+				regulator-min-microvolt = <5000000>;
+				regulator-max-microvolt = <5000000>;
+			};
+
+			otg_switch: OTG_SWITCH {
+				regulator-name = "otg_switch";
+			};
+		};
+
+		/* Supplies named battery and usb by patch 0022, as stock software reads them. */
+		rk817_charger: charger {
+			monitored-battery = <&battery>;
+			rockchip,resistor-sense-micro-ohms = <10000>;
+			rockchip,sleep-enter-current-microamp = <150000>;
+			rockchip,sleep-filter-current-microamp = <100000>;
+		};
+
+		codec {
+		};
+	};
+};
+
+&pinctrl {
+	buttons {
+		btn_pins: btn-pins {
+			rockchip,pins =
+				<2 RK_PC0 RK_FUNC_GPIO &pcfg_pull_down>,
+				<2 RK_PC1 RK_FUNC_GPIO &pcfg_pull_down>,
+				<3 RK_PA1 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA3 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA4 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA5 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA6 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA7 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB1 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB2 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB3 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB4 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB5 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB6 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PC0 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PC2 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PC3 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	audio-amplifier {
+		spk_amp_enable_h: spk-amp-enable-h {
+			rockchip,pins = <4 RK_PC2 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+
+	gpio-lcd {
+		lcd_rst: lcd-rst {
+			rockchip,pins = <4 RK_PA0 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	pmic {
+		pmic_int_l: pmic-int-l {
+			rockchip,pins = <0 RK_PA3 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	usb {
+		vcc5v0_host_en: vcc5v0-host-en {
+			rockchip,pins = <4 RK_PC5 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+
+	vcc-sd {
+		vcc_sd_h: vcc-sd-h {
+			rockchip,pins = <0 RK_PA5 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+		vcc_sd2_h: vcc-sd2-h {
+			rockchip,pins = <2 RK_PB1 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+};
+
+&pmu_io_domains {
+	status = "okay";
+	pmuio1-supply = <&vcc3v3_pmu>;
+	pmuio2-supply = <&vcc3v3_pmu>;
+	vccio1-supply = <&vccio_acodec>;
+	vccio3-supply = <&vccio_sd>;
+	vccio4-supply = <&vcc_3v3>;
+	vccio5-supply = <&vcc_1v8>;
+	vccio6-supply = <&vcc_1v8>;
+	vccio7-supply = <&vcc_3v3>;
+};
+
+/*
+ * The only PWM enabled, so it is pwmchip0 as launch.sh expects. pwm5 stays
+ * off: the rumble motor on GPIO0_C4 is gpio20 to userspace.
+ */
+&pwm4 {
+	status = "okay";
+};
+
+&saradc {
+	status = "okay";
+	vref-supply = <&vcc_1v8>;
+};
+
+&sdmmc0 {
+	max-frequency = <150000000>;
+	no-sdio;
+	no-mmc;
+	bus-width = <4>;
+	cap-sd-highspeed;
+	disable-wp;
+	/*
+	 * High speed only for now: with UHS, tuning fails (-5), the card then
+	 * stops answering (-110) and the root never mounts.
+	 */
+	vmmc-supply = <&vcc_sd>;
+	vqmmc-supply = <&vccio_sd>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdmmc0_bus4 &sdmmc0_clk &sdmmc0_cmd &sdmmc0_det>;
+	status = "okay";
+};
+
+/*
+ * vccio_sd is shared with the boot slot and belongs to it, as on the vendor
+ * path (rkbootimg.detach_sd_slot1_vqmmc): high speed only, no UHS switch.
+ */
+&sdmmc1 {
+	max-frequency = <150000000>;
+	no-sdio;
+	no-mmc;
+	bus-width = <4>;
+	cap-sd-highspeed;
+	disable-wp;
+	vmmc-supply = <&vcc_sd2>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdmmc1_bus4 &sdmmc1_clk &sdmmc1_cmd &sdmmc1_det>;
+	status = "okay";
+};
+
+&tsadc {
+	status = "okay";
+	rockchip,hw-tshut-mode = <0>;
+	rockchip,hw-tshut-polarity = <0>;
+};
+
+/* No serdev child: the stick MCU is /dev/ttyS1 for miyoo_inputd, as on stock. */
+&uart1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart1m0_xfer &uart1m0_ctsn>;
+};
+
+&uart2 {
+	status = "okay";
+};
+
+&usb2phy0 {
+	status = "okay";
+};
+
+&usb2phy1 {
+	status = "okay";
+};
+
+&usb2phy0_host {
+	phy-supply = <&vcc_3v3>;
+	status = "okay";
+};
+
+&usb2phy0_otg {
+	status = "okay";
+};
+
+&usb2phy1_host {
+	phy-supply = <&vcc_3v3>;
+	status = "okay";
+};
+
+&usb2phy1_otg {
+	phy-supply = <&vcc5v0_host>;
+	status = "okay";
+};
+
+&usb_host0_ehci {
+	status = "okay";
+};
+
+&usb_host0_ohci {
+	status = "okay";
+};
+
+/*
+ * The adb port, OTG as in zlyme, where device mode is proven. usb-gadget-adb
+ * binds only once the PHY reports a data cable: bound idle, EP0 fails.
+ */
+&usb_host0_xhci {
+	status = "okay";
+	dr_mode = "otg";
+	extcon = <&usb2phy0>;
+	phys = <&usb2phy0_otg>;
+	phy-names = "usb2-phy";
+};
+
+&usb_host1_xhci {
+	status = "okay";
+	phys = <&usb2phy0_host>;
+	phy-names = "usb2-phy";
+	maximum-speed = "high-speed";
+};
+
+&usb_host1_ehci {
+	status = "okay";
+};
