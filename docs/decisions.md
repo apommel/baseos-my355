@@ -134,5 +134,4 @@ image ([rootfs](rootfs.md)).
   [mainline-compat.md](mainline-compat.md). It boots to NextUI with adb, with
   the SD slot at high speed instead of SDR104. The gamepad is a kernel driver
   presenting stock's `MIYOO Player1`, and `miyoo_inputd` a shim. Missing
-  pieces: the hall driver, the codec's stock mixer controls, SD UHS, suspend,
-  DMC and WiFi.
+  pieces: the codec's stock mixer controls, SD UHS, suspend, DMC and WiFi.

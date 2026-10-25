@@ -4,17 +4,18 @@
  * it through uinput, so stock-built software sees the same device: name, Xbox
  * 360 IDs, keys, axes and ranges.
  *
- * Buttons come from the gpio-keys-polled device (event0), whose keyboard codes
- * stay as on stock for keymon: the vendor's /dev/miyooio read those same pins.
- * The sticks come from the MCU on UART1, 9600 8N1, in frames FF YL XL YR XR FE.
+ * Buttons are polled from button-gpios, so they are not also keyboard keys.
+ * Menu stays on event0 (gpio-keys-polled) with volume for keymon, and comes
+ * here through an input handler. The sticks come from the MCU on UART1,
+ * 9600 8N1, in frames FF YL XL YR XR FE.
  * Calibration takes the stock /userdata/joypad.config format through sysfs.
  */
+#include <linux/gpio/consumer.h>
 #include <linux/input.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/serdev.h>
 #include <linux/spinlock.h>
-#include <linux/workqueue.h>
 
 #define FRAME_START	0xff
 #define FRAME_END	0xfe
@@ -25,32 +26,37 @@
 #define AXIS_CLAMP	32760
 #define DEAD_ZONE	(AXIS_CLAMP >> 3)
 #define REPORT_STEP	(AXIS_CLAMP >> 8)
+#define POLL_MS		10	/* gpio-keys-polled's interval on stock */
 
-/* event0 code -> Player1 event, in stock's "xbox pad layout". */
-static const struct p1_map {
-	u16 from;
+/*
+ * button-gpios order -> Player1 event, in stock's "xbox pad layout". Menu,
+ * last, is not a GPIO here but event0's KEY_ESC.
+ */
+static const struct p1_button {
 	u16 type;
 	u16 code;
 	s16 value;
-} p1_map[] = {
-	{ KEY_LEFTCTRL,   EV_KEY, BTN_SOUTH,   1 },	/* b */
-	{ KEY_SPACE,      EV_KEY, BTN_EAST,    1 },	/* a */
-	{ KEY_LEFTSHIFT,  EV_KEY, BTN_WEST,    1 },	/* x, stock's BTN_Y */
-	{ KEY_LEFTALT,    EV_KEY, BTN_NORTH,   1 },	/* y, stock's BTN_X */
-	{ KEY_TAB,        EV_KEY, BTN_TL,      1 },
-	{ KEY_BACKSPACE,  EV_KEY, BTN_TR,      1 },
-	{ KEY_RIGHTCTRL,  EV_KEY, BTN_SELECT,  1 },
-	{ KEY_ENTER,      EV_KEY, BTN_START,   1 },
-	{ KEY_ESC,        EV_KEY, BTN_MODE,    1 },	/* menu */
-	{ KEY_RIGHTALT,   EV_KEY, BTN_THUMBL,  1 },
-	{ KEY_RIGHTSHIFT, EV_KEY, BTN_THUMBR,  1 },
-	{ KEY_PAGEUP,     EV_ABS, ABS_Z,     255 },	/* l2 */
-	{ KEY_PAGEDOWN,   EV_ABS, ABS_RZ,    255 },	/* r2 */
-	{ KEY_UP,         EV_ABS, ABS_HAT0Y,  -1 },
-	{ KEY_DOWN,       EV_ABS, ABS_HAT0Y,   1 },
-	{ KEY_LEFT,       EV_ABS, ABS_HAT0X,  -1 },
-	{ KEY_RIGHT,      EV_ABS, ABS_HAT0X,   1 },
+} p1_buttons[] = {
+	{ EV_KEY, BTN_SOUTH,   1 },	/* b */
+	{ EV_KEY, BTN_EAST,    1 },	/* a */
+	{ EV_KEY, BTN_WEST,    1 },	/* x, stock's BTN_Y */
+	{ EV_KEY, BTN_NORTH,   1 },	/* y, stock's BTN_X */
+	{ EV_KEY, BTN_TL,      1 },
+	{ EV_KEY, BTN_TR,      1 },
+	{ EV_KEY, BTN_SELECT,  1 },
+	{ EV_KEY, BTN_START,   1 },
+	{ EV_KEY, BTN_THUMBL,  1 },
+	{ EV_KEY, BTN_THUMBR,  1 },
+	{ EV_ABS, ABS_Z,     255 },	/* l2 */
+	{ EV_ABS, ABS_RZ,    255 },	/* r2 */
+	{ EV_ABS, ABS_HAT0Y,  -1 },	/* up */
+	{ EV_ABS, ABS_HAT0Y,   1 },	/* down */
+	{ EV_ABS, ABS_HAT0X,  -1 },	/* left */
+	{ EV_ABS, ABS_HAT0X,   1 },	/* right */
+	{ EV_KEY, BTN_MODE,    1 },	/* menu */
 };
+#define P1_GPIOS	(ARRAY_SIZE(p1_buttons) - 1)
+#define P1_MENU		P1_GPIOS
 
 struct p1_cal {
 	int min, zero, max;
@@ -59,9 +65,10 @@ struct p1_cal {
 struct p1 {
 	struct input_dev *input;
 	struct input_handler handler;
-	struct work_struct key_work;
-	spinlock_t lock;		/* held, cal, raw */
-	unsigned long held;		/* bit n: p1_map[n] pressed */
+	struct gpio_descs *gpios;
+	spinlock_t lock;		/* cal, raw */
+	unsigned long menu;		/* bit 0: event0's KEY_ESC held */
+	unsigned long held;		/* bit n: p1_buttons[n], as last reported */
 	struct p1_cal cal[2][2];	/* [left, right][x, y] */
 	u8 raw[4];			/* YL XL YR XR */
 	int last[4];			/* X Y RX RY, as last reported */
@@ -71,64 +78,58 @@ struct p1 {
 
 static const struct p1_cal p1_cal_default = { 85, 130, 200 };
 
-static void p1_key_work(struct work_struct *work)
+static void p1_poll(struct input_dev *input)
 {
-	struct p1 *p1 = container_of(work, struct p1, key_work);
+	struct p1 *p1 = input_get_drvdata(input);
 	int hat_x = 0, hat_y = 0, z = 0, rz = 0;
-	unsigned long held;
+	unsigned long held = 0;
 	int i;
 
-	spin_lock_irq(&p1->lock);
-	held = p1->held;
-	spin_unlock_irq(&p1->lock);
+	if (gpiod_get_array_value_cansleep(P1_GPIOS, p1->gpios->desc,
+					   p1->gpios->info, &held))
+		return;
+	if (test_bit(0, &p1->menu))
+		held |= BIT(P1_MENU);
+	if (held == p1->held)
+		return;
+	p1->held = held;
 
-	for (i = 0; i < ARRAY_SIZE(p1_map); i++) {
-		const struct p1_map *m = &p1_map[i];
+	for (i = 0; i < ARRAY_SIZE(p1_buttons); i++) {
+		const struct p1_button *b = &p1_buttons[i];
 		bool on = held & BIT(i);
 
-		if (m->type == EV_KEY)
-			input_report_key(p1->input, m->code, on);
+		if (b->type == EV_KEY)
+			input_report_key(input, b->code, on);
 		else if (!on)
 			continue;
-		else if (m->code == ABS_HAT0X)
-			hat_x += m->value;
-		else if (m->code == ABS_HAT0Y)
-			hat_y += m->value;
-		else if (m->code == ABS_Z)
-			z = m->value;
+		else if (b->code == ABS_HAT0X)
+			hat_x += b->value;
+		else if (b->code == ABS_HAT0Y)
+			hat_y += b->value;
+		else if (b->code == ABS_Z)
+			z = b->value;
 		else
-			rz = m->value;
+			rz = b->value;
 	}
-	input_report_abs(p1->input, ABS_HAT0X, hat_x);
-	input_report_abs(p1->input, ABS_HAT0Y, hat_y);
-	input_report_abs(p1->input, ABS_Z, z);
-	input_report_abs(p1->input, ABS_RZ, rz);
-	input_sync(p1->input);
+	input_report_abs(input, ABS_HAT0X, hat_x);
+	input_report_abs(input, ABS_HAT0Y, hat_y);
+	input_report_abs(input, ABS_Z, z);
+	input_report_abs(input, ABS_RZ, rz);
+	input_sync(input);
 }
 
-/* Called under event0's event_lock, so the report waits for the work. */
+/* Under event0's event_lock: only note menu, for the next poll. */
 static void p1_event(struct input_handle *handle, unsigned int type,
 		     unsigned int code, int value)
 {
 	struct p1 *p1 = handle->handler->private;
-	unsigned long flags;
-	int i;
 
-	if (type != EV_KEY || value == 2)	/* event0 autorepeats */
+	if (type != EV_KEY || code != KEY_ESC || value == 2)
 		return;
-
-	for (i = 0; i < ARRAY_SIZE(p1_map); i++) {
-		if (p1_map[i].from != code)
-			continue;
-		spin_lock_irqsave(&p1->lock, flags);
-		if (value)
-			p1->held |= BIT(i);
-		else
-			p1->held &= ~BIT(i);
-		spin_unlock_irqrestore(&p1->lock, flags);
-		schedule_work(&p1->key_work);
-		return;
-	}
+	if (value)
+		set_bit(0, &p1->menu);
+	else
+		clear_bit(0, &p1->menu);
 }
 
 static bool p1_match(struct input_handler *handler, struct input_dev *dev)
@@ -348,12 +349,18 @@ static int p1_probe(struct serdev_device *serdev)
 	if (!p1)
 		return -ENOMEM;
 	spin_lock_init(&p1->lock);
-	INIT_WORK(&p1->key_work, p1_key_work);
 	for (i = 0; i < 4; i++)
 		p1->cal[i / 2][i % 2] = p1_cal_default;
 	for (i = 0; i < 4; i++)
 		p1->last[i] = -1;
 	serdev_device_set_drvdata(serdev, p1);
+
+	p1->gpios = devm_gpiod_get_array(dev, "button", GPIOD_IN);
+	if (IS_ERR(p1->gpios))
+		return dev_err_probe(dev, PTR_ERR(p1->gpios), "no button-gpios\n");
+	if (p1->gpios->ndescs != P1_GPIOS)
+		return dev_err_probe(dev, -EINVAL, "want %zu button-gpios\n",
+				     P1_GPIOS);
 
 	input = devm_input_allocate_device(dev);
 	if (!input)
@@ -365,9 +372,10 @@ static int p1_probe(struct serdev_device *serdev)
 	input->id.product = 0x028e;
 	input->id.version = 0x0114;
 
-	for (i = 0; i < ARRAY_SIZE(p1_map); i++)
-		if (p1_map[i].type == EV_KEY)
-			input_set_capability(input, EV_KEY, p1_map[i].code);
+	input_set_drvdata(input, p1);
+	for (i = 0; i < ARRAY_SIZE(p1_buttons); i++)
+		if (p1_buttons[i].type == EV_KEY)
+			input_set_capability(input, EV_KEY, p1_buttons[i].code);
 	input_set_abs_params(input, ABS_X, -AXIS_MAX, AXIS_MAX, 0, 0);
 	input_set_abs_params(input, ABS_Y, -AXIS_MAX, AXIS_MAX, 0, 0);
 	input_set_abs_params(input, ABS_RX, -AXIS_MAX, AXIS_MAX, 0, 0);
@@ -379,6 +387,10 @@ static int p1_probe(struct serdev_device *serdev)
 	/* Stock's uinput device declares it too. */
 	input_set_capability(input, EV_SW, SW_TABLET_MODE);
 
+	ret = input_setup_polling(input, p1_poll);
+	if (ret)
+		return ret;
+	input_set_poll_interval(input, POLL_MS);
 	ret = input_register_device(input);
 	if (ret)
 		return ret;
@@ -410,7 +422,6 @@ static void p1_remove(struct serdev_device *serdev)
 	struct p1 *p1 = serdev_device_get_drvdata(serdev);
 
 	input_unregister_handler(&p1->handler);
-	cancel_work_sync(&p1->key_work);
 }
 
 static const struct of_device_id p1_of_match[] = {

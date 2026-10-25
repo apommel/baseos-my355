@@ -4,7 +4,7 @@
  *
  * Hardware description after zlyme/ROCKNIX; every name stock-built software
  * reads follows the vendor DTB instead (docs/mainline-compat.md). Deferred:
- * suspend, DMC, WiFi power, the gamepad and hall drivers.
+ * suspend, DMC, WiFi power.
  */
 /dts-v1/;
 
@@ -67,90 +67,21 @@
 	};
 
 	/*
-	 * event0 for keymon: stock's node, codes and pins. First under / so it
-	 * registers before the other input devices.
+	 * event0 for keymon, stock's node and codes trimmed to the three keys it
+	 * reads; the game buttons are the gamepad's, so they are not typed twice.
+	 * First under / so it registers before the other input devices.
 	 */
 	gpio-keys-polled {
 		compatible = "gpio-keys-polled";
 		autorepeat;
 		poll-interval = <10>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&btn_pins>;
+		pinctrl-0 = <&key_pins>;
 
-		a-button {
-			gpios = <&gpio3 RK_PC3 GPIO_ACTIVE_LOW>;
-			label = "a";
-			linux,code = <KEY_SPACE>;
-		};
-		b-button {
-			gpios = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
-			label = "b";
-			linux,code = <KEY_LEFTCTRL>;
-		};
-		down-button {
-			gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_LOW>;
-			label = "down";
-			linux,code = <KEY_DOWN>;
-		};
-		l1-button {
-			gpios = <&gpio3 RK_PB1 GPIO_ACTIVE_LOW>;
-			label = "l1";
-			linux,code = <KEY_TAB>;
-		};
-		l2-button {
-			gpios = <&gpio3 RK_PB2 GPIO_ACTIVE_LOW>;
-			label = "l2";
-			linux,code = <KEY_PAGEUP>;
-		};
-		l3-button {
-			gpios = <&gpio2 RK_PC1 GPIO_ACTIVE_HIGH>;
-			label = "l3";
-			linux,code = <KEY_RIGHTALT>;
-		};
-		left-button {
-			gpios = <&gpio3 RK_PA5 GPIO_ACTIVE_LOW>;
-			label = "left";
-			linux,code = <KEY_LEFT>;
-		};
 		mode-button {
 			gpios = <&gpio3 RK_PA1 GPIO_ACTIVE_LOW>;
 			label = "menu";
 			linux,code = <KEY_ESC>;
-		};
-		r1-button {
-			gpios = <&gpio3 RK_PB3 GPIO_ACTIVE_LOW>;
-			label = "r1";
-			linux,code = <KEY_BACKSPACE>;
-		};
-		r2-button {
-			gpios = <&gpio3 RK_PB4 GPIO_ACTIVE_LOW>;
-			label = "r2";
-			linux,code = <KEY_PAGEDOWN>;
-		};
-		r3-button {
-			gpios = <&gpio2 RK_PC0 GPIO_ACTIVE_HIGH>;
-			label = "r3";
-			linux,code = <KEY_RIGHTSHIFT>;
-		};
-		right-button {
-			gpios = <&gpio3 RK_PA6 GPIO_ACTIVE_LOW>;
-			label = "right";
-			linux,code = <KEY_RIGHT>;
-		};
-		select-button {
-			gpios = <&gpio3 RK_PB6 GPIO_ACTIVE_LOW>;
-			label = "select";
-			linux,code = <KEY_RIGHTCTRL>;
-		};
-		start-button {
-			gpios = <&gpio3 RK_PB5 GPIO_ACTIVE_LOW>;
-			label = "start";
-			linux,code = <KEY_ENTER>;
-		};
-		up-button {
-			gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_LOW>;
-			label = "up";
-			linux,code = <KEY_UP>;
 		};
 		vol-down-button {
 			gpios = <&gpio3 RK_PB0 GPIO_ACTIVE_LOW>;
@@ -162,22 +93,9 @@
 			label = "vol up";
 			linux,code = <KEY_VOLUMEUP>;
 		};
-		x-button {
-			gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_LOW>;
-			label = "x";
-			linux,code = <KEY_LEFTSHIFT>;
-		};
-		y-button {
-			gpios = <&gpio3 RK_PC0 GPIO_ACTIVE_LOW>;
-			label = "y";
-			linux,code = <KEY_LEFTALT>;
-		};
 	};
 
-	/*
-	 * Stock's node, verbatim, for the hall-mh248 driver still to come
-	 * (hallvalue, "hall wake key" at event1). Until then the lid is unread.
-	 */
+	/* Stock's node, verbatim, for drivers/hall-mh248.c. */
 	hall-mh248 {
 		compatible = "hall-mh248";
 		hall-active = <1>;
@@ -668,17 +586,21 @@
 
 &pinctrl {
 	buttons {
-		btn_pins: btn-pins {
+		key_pins: key-pins {
+			rockchip,pins =
+				<3 RK_PA1 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA7 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+
+		pad_pins: pad-pins {
 			rockchip,pins =
 				<2 RK_PC0 RK_FUNC_GPIO &pcfg_pull_down>,
 				<2 RK_PC1 RK_FUNC_GPIO &pcfg_pull_down>,
-				<3 RK_PA1 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PA3 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PA4 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PA5 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PA6 RK_FUNC_GPIO &pcfg_pull_up>,
-				<3 RK_PA7 RK_FUNC_GPIO &pcfg_pull_up>,
-				<3 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PB1 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PB2 RK_FUNC_GPIO &pcfg_pull_up>,
 				<3 RK_PB3 RK_FUNC_GPIO &pcfg_pull_up>,
@@ -817,9 +739,31 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart1m0_xfer &uart1m0_ctsn>;
 
-	/* The stick MCU, read by drivers/miyoo-player1.c instead of miyoo_inputd. */
+	/*
+	 * The stick MCU and the game buttons, read by drivers/miyoo-player1.c
+	 * instead of miyoo_inputd. Pins as on stock, in the driver's order.
+	 */
 	gamepad {
 		compatible = "miyoo,player1-gamepad";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pad_pins>;
+		button-gpios =
+			<&gpio3 RK_PC2 GPIO_ACTIVE_LOW>,	/* b */
+			<&gpio3 RK_PC3 GPIO_ACTIVE_LOW>,	/* a */
+			<&gpio3 RK_PC1 GPIO_ACTIVE_LOW>,	/* x */
+			<&gpio3 RK_PC0 GPIO_ACTIVE_LOW>,	/* y */
+			<&gpio3 RK_PB1 GPIO_ACTIVE_LOW>,	/* l1 */
+			<&gpio3 RK_PB3 GPIO_ACTIVE_LOW>,	/* r1 */
+			<&gpio3 RK_PB6 GPIO_ACTIVE_LOW>,	/* select */
+			<&gpio3 RK_PB5 GPIO_ACTIVE_LOW>,	/* start */
+			<&gpio2 RK_PC1 GPIO_ACTIVE_HIGH>,	/* l3 */
+			<&gpio2 RK_PC0 GPIO_ACTIVE_HIGH>,	/* r3 */
+			<&gpio3 RK_PB2 GPIO_ACTIVE_LOW>,	/* l2 */
+			<&gpio3 RK_PB4 GPIO_ACTIVE_LOW>,	/* r2 */
+			<&gpio3 RK_PA3 GPIO_ACTIVE_LOW>,	/* up */
+			<&gpio3 RK_PA4 GPIO_ACTIVE_LOW>,	/* down */
+			<&gpio3 RK_PA5 GPIO_ACTIVE_LOW>,	/* left */
+			<&gpio3 RK_PA6 GPIO_ACTIVE_LOW>;	/* right */
 	};
 };
 
