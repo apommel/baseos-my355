@@ -9,6 +9,9 @@
 #   4. overlay/ — init, inittab, rcS, the frontend session, and with
 #      MY355_DIAG=1 overlay-diag/ on top: boot-timing probes, not for release
 #
+# MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental); the
+# vendor kernel has everything built in.
+#
 # fbsplash is built from src/fbsplash.c: this device has no console, so a status
 # message on the panel is the only way to say "insert a card" or "installing
 # frontend". It reads panel geometry from the framebuffer and rotation from
@@ -36,9 +39,17 @@ DIAG="${MY355_DIAG:-0}"
 case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 [ "$DIAG" = 1 ] && echo "== MY355_DIAG=1: adding overlay-diag/ (not for release) =="
 
+KERNEL="${MY355_KERNEL:-vendor}"
+case "$KERNEL" in
+  vendor) ;;
+  mainline) [ -f "$WORK/kernel/modules.tar" ] || {
+    echo "missing $WORK/kernel/modules.tar (run ./build-kernel.sh)" >&2; exit 1; } ;;
+  *) echo "MY355_KERNEL must be vendor or mainline (got '$KERNEL')" >&2; exit 1 ;;
+esac
+
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
-  -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" \
+  -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" -e KERNEL="$KERNEL" \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
   alpine:3.20 sh -euc '
@@ -70,6 +81,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # 3. The stock harvest. Applied after BusyBox so vendor binaries win where
   #    both provide a name.
   tar -xf /work/prepared/stock-harvest.tar -C "$R"
+  # lib/modules/<release>, depmod already run; rcS loads the GPU driver from it.
+  if [ "$KERNEL" = mainline ]; then tar -xf /work/kernel/modules.tar -C "$R"/usr; fi
 
   # dropbear is multicall (dispatches on argv[0]); sftp-server is the path it
   # was compiled to exec.
