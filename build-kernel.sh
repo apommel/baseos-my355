@@ -108,6 +108,17 @@ EOF
   cd "$SRC"
   # Copied every build, not patched in once, so an edit is always picked up.
   cp /kernel/drivers/panel-generic-dsi.c drivers/gpu/drm/panel/
+  cp /kernel/drivers/miyoo-player1.c drivers/input/joystick/
+  if ! grep -q JOYSTICK_MIYOO_PLAYER1 drivers/input/joystick/Kconfig; then
+    cat >> drivers/input/joystick/Kconfig <<EOF
+
+config JOYSTICK_MIYOO_PLAYER1
+	tristate "Miyoo Flip gamepad, presented as MIYOO Player1"
+	depends on INPUT_JOYSTICK && SERIAL_DEV_BUS && OF
+EOF
+    echo "obj-\$(CONFIG_JOYSTICK_MIYOO_PLAYER1) += miyoo-player1.o" \
+      >> drivers/input/joystick/Makefile
+  fi
   cp /kernel/dts/*.dts arch/arm64/boot/dts/rockchip/
 
   export ARCH=arm64 CROSS_COMPILE="$CROSS"

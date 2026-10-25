@@ -131,7 +131,8 @@ image ([rootfs](rootfs.md)).
   Linux 7.2.10 with ROCKNIX's `mali_kbase` beside Panfrost, so the stock
   libmali stays usable. The device tree is ours, and every name stock-built
   software reads follows the vendor DTB, not zlyme's. The full list is
-  [mainline-compat.md](mainline-compat.md). It boots to BaseOS with adb, with
-  the SD slot at high speed instead of SDR104. Missing pieces: the gamepad and
-  hall drivers, the codec's stock mixer controls, SD UHS, suspend, DMC and
-  WiFi.
+  [mainline-compat.md](mainline-compat.md). It boots to NextUI with adb, with
+  the SD slot at high speed instead of SDR104. The gamepad is a kernel driver
+  presenting stock's `MIYOO Player1`, and `miyoo_inputd` a shim. Missing
+  pieces: the hall driver, the codec's stock mixer controls, SD UHS, suspend,
+  DMC and WiFi.

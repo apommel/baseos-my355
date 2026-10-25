@@ -812,11 +812,15 @@
 	rockchip,hw-tshut-polarity = <0>;
 };
 
-/* No serdev child: the stick MCU is /dev/ttyS1 for miyoo_inputd, as on stock. */
 &uart1 {
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart1m0_xfer &uart1m0_ctsn>;
+
+	/* The stick MCU, read by drivers/miyoo-player1.c instead of miyoo_inputd. */
+	gamepad {
+		compatible = "miyoo,player1-gamepad";
+	};
 };
 
 &uart2 {

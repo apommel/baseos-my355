@@ -9,8 +9,9 @@
 #   4. overlay/ — init, inittab, rcS, the frontend session, and with
 #      MY355_DIAG=1 overlay-diag/ on top: boot-timing probes, not for release
 #
-# MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental); the
-# vendor kernel has everything built in.
+# MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental), and
+# overlay-mainline/ for the stock binaries its drivers replace; the vendor
+# kernel has everything built in.
 #
 # fbsplash is built from src/fbsplash.c: this device has no console, so a status
 # message on the panel is the only way to say "insert a card" or "installing
@@ -50,6 +51,7 @@ esac
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
   -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" -e KERNEL="$KERNEL" \
+  -v "$HERE/overlay-mainline":/overlay-mainline:ro \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
   alpine:3.20 sh -euc '
@@ -108,7 +110,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # pwrkeyd: a clean poweroff on a 2 s hold of the power key, without a frontend.
   # fatdirty: whether a card needs fsck.fat before it is mounted.
   # wifibtd: Bluetooth on/off, for when to power the WiFi/BT chip (wifibt-power).
-  for t in gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd; do
+  # seedrng: the saved random seed, credited to the kernel at boot (rcS).
+  for t in gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd seedrng; do
     gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c
     strip "$R"/usr/sbin/"$t"
   done
@@ -124,6 +127,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   rm -f "$R"/usr/sbin/poweroff
   cp -a /overlay/. "$R"/
   if [ "$DIAG" = 1 ]; then cp -a /overlay-diag/. "$R"/; fi
+  # Stock binaries the mainline drivers stand in for (miyoo_inputd).
+  if [ "$KERNEL" = mainline ]; then cp -a /overlay-mainline/. "$R"/; fi
 
   # All three from VERSION so they cannot drift. NextUI reads
   # /usr/miyoo/version for its About screen.
