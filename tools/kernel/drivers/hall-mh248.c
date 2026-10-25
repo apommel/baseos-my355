@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * The Miyoo Flip's lid sensor, as stock's hall-mh248 presents it: hallvalue
- * in sysfs (1 open, 0 closed) and "hall wake key", which sends KEY_POWER when
- * the lid moves. Stock sends it on close with the screen on and on open with
- * it off; without an fb notifier, this sends it on both.
+ * The Miyoo Flip's lid sensor: SW_LID, as mainline lid switches report it,
+ * and stock's hall-mh248 on top: hallvalue in sysfs (1 open, 0 closed) and
+ * KEY_POWER from "hall wake key" when the lid moves. Stock sends that on close
+ * with the screen on and on open with it off; without an fb notifier, this
+ * sends it on both.
  *
  * Probed before the PMIC's power key, so it is event1, the device NextUI's
  * launch.sh moves aside.
@@ -36,6 +37,7 @@ static irqreturn_t hall_irq(int irq, void *data)
 	if (open == hall->open)
 		return IRQ_HANDLED;
 	hall->open = open;
+	input_report_switch(hall->input, SW_LID, !open);
 	input_report_key(hall->input, KEY_POWER, 1);
 	input_sync(hall->input);
 	input_report_key(hall->input, KEY_POWER, 0);
@@ -81,9 +83,12 @@ static int hall_probe(struct platform_device *pdev)
 	hall->input->phys = "hall-mh248/input0";
 	hall->input->id.bustype = BUS_HOST;
 	input_set_capability(hall->input, EV_KEY, KEY_POWER);
+	input_set_capability(hall->input, EV_SW, SW_LID);
 	ret = input_register_device(hall->input);
 	if (ret)
 		return ret;
+	input_report_switch(hall->input, SW_LID, !hall->open);
+	input_sync(hall->input);
 
 	irq = gpiod_to_irq(hall->gpio);
 	if (irq < 0)
