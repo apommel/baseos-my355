@@ -90,18 +90,35 @@ while [ "$i" -lt 100 ]; do
 done
 log "after wait: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
 
-printf '%s' "$udc" > "$G/UDC" 2>/dev/null
-log "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
+# Mainline only: bound with no data cable, the idle PHY makes dwc3 fail EP0
+# ("failed to enable ep0out") and the host never sees the gadget (zlyme's
+# Phase 12D). So bind once the OTG PHY reports a host port, SDP or CDP.
+extcon=
+case "$(uname -r)" in
+5.10.*) ;;
+*)
+	for e in /sys/class/extcon/*; do
+		case "$(cat "$e/name" 2>/dev/null)" in *fe8a0000*) extcon=$e/state ;; esac
+	done
+	log "extcon: ${extcon:-none, binding without waiting}" ;;
+esac
+data_cable() {
+	[ -z "$extcon" ] || grep -qE '^(SDP|CDP)=1$' "$extcon" 2>/dev/null
+}
 
 # adbd reopening functionfs (a link error, e.g. on resume) unbinds the gadget.
 # Builtins only: a read on a FIFO nobody writes is the sleep.
 tick=/run/usb-gadget-adb.tick
 /usr/bin/mkfifo "$tick" 2>/dev/null
 exec 3<> "$tick" || exit 0
+bound=0
 while :; do
-	read -t 2 _ <&3
 	cur=
 	read -r cur < "$G/UDC" 2>/dev/null
-	[ -z "$cur" ] && [ -e "$FFS/ep1" ] || continue
-	printf '%s' "$udc" > "$G/UDC" 2>/dev/null && log "UDC rebound -> $udc"
+	if [ -z "$cur" ] && [ -e "$FFS/ep1" ] && data_cable; then
+		printf '%s' "$udc" > "$G/UDC" 2>/dev/null
+		[ "$bound" = 1 ] && log "UDC rebound -> $udc" || log "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
+		bound=1
+	fi
+	read -t 2 _ <&3
 done

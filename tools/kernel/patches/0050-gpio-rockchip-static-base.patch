@@ -1,0 +1,20 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] gpio: rockchip: use the vendor kernel's fixed GPIO numbers
+
+Stock-built software drives pins through /sys/class/gpio by number
+(gpio150 for the headphone amp, gpio20 for rumble), so bank N must start at
+N*32 as on the vendor kernel.
+
+---
+--- a/drivers/gpio/gpio-rockchip.c
++++ b/drivers/gpio/gpio-rockchip.c
+@@ -582,7 +582,8 @@
+ 	bank->gpio_chip = rockchip_gpiolib_chip;
+ 
+ 	gc = &bank->gpio_chip;
+-	gc->base = -1;
++	/* The vendor kernel's fixed numbers (gpio150 = GPIO4_C6). */
++	gc->base = bank->bank_num * 32;
+ 	gc->ngpio = bank->nr_pins;
+ 	gc->label = bank->name;
+ 	gc->parent = bank->dev;
