@@ -123,7 +123,7 @@ It boots to BaseOS with adb, checked on 2026-11-04. These match stock:
 - LEDs `work` and `charger`, supplies `battery` and `usb`
 - `pwmchip0` (the backlight) and `backlight`
 - GPIO chips at 0, 32, 64, 96 and 128, so `gpio150` and `gpio20` are free
-- `/dev/ttyS1` for the stick MCU
+- `MIYOO Player1`: name, IDs, keys, axes and ranges, from a kernel driver
 - ALSA `rockchiprk817` as card 0, `rockchiphdmi` as card 1
 - the reboot modes, so a shutdown with the charger in restarts into charge mode
 - `/dev/mali0` (r54p2), `card0` with `DSI-1` and `HDMI-A-1`
@@ -159,10 +159,20 @@ Different from stock, found on the first boots:
   kernel does, and the device tree has the stock reboot modes.
 - **Boot time.** The framebuffer console's first modeset held kernel init for
   1.2 s, mostly the panel's power-up waits. The console is off, as on the
-  vendor kernel, and the waits are shortened as on the vendor path.
-- **Buttons.** Only the volume keys work under NextUI: `miyoo_inputd` takes the
-  buttons from the vendor `/dev/miyooio`, which reads the `gpio-keys-polled`
-  pins, and only the sticks from `ttyS1`.
+  vendor kernel, and the waits are shortened as on the vendor path. Then
+  dbus-daemon blocked 1 s on the crng, ready only at ~3 s: mainline leaves the
+  RK3566 TRNG off, as it fails quality tests. `rcS` now credits the seed saved
+  at shutdown (`seedrng`) before starting dbus.
+- **The gamepad.** Stock's `miyoo_inputd` builds `MIYOO Player1` through
+  uinput, from the vendor `/dev/miyooio` (the `gpio-keys-polled` pins) and the
+  stick MCU on `ttyS1`. The `miyoo-player1` driver presents the same device:
+  it listens to event0's keys, which stay as on stock for keymon, and reads the
+  MCU as a serdev, so there is no `/dev/ttyS1`. It registers last, after every
+  other input device. `miyoo_inputd` is a shim that hands the driver
+  `/userdata/joypad.config` and `joypad_right.config` (sysfs
+  `calibration_left`, `calibration_right`, same format) and idles. Turbo
+  (`/tmp/miyoo_inputd/turbo_*`) is not carried over, and Joe's Calibrage, which
+  reads `/dev/ttyS1`, would need the driver's `raw` attribute instead.
 - **Backlight hand-over.** `launch.sh` reads the duty from
   `/sys/kernel/debug/pwm` in the vendor format. Mainline's differs, so the
   panel stays dark until keymon sets the brightness.
@@ -174,7 +184,6 @@ Different from stock, found on the first boots:
 Still to do:
 
 - the `hall-mh248` driver, and input ordering
-- the `miyooio` or gamepad question
 - the codec's stock controls
 - the `modetest` connector id
 - SD UHS
