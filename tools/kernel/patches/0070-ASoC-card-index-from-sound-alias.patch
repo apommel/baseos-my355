@@ -1,0 +1,20 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] ASoC: take the card number from a "sound" alias
+
+Card numbers follow probe order, but stock-built software expects the codec
+as card 0, ALSA's default device, as on the vendor kernel.
+
+---
+--- a/sound/soc/soc-core.c
++++ b/sound/soc/soc-core.c
+@@ -2031,7 +2031,9 @@
+ 		goto probe_end;
+ 
+ 	/* card bind complete so register a sound card */
+-	ret = snd_card_new(card->dev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1,
++	ret = of_alias_get_id(card->dev->of_node, "sound");
++	ret = snd_card_new(card->dev, ret < 0 ? SNDRV_DEFAULT_IDX1 : ret,
++			SNDRV_DEFAULT_STR1,
+ 			card->owner, 0, &card->snd_card);
+ 	if (ret < 0) {
+ 		dev_err(card->dev,
