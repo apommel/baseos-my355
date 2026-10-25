@@ -185,7 +185,14 @@ Different from stock, found on the first boots:
   reads `/dev/ttyS1`, would need the driver's `raw` attribute instead.
 - **Backlight hand-over.** `launch.sh` reads the duty from
   `/sys/kernel/debug/pwm` in the vendor format. Mainline's differs, so the
-  panel stays dark until keymon sets the brightness.
+  panel stays dark until keymon sets the brightness. Left as it is: debugfs
+  is not an interface, and NextUI is to stop unbinding the backlight.
+- **Backlight table.** Stock's holds levels 1-38 at 7.8-15% duty, so NextUI
+  unbinds `pwm-backlight` to reach 2%. Here a level is the duty in 255ths
+  from 2% (levels 1-4 stay at 2%, where the panel still lights), the same as
+  stock from 39 up. NextUI's raw values written to `brightness` then give the
+  duty it writes to the PWM; on the vendor kernel they come out brighter
+  below 39. Stock-built software asking for 1-38 gets a dimmer panel.
 - **event0 has three keys.** On stock it also types every game button as a
   keyboard key, so anything reading both devices saw each press twice. It
   keeps menu and volume for keymon, and the game buttons are only on
