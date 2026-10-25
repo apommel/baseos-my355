@@ -200,7 +200,11 @@ Different from stock, found on the first boots:
 - **The lid.** `hall-mh248` probes before the PMIC's power key, so it is
   event1 as on stock, and `launch.sh` moves it aside instead of the power key.
   Its `KEY_POWER` comes on every lid move: stock's comes on close with the
-  screen on and on open with it off, which needs the vendor fb notifier.
+  screen on and on open with it off, which needs the vendor fb notifier. The
+  same device reports `SW_LID`, as mainline lid switches do.
+- **The gamepad's name stays `MIYOO Player1`.** SDL's controller GUID carries
+  a checksum of the name since SDL 2.26, and RetroArch-style autoconfig
+  matches on it, so a more standard name would lose existing mappings.
 - **Codec controls.** Mainline's codec has `Playback Mux` (`HP`, `SPK`),
   which nothing stock sets, and it starts on `HP`, so the speaker was silent.
   A patch adds the vendor's `Playback Path` (all eleven entries),
