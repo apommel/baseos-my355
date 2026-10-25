@@ -129,7 +129,8 @@
 
 	/*
 	 * ALSA card id "rockchiprk817", which libmsettings looks for. No
-	 * hp-det-gpios: GPIO4_C6 stays free for userspace as gpio150.
+	 * hp-det-gpios: GPIO4_C6 stays free for userspace as gpio150. The pin
+	 * switches are what the codec's vendor "Playback Path" drives.
 	 */
 	rk817_sound: rk817-sound {
 		compatible = "simple-audio-card";
@@ -139,16 +140,17 @@
 		simple-audio-card,mclk-fs = <256>;
 		simple-audio-card,widgets =
 			"Microphone", "Mic Jack",
-			"Headphone", "Headphones",
-			"Speaker", "Internal Speakers";
+			"Headphone", "Headphone",
+			"Speaker", "Speaker";
 		simple-audio-card,routing =
 			"MICL", "Mic Jack",
-			"Headphones", "HPOL",
-			"Headphones", "HPOR",
+			"Headphone", "HPOL",
+			"Headphone", "HPOR",
 			"Speaker Amp INL", "SPKO",
 			"Speaker Amp INR", "SPKO",
-			"Internal Speakers", "Speaker Amp OUTL",
-			"Internal Speakers", "Speaker Amp OUTR";
+			"Speaker", "Speaker Amp OUTL",
+			"Speaker", "Speaker Amp OUTR";
+		simple-audio-card,pin-switches = "Speaker", "Headphone", "Mic Jack";
 
 		simple-audio-card,cpu {
 			sound-dai = <&i2s1_8ch>;

@@ -1,0 +1,267 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] ASoC: rk817: the vendor driver's controls, over mainline's
+
+Stock-built software sets "Playback Path", "Capture MIC Path" and
+"SPK Volume" by name, which only the vendor driver has. They are added
+first, as views of "Playback Mux", the card's pin switches and
+"Master Playback Volume", which stay as they are.
+
+---
+--- a/sound/soc/codecs/rk817_codec.c
++++ b/sound/soc/codecs/rk817_codec.c
+@@ -12,6 +12,8 @@
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/regmap.h>
++#include <linux/slab.h>
++#include <sound/control.h>
+ #include <sound/core.h>
+ #include <sound/pcm_params.h>
+ #include <sound/soc.h>
+@@ -108,7 +110,236 @@
+ 
+ static const struct snd_kcontrol_new dac_mux =
+ 	SOC_DAPM_ENUM("Playback Mux", dac_enum);
++
++/*
++ * The vendor driver's controls, which stock-built software sets by name, as a
++ * view of the mainline ones: "Playback Mux", the card's "Speaker Switch",
++ * "Headphone Switch" and "Mic Jack Switch", and "Master Playback Volume".
++ */
++static const char * const rk817_playback_path_text[] = {
++	"OFF", "RCV", "SPK", "HP", "HP_NO_MIC", "BT", "SPK_HP", "RING_SPK",
++	"RING_HP", "RING_HP_NO_MIC", "RING_SPK_HP",
++};
++
++enum { PATH_OFF, PATH_SPK = 2, PATH_HP = 3 };
++
++/* What each vendor path plays on; SPK_HP too, as SPKO and HPOL are one pin. */
++static const u8 rk817_playback_path_out[] = {
++	PATH_OFF, PATH_SPK, PATH_SPK, PATH_HP, PATH_HP, PATH_OFF, PATH_SPK,
++	PATH_SPK, PATH_HP, PATH_HP, PATH_SPK,
++};
++
++static const char * const rk817_capture_path_text[] = {
++	"MIC OFF", "Main Mic", "Hands Free Mic", "BT Sco Mic",
++};
++
++static SOC_ENUM_SINGLE_EXT_DECL(rk817_playback_path_enum, rk817_playback_path_text);
++static SOC_ENUM_SINGLE_EXT_DECL(rk817_capture_path_enum, rk817_capture_path_text);
++
++/* 0-100 down from 0 dB on the master volume, so it stops at -37.5 dB. */
++#define RK817_SPK_VOL_MAX	100
++#define RK817_MASTER_MAX	0xff
++
++static const DECLARE_TLV_DB_MINMAX(rk817_spk_vol_tlv, -3750, 0);
++
++static int rk817_ctl_get(struct snd_soc_component *component, const char *name,
++			 struct snd_ctl_elem_value *v)
++{
++	struct snd_kcontrol *kctl = snd_soc_card_get_kcontrol(component->card, name);
++
++	if (!kctl)
++		return -ENOENT;
++	memset(v, 0, sizeof(*v));
++	return kctl->get(kctl, v);
++}
++
++/* Through the control's own put, so its listeners hear of the change too. */
++static int rk817_ctl_put(struct snd_soc_component *component, const char *name,
++			 struct snd_ctl_elem_value *v)
++{
++	struct snd_kcontrol *kctl = snd_soc_card_get_kcontrol(component->card, name);
++	int ret;
++
++	if (!kctl)
++		return -ENOENT;
++	ret = kctl->put(kctl, v);
++	if (ret > 0)
++		snd_ctl_notify(component->card->snd_card,
++			       SNDRV_CTL_EVENT_MASK_VALUE, &kctl->id);
++	return ret;
++}
++
++static int rk817_ctl_put_one(struct snd_soc_component *component,
++			     const char *name, bool is_enum, long value)
++{
++	struct snd_ctl_elem_value *v = kzalloc(sizeof(*v), GFP_KERNEL);
++	int ret;
++
++	if (!v)
++		return -ENOMEM;
++	if (is_enum)
++		v->value.enumerated.item[0] = value;
++	else
++		v->value.integer.value[0] = value;
++	ret = rk817_ctl_put(component, name, v);
++	kfree(v);
++	return ret;
++}
++
++static int rk817_playback_path_get(struct snd_kcontrol *kcontrol,
++				   struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
++	struct snd_ctl_elem_value *v = kzalloc(sizeof(*v), GFP_KERNEL);
++	bool spk, hp, mux_spk;
++	int ret;
++
++	if (!v)
++		return -ENOMEM;
++	ret = rk817_ctl_get(component, "Playback Mux", v);
++	mux_spk = v->value.enumerated.item[0] == 1;
++	if (!ret)
++		ret = rk817_ctl_get(component, "Speaker Switch", v);
++	spk = v->value.integer.value[0];
++	if (!ret)
++		ret = rk817_ctl_get(component, "Headphone Switch", v);
++	hp = v->value.integer.value[0];
++	kfree(v);
++	if (ret)
++		return ret;
++
++	if (mux_spk && spk)
++		ucontrol->value.enumerated.item[0] = PATH_SPK;
++	else if (!mux_spk && hp)
++		ucontrol->value.enumerated.item[0] = PATH_HP;
++	else
++		ucontrol->value.enumerated.item[0] = PATH_OFF;
++	return 0;
++}
++
++static int rk817_playback_path_put(struct snd_kcontrol *kcontrol,
++				   struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
++	unsigned int item = ucontrol->value.enumerated.item[0];
++	int out, ret, changed = 0;
++
++	if (item >= ARRAY_SIZE(rk817_playback_path_out))
++		return -EINVAL;
++	out = rk817_playback_path_out[item];
++
++	if (out != PATH_OFF) {
++		ret = rk817_ctl_put_one(component, "Playback Mux", true,
++					out == PATH_SPK);
++		if (ret < 0)
++			return ret;
++		changed |= ret;
++	}
++	ret = rk817_ctl_put_one(component, "Speaker Switch", false, out == PATH_SPK);
++	if (ret < 0)
++		return ret;
++	changed |= ret;
++	ret = rk817_ctl_put_one(component, "Headphone Switch", false, out == PATH_HP);
++	if (ret < 0)
++		return ret;
++	return changed | ret;
++}
++
++static int rk817_capture_path_get(struct snd_kcontrol *kcontrol,
++				  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
++	struct snd_ctl_elem_value *v = kzalloc(sizeof(*v), GFP_KERNEL);
++	int ret;
++
++	if (!v)
++		return -ENOMEM;
++	ret = rk817_ctl_get(component, "Mic Jack Switch", v);
++	ucontrol->value.enumerated.item[0] = v->value.integer.value[0] ? 1 : 0;
++	kfree(v);
++	return ret;
++}
++
++static int rk817_capture_path_put(struct snd_kcontrol *kcontrol,
++				  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
++	unsigned int item = ucontrol->value.enumerated.item[0];
++
++	if (item >= ARRAY_SIZE(rk817_capture_path_text))
++		return -EINVAL;
++	return rk817_ctl_put_one(component, "Mic Jack Switch", false, item != 0);
++}
++
++static int rk817_spk_vol_info(struct snd_kcontrol *kcontrol,
++			      struct snd_ctl_elem_info *uinfo)
++{
++	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
++	uinfo->count = 2;
++	uinfo->value.integer.min = 0;
++	uinfo->value.integer.max = RK817_SPK_VOL_MAX;
++	return 0;
++}
++
++static int rk817_spk_vol_get(struct snd_kcontrol *kcontrol,
++			     struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
++	const long base = RK817_MASTER_MAX - RK817_SPK_VOL_MAX;
++	struct snd_ctl_elem_value *v = kzalloc(sizeof(*v), GFP_KERNEL);
++	int i, ret;
+ 
++	if (!v)
++		return -ENOMEM;
++	ret = rk817_ctl_get(component, "Master Playback Volume", v);
++	for (i = 0; i < 2; i++)
++		ucontrol->value.integer.value[i] =
++			clamp(v->value.integer.value[i] - base, 0L,
++			      (long)RK817_SPK_VOL_MAX);
++	kfree(v);
++	return ret;
++}
++
++static int rk817_spk_vol_put(struct snd_kcontrol *kcontrol,
++			     struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
++	const long base = RK817_MASTER_MAX - RK817_SPK_VOL_MAX;
++	struct snd_ctl_elem_value *v;
++	int i, ret;
++
++	for (i = 0; i < 2; i++)
++		if (ucontrol->value.integer.value[i] < 0 ||
++		    ucontrol->value.integer.value[i] > RK817_SPK_VOL_MAX)
++			return -EINVAL;
++	v = kzalloc(sizeof(*v), GFP_KERNEL);
++	if (!v)
++		return -ENOMEM;
++	for (i = 0; i < 2; i++)
++		v->value.integer.value[i] = base + ucontrol->value.integer.value[i];
++	ret = rk817_ctl_put(component, "Master Playback Volume", v);
++	kfree(v);
++	return ret;
++}
++
++/* First, as on the vendor kernel. */
++static const struct snd_kcontrol_new rk817_stock_controls[] = {
++	SOC_ENUM_EXT("Playback Path", rk817_playback_path_enum,
++		     rk817_playback_path_get, rk817_playback_path_put),
++	SOC_ENUM_EXT("Capture MIC Path", rk817_capture_path_enum,
++		     rk817_capture_path_get, rk817_capture_path_put),
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "SPK Volume",
++		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE |
++			  SNDRV_CTL_ELEM_ACCESS_TLV_READ,
++		.tlv.p = rk817_spk_vol_tlv,
++		.info = rk817_spk_vol_info,
++		.get = rk817_spk_vol_get,
++		.put = rk817_spk_vol_put,
++	},
++};
++
+ static const struct snd_soc_dapm_widget rk817_dapm_widgets[] = {
+ 
+ 	/* capture/playback common */
+@@ -429,7 +660,8 @@
+ 
+ 	snd_soc_component_set_pll(component, 0, 0, 0, 0);
+ 
+-	return 0;
++	return snd_soc_add_component_controls(component, rk817_stock_controls,
++					      ARRAY_SIZE(rk817_stock_controls));
+ }
+ 
+ static void rk817_remove(struct snd_soc_component *component)

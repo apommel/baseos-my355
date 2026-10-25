@@ -26,6 +26,10 @@ mark /run/boot-rcS-start
 # and Mesa (panfrost) stay a choice. Backgrounded: nothing in rcS draws with it.
 if [ -f "/lib/modules/$(uname -r)/modules.dep" ]; then
 	{ /sbin/modprobe mali_kbase && mark /run/boot-gpu; } &
+	# The codec's mux starts on its first entry, HP: the speaker, as on stock
+	# once launch.sh sets SPK, for software that never picks a path.
+	printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
+		/usr/bin/amixer -q -c 0 -s &
 fi
 
 # The boot logo and backlight, unless the vendor U-Boot handed its own logo to
