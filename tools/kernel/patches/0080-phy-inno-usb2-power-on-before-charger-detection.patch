@@ -1,0 +1,19 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] phy: rockchip: inno-usb2: power the OTG port on before charger detection
+
+Booted with no cable, the port is suspended (phy_sus 0x1d1), and charger
+detection run in that state times out and reports a DCP: a computer plugged
+in later never gets SDP, so the gadget is never bound. With the cable in at
+boot, the port is powered and SDP is found.
+
+---
+--- a/drivers/phy/rockchip/phy-rockchip-inno-usb2.c
++++ b/drivers/phy/rockchip/phy-rockchip-inno-usb2.c
+@@ -705,6 +705,7 @@
+ 			dev_dbg(&rport->phy->dev, "vbus_attach\n");
+ 			switch (rphy->chg_state) {
+ 			case USB_CHG_STATE_UNDEFINED:
++				rockchip_usb2phy_power_on(rport->phy);
+ 				schedule_delayed_work(&rport->chg_work, 0);
+ 				return;
+ 			case USB_CHG_STATE_DETECTED:
