@@ -1,0 +1,61 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] power: supply: rk817: notify when the charge status changes
+
+Only the plug irqs call power_supply_changed(), and at that moment the
+charger has not started or stopped yet. The battery-charging LED trigger
+reads status only on a notification, so it kept the stale state: dark
+while charging, lit after unplugging. Notify from the monitor whenever
+the reported status changes, and have the plug irqs run it again 2 s
+later rather than at the next 8 s poll.
+
+---
+--- a/drivers/power/supply/rk817_charger.c	2026-10-26 20:33:42
++++ b/drivers/power/supply/rk817_charger.c	2026-10-26 20:49:57
+@@ -102,6 +102,8 @@
+ 	int max_chg_cur_ua;
+ 	int max_chg_volt_uv;
+ 	int charge_status;
++	/* The status last notified, as charge_status, or -1 discharging. */
++	int notified_status;
+ 	int charger_input_volt_avg_uv;
+ 
+ 	/* Work queue to periodically update values. */
+@@ -582,6 +584,8 @@
+ 	charger->soc_cal = 0;
+ 
+ 	rk817_read_props(charger);
++	/* Charging starts a moment later: recheck then, not at the next poll. */
++	mod_delayed_work(system_percpu_wq, &charger->work, msecs_to_jiffies(2000));
+ 
+ 	dev_dbg(charger->dev, "Power Cord Inserted\n");
+ 
+@@ -620,6 +624,7 @@
+ 			  (0x01 << 3));
+ 
+ 	rk817_read_props(charger);
++	mod_delayed_work(system_percpu_wq, &charger->work, msecs_to_jiffies(2000));
+ 
+ 	dev_dbg(charger->dev, "Power Cord Removed\n");
+ 
+@@ -1050,10 +1055,21 @@
+ static void rk817_charging_monitor(struct work_struct *work)
+ {
+ 	struct rk817_charger *charger;
++	int status;
+ 
+ 	charger = container_of(work, struct rk817_charger, work.work);
+ 
+ 	rk817_read_props(charger);
++
++	/*
++	 * The plug irqs notify before charging starts or stops, and the LED
++	 * triggers only re-read status on a notification.
++	 */
++	status = charger->cur_avg_ua < 0 ? -1 : charger->charge_status;
++	if (status != charger->notified_status) {
++		charger->notified_status = status;
++		power_supply_changed(charger->bat_ps);
++	}
+ 
+ 	/* Run every 8 seconds like the BSP driver did. */
+ 	queue_delayed_work(system_percpu_wq, &charger->work, msecs_to_jiffies(8000));
