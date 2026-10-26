@@ -3,12 +3,14 @@
 #
 # Produces, in work/my355/kernel:
 #   Image                    the arm64 kernel, uncompressed (mkfit.py compresses)
-#   rk3566-miyoo-flip.dtb    tools/kernel/dts, written to the names stock-built
-#                            software expects
+#   rk3566-miyoo-flip.dtb    from tools/kernel/dts
 #   modules.tar              lib/modules/<release>, with the out-of-tree
 #                            mali_kbase and 8733bu under extra/ and depmod
 #                            already run
 #   kernel.json              what it was built with; build-image.sh checks it
+#
+# Patches and drivers sit in hardware/ (the board on mainline, upstreamable)
+# or stock/ (the vendor kernel's interface on top, BaseOS-only).
 #
 # Then: MY355_KERNEL=mainline ./build-rootfs.sh && MY355_KERNEL=mainline ./build-image.sh
 #
@@ -43,7 +45,7 @@ VOLUME="baseos-kernel-build"
 CLEAN=0
 case "${1:-}" in
   --clean) CLEAN=1 ;;
-  -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
   "") ;;
   *) echo "unknown option: $1" >&2; exit 2 ;;
 esac
@@ -66,7 +68,7 @@ fetch "$RTL_URL" "$RTL_TAR" "$RTL_SHA256"
 [ "$CLEAN" -eq 1 ] && docker volume rm -f "$VOLUME" >/dev/null
 # A changed patch set must force a fresh extraction, or it would silently be
 # missing from the build.
-(cd "$HERE/tools/kernel" && cat patches/*.patch mali_kbase/*.patch rtl8733bu/*.patch) \
+(cd "$HERE/tools/kernel" && cat patches/hardware/*.patch patches/stock/*.patch mali_kbase/*.patch rtl8733bu/*.patch) \
   > "$CACHE/patches.cat"
 PATCH_SUM="$(baseos_sha256 "$CACHE/patches.cat")"
 
@@ -97,8 +99,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
     tar -xJf "/cache/$LINUX_TAR" -C /build
     tar -xzf "/cache/$KBASE_TAR" -C /build
     tar -xzf "/cache/$RTL_TAR" -C /build
-    for p in /kernel/patches/*.patch; do
-      echo "  patch: $(basename "$p")"
+    for p in /kernel/patches/hardware/*.patch /kernel/patches/stock/*.patch; do
+      echo "  patch: ${p#/kernel/patches/}"
       patch -p1 -d "$SRC" --batch --forward --quiet < "$p"
     done
     for p in /kernel/mali_kbase/*.patch; do
@@ -109,78 +111,34 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
       echo "  patch: rtl8733bu/$(basename "$p")"
       patch -p1 -d "$RTL" --batch --forward --quiet < "$p"
     done
-    # ROCKNIX ships the panel driver with no Kconfig symbol; give it one.
-    cat >> "$SRC/drivers/gpu/drm/panel/Kconfig" <<EOF
-
-config DRM_PANEL_GENERIC_DSI
-	tristate "Generic MIPI DSI panel described in the device tree"
-	depends on DRM_PANEL && OF && DRM_MIPI_DSI && BACKLIGHT_CLASS_DEVICE
-EOF
-    echo "obj-\$(CONFIG_DRM_PANEL_GENERIC_DSI) += panel-generic-dsi.o" \
-      >> "$SRC/drivers/gpu/drm/panel/Makefile"
     echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3566-miyoo-flip.dtb" \
       >> "$SRC/arch/arm64/boot/dts/rockchip/Makefile"
     echo "$PATCH_SUM" > /build/patches.sha256
   fi
   cd "$SRC"
-  # Copied every build, not patched in once, so an edit is always picked up.
-  cp /kernel/drivers/panel-generic-dsi.c drivers/gpu/drm/panel/
-  cp /kernel/drivers/miyoo-player1.c drivers/input/joystick/
-  if ! grep -q JOYSTICK_MIYOO_PLAYER1 drivers/input/joystick/Kconfig; then
-    cat >> drivers/input/joystick/Kconfig <<EOF
-
-config JOYSTICK_MIYOO_PLAYER1
-	tristate "Miyoo Flip gamepad, presented as MIYOO Player1"
-	depends on INPUT_JOYSTICK && SERIAL_DEV_BUS && GPIOLIB && OF
-EOF
-    echo "obj-\$(CONFIG_JOYSTICK_MIYOO_PLAYER1) += miyoo-player1.o" \
-      >> drivers/input/joystick/Makefile
-  fi
-  cp /kernel/drivers/hall-mh248.c drivers/input/misc/
-  if ! grep -q INPUT_HALL_MH248 drivers/input/misc/Kconfig; then
-    cat >> drivers/input/misc/Kconfig <<EOF
-
-config INPUT_HALL_MH248
-	tristate "Miyoo Flip lid sensor, as hall-mh248"
-	depends on INPUT_MISC && GPIOLIB && OF
-EOF
-    echo "obj-\$(CONFIG_INPUT_HALL_MH248) += hall-mh248.o" \
-      >> drivers/input/misc/Makefile
-  fi
-  cp /kernel/drivers/rkwifi.c drivers/misc/
-  if ! grep -q MISC_RKWIFI drivers/misc/Kconfig; then
-    cat >> drivers/misc/Kconfig <<EOF
-
-config MISC_RKWIFI
-	tristate "Stock rkwifi wifi_power, over a regulator"
-	depends on REGULATOR && OF
-EOF
-    echo "obj-\$(CONFIG_MISC_RKWIFI) += rkwifi.o" >> drivers/misc/Makefile
-  fi
-  cp /kernel/drivers/rtk_btusb.c drivers/bluetooth/
-  if ! grep -q BT_RTK_BTUSB_SHIM drivers/bluetooth/Kconfig; then
-    cat >> drivers/bluetooth/Kconfig <<EOF
-
-config BT_RTK_BTUSB_SHIM
-	tristate "Stock rtk_btusb, loading btusb"
-	depends on BT_HCIBTUSB
-EOF
-    echo "obj-\$(CONFIG_BT_RTK_BTUSB_SHIM) += rtk_btusb.o" >> drivers/bluetooth/Makefile
-  fi
-  cp /kernel/drivers/rockchip-pm-config.c drivers/soc/rockchip/
-  if ! grep -q ROCKCHIP_PM_CONFIG drivers/soc/rockchip/Kconfig; then
-    # Inside the closing endif, so it stays under ARCH_ROCKCHIP.
-    sed -i \$d drivers/soc/rockchip/Kconfig
-    cat >> drivers/soc/rockchip/Kconfig <<EOF
-config ROCKCHIP_PM_CONFIG
-	bool "Rockchip RK3568 BL31 suspend configuration"
-	depends on HAVE_ARM_SMCCC && OF && SUSPEND
-
-endif
-EOF
-    echo "obj-\$(CONFIG_ROCKCHIP_PM_CONFIG) += rockchip-pm-config.o" \
-      >> drivers/soc/rockchip/Makefile
-  fi
+  # Our drivers: copied every build, not patched in once, so an edit is always
+  # picked up; the Kconfig symbol is added once.
+  driver() { # file dir symbol type prompt depends
+    cp "/kernel/drivers/$1" "$2/"
+    grep -q "^config $3\$" "$2/Kconfig" && return
+    printf "\nconfig %s\n\t%s \"%s\"\n\tdepends on %s\n" "$3" "$4" "$5" "$6" >> "$2/Kconfig"
+    echo "obj-\$(CONFIG_$3) += $(basename "$1" .c).o" >> "$2/Makefile"
+  }
+  driver hardware/panel-generic-dsi.c drivers/gpu/drm/panel DRM_PANEL_GENERIC_DSI tristate \
+    "Generic MIPI DSI panel described in the device tree" \
+    "DRM_PANEL && OF && DRM_MIPI_DSI && BACKLIGHT_CLASS_DEVICE"
+  driver hardware/miyoo-player1.c drivers/input/joystick JOYSTICK_MIYOO_PLAYER1 tristate \
+    "Miyoo Flip gamepad, presented as MIYOO Player1" \
+    "INPUT_JOYSTICK && SERIAL_DEV_BUS && GPIOLIB && OF"
+  driver hardware/rockchip-pm-config.c drivers/soc/rockchip ROCKCHIP_PM_CONFIG bool \
+    "Rockchip RK3568 BL31 suspend configuration" \
+    "ARCH_ROCKCHIP && HAVE_ARM_SMCCC && OF && SUSPEND"
+  driver stock/hall-mh248.c drivers/input/misc INPUT_HALL_MH248 tristate \
+    "Miyoo Flip lid sensor, as hall-mh248" "INPUT_MISC && GPIOLIB && OF"
+  driver stock/rkwifi.c drivers/misc MISC_RKWIFI tristate \
+    "Stock rkwifi wifi_power, over a regulator" "REGULATOR && OF"
+  driver stock/rtk_btusb.c drivers/bluetooth BT_RTK_BTUSB_SHIM tristate \
+    "Stock rtk_btusb, loading btusb" "BT_HCIBTUSB"
   cp /kernel/dts/*.dts arch/arm64/boot/dts/rockchip/
 
   export ARCH=arm64 CROSS_COMPILE="$CROSS"
