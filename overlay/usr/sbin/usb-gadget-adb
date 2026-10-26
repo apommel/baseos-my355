@@ -112,7 +112,14 @@ tick=/run/usb-gadget-adb.tick
 /usr/bin/mkfifo "$tick" 2>/dev/null
 exec 3<> "$tick" || exit 0
 bound=0
+cable=
 while :; do
+	# What the PHY saw on each plug: a cable taken for a charger never binds.
+	if [ -n "$extcon" ]; then
+		c=$(grep '=1$' "$extcon" 2>/dev/null | tr '\n' ' ')
+		[ "$c" = "$cable" ] || log "cable: ${c:-none}"
+		cable=$c
+	fi
 	cur=
 	read -r cur < "$G/UDC" 2>/dev/null
 	if [ -z "$cur" ] && [ -e "$FFS/ep1" ] && data_cable; then
