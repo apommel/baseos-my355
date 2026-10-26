@@ -1,0 +1,30 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] phy: rockchip: inno-usb2: report the cable once detection ends
+
+The OTG state machine records vbus_attached on any pass, but sends the
+extcon cable only when it changes. A plug bounces: a second bvalid irq
+during charger detection finds VBUS with nothing to report yet, records
+it, and the SDP found afterwards no longer counts as a change. The cable
+is never reported and the gadget never binds until a replug that does not
+bounce. Record the change only together with its report.
+
+---
+--- a/drivers/phy/rockchip/phy-rockchip-inno-usb2.c	2026-10-26 20:08:21
++++ b/drivers/phy/rockchip/phy-rockchip-inno-usb2.c	2026-10-26 20:08:21
+@@ -746,10 +746,14 @@
+ 			rphy->chg_type = POWER_SUPPLY_TYPE_UNKNOWN;
+ 		}
+ 
+-		if (rport->vbus_attached != vbus_attach) {
++		/*
++		 * Only once the change is reported: a bounce mid-detection would
++		 * mark VBUS seen, and the result found later never be sent.
++		 */
++		if (notify_charger && rport->vbus_attached != vbus_attach) {
+ 			rport->vbus_attached = vbus_attach;
+ 
+-			if (notify_charger && rphy->edev) {
++			if (rphy->edev) {
+ 				extcon_set_state_sync(rphy->edev,
+ 							cable, vbus_attach);
+ 				if (cable == EXTCON_CHG_USB_SDP)
