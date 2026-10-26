@@ -151,7 +151,15 @@ Different from stock, found on the first boots:
   PHY's extcon to report SDP or CDP, then binds. The port stays `otg`.
   Booted without the cable, the port is suspended, and charger detection run
   in that state reports a DCP, so a computer plugged in later was never bound.
-  The PHY driver now powers the port on before detecting.
+  The PHY driver now powers the port on before detecting. A replug often went
+  unreported too: a bounce during detection marked VBUS as seen, so the SDP
+  found afterwards was not a change and extcon stayed empty (zlyme saw the
+  same, Phase 12D). The driver now records VBUS only with its report.
+- **Charger LED.** `rk817_charger` notified only from its plug irqs, before
+  charging starts or stops, and the `battery-charging` trigger reads status
+  only on a notification: dark while charging, lit after unplugging. Its
+  poll now notifies when the status changes, and the plug irqs run it again
+  2 s later.
 - **GPU rail.** `mali_kbase` disables `vdd_gpu` on runtime suspend without
   having enabled it, and the unused-regulator cleanup then cut the rail. It
   is always-on again, as in zlyme.
