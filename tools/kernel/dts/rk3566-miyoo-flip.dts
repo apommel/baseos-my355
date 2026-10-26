@@ -98,7 +98,7 @@
 		};
 	};
 
-	/* Stock's node, verbatim, for drivers/hall-mh248.c. */
+	/* Stock's node, verbatim, for drivers/stock/hall-mh248.c. */
 	hall-mh248 {
 		compatible = "hall-mh248";
 		hall-active = <1>;
@@ -203,7 +203,7 @@
 		pinctrl-0 = <&wifi_enable_h>;
 	};
 
-	/* Stock's node, for drivers/rkwifi.c: /sys/class/rkwifi over vcc_wifi. */
+	/* Stock's node, for drivers/stock/rkwifi.c: /sys/class/rkwifi over vcc_wifi. */
 	wireless-wlan {
 		compatible = "wlan-platdata";
 		wifi_chip_type = "rtl8733bu";
@@ -261,7 +261,7 @@
 	};
 
 	/*
-	 * Stock's BL31 suspend mode (drivers/rockchip-pm-config.c): 0x5ec is
+	 * Stock's BL31 suspend mode (drivers/hardware/rockchip-pm-config.c): 0x5ec is
 	 * CENTER_OFF, ARMOFF_LOGOFF, PMIC_LP, HW_PLLS_OFF, PMUALIVE_32K, OSC_DIS
 	 * and 32K_PVTM; 0x10 wakes on GPIO (power key, lid).
 	 */
@@ -286,6 +286,18 @@
 
 &cpu3 {
 	cpu-supply = <&vdd_cpu>;
+};
+
+/*
+ * Stock's top step, listed like the others: NextUI caps "performance" one
+ * below the top, 1800 MHz as on stock. turbo-mode would hide it.
+ */
+&cpu0_opp_table {
+	opp-1992000000 {
+		opp-hz = /bits/ 64 <1992000000>;
+		opp-microvolt = <1150000 1150000 1150000>;
+		clock-latency-ns = <40000>;
+	};
 };
 
 &cru {
@@ -851,7 +863,7 @@
 	pinctrl-0 = <&uart1m0_xfer &uart1m0_ctsn>;
 
 	/*
-	 * The stick MCU and the game buttons, read by drivers/miyoo-player1.c
+	 * The stick MCU and the game buttons, read by drivers/hardware/miyoo-player1.c
 	 * instead of miyoo_inputd. Pins as on stock, in the driver's order.
 	 */
 	gamepad {

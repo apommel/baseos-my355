@@ -81,9 +81,9 @@ constrains the design.
 | `/sys/class/power_supply/{battery/capacity,battery/status,ac/online,usb/online}` | batmon, NextUI, Battery pak | `battery`, `ac`, `usb` | Mainline uses `rk817-battery` and `rk817-charger`; zlyme renames them to `battery` and `charger` | Rename to `battery`; split or rename the charger into `ac` and `usb` |
 | LEDs `work` and `charger`: `brightness`, `max_brightness`, `trigger` set to `battery-charging`, `default-on`, `heartbeat` | Status LED pak | present | zlyme labels them `green:power` and `red:status`; `battery-charging` only exists if the supply is named `battery` | DT labels `work` and `charger` |
 | `/sys/class/udc/*/state` | NextUI, tools | `fcc00000.dwc3` | `fcc00000.usb` on mainline; read by listing the directory | Probably fine; check a literal use |
-| cpufreq `policy0`: governors `schedutil`/`performance`/`conservative`, `scaling_{min,max}_freq`, `scaling_setspeed`, `scaling_available_frequencies`; `cpu1`–`cpu3/online` | `governor.sh`, Settings | — | Standard interfaces, but different frequency steps; `second_max` and `mid` are picked by position | Keep stock's frequency list (no 1992 MHz) |
+| cpufreq `policy0`: governors `schedutil`/`performance`/`conservative`, `scaling_{min,max}_freq`, `scaling_setspeed`, `scaling_available_frequencies`; `cpu1`–`cpu3/online` | `governor.sh`, Settings | — | Standard interfaces, but different frequency steps; `second_max` and `mid` are picked by position | Stock's list, 1992 MHz included and not marked turbo, so `second_max` is 1800 MHz as on stock. Mainline stops at 1800, which made it 1608 |
 | `/sys/class/devfreq/fde60000.gpu/{governor,min_freq}`, `/sys/class/devfreq/dmc/governor` | `GC.pak`, tools | present | kbase on mainline keeps `fde60000.gpu`; check the name zlyme's `rk3568-dmc` registers | Check |
-| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `drivers/rockchip-pm-config.c` (after zlyme) sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since BaseOS runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
+| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `drivers/hardware/rockchip-pm-config.c` (after zlyme) sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since BaseOS runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
 | HDMI: polls `/sys/class/drm/card0-HDMI-A-1/status`. On connect, sound moves to the `rockchiphdmi` card, the panel goes to brightness 0, and rumble is skipped | NextUI, keymon, libmsettings | — | The connector name holds if rockchip-drm is `card0`; the card name needs the DT | as above |
 | `insmod /system/lib/modules/RTL8189FU.ko`, `insmod /lib/modules/rtk_btusb.ko` | `wifi_init.sh`, `bt_init.sh` | vendor modules | Fail harmlessly on mainline | Load our own modules first |
 | `wlan0`, nl80211, `/dev/rfkill` (`rfkill.elf`), `iw`, `wpa_cli`, `bluetoothctl`, `hciconfig`, `hcitool`, `bluealsa` | NextUI, radio scripts | — | Standard interfaces; the 8733bu driver names its interface `wlan0` | Keep `wlan0` |
@@ -119,12 +119,14 @@ constrains the design.
 
 ## Status
 
-`./build-kernel.sh` builds Linux 7.2.10: `tools/kernel` holds the patches,
-ROCKNIX's panel driver, the device tree and the config fragment, and the
-build adds `mali_kbase` as a module. `MY355_KERNEL=mainline` puts the modules
+`./build-kernel.sh` builds Linux 7.2.10: `tools/kernel` holds the device
+tree, the config fragment, and the patches and drivers, each split in two.
+`hardware/` makes the board work on mainline and could go upstream; `stock/`
+is the vendor interface on top, BaseOS-only. The out-of-tree `mali_kbase`
+and `8733bu` carry their own patches. The build adds both as modules. `MY355_KERNEL=mainline` puts the modules
 in the rootfs and the kernel in the boot FIT, and rcS loads `mali_kbase`.
 
-It boots to BaseOS with adb, checked on 2026-11-04. These match stock:
+It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
 
 - `mmcblk1` for the boot slot, `mmcblk2` for the second slot
 - event0 `gpio-keys-polled` with stock's codes for menu and volume
@@ -231,7 +233,7 @@ Different from stock, found on the first boots:
   (patch 0010), with stock's firmware linked under the names `btrtl` asks
   for. The chip's power is a `vcc_wifi` regulator on GPIO0_A0. Stock's
   layer:
-  - `/sys/class/rkwifi/wifi_power`, from `drivers/rkwifi.c`, matched on
+  - `/sys/class/rkwifi/wifi_power`, from `drivers/stock/rkwifi.c`, matched on
     stock's `wlan-platdata` node and switching that regulator;
   - `/lib/modules/rtk_btusb.ko`, the module `bt_init.sh` insmods: a
     stand-in that loads `8733bu` then `btusb`, since `btusb` first resets
@@ -245,11 +247,34 @@ Different from stock, found on the first boots:
   that. Its finding that the cut for suspend has to come in the late phase
   is for the suspend work. `wireless-regdb` is in the rootfs.
 - **event0 IDs.** Bus `0019`, `0001:0001`, where stock has `045e:028e`.
+- **CPU idle.** Mainline's rk356x has no idle states, so an idle core only
+  ran WFI. The BSP's PSCI `cpu-sleep` is added (Chris Morgan's patch, via
+  zlyme), which he measured at about 0.2 W at idle on an RG353P.
+- **Battery readings.** The mainline gauge has `current_avg` and
+  `voltage_avg`, not `current_now` and `voltage_now`. Nothing stock reads
+  them; [power](power.md)'s method uses the averages here.
+
+Against main, 2026-10-26, warm reboots and gambatte on battery:
+
+| | mainline | main |
+|---|---|---|
+| U-Boot hands off | 0.82 s | 0.94 s |
+| `Run /init` | 1.35 s | 1.83 s |
+| frontend hand-off | 1.65 s | 1.99 s |
+| `nextui.elf` start | 2.52 s | 2.40 s |
+| Game Boy, 408 MHz most of the time | 3.30 W, 3.38 W with `cpu-sleep` | 2.70 W |
+
+Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
+is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main.
 
 Still to do:
 
 - the `modetest` connector id
 - SD UHS
-- suspend: in game, Bluetooth after a wake, the work LED left on while asleep
+- suspend: Bluetooth after a wake, the work LED left on while asleep
 - DMC (zlyme's DFI resume patch comes with it)
+- the 0.6 W over main in game: DDR rate, WiFi power save, rails
+- the 0.45 s from hand-off to `nextui.elf`
+- `vdd_cpu` on units with a TCS4525 at `0x1c`: the stock tree lists it as
+  the alternative to the RK8600, and ours has only the RK8600
 - the Panfrost switch
