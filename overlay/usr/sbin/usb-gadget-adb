@@ -113,6 +113,7 @@ tick=/run/usb-gadget-adb.tick
 exec 3<> "$tick" || exit 0
 bound=0
 cable=
+check=
 while :; do
 	# What the PHY saw on each plug: a cable taken for a charger never binds.
 	if [ -n "$extcon" ]; then
@@ -126,6 +127,12 @@ while :; do
 		printf '%s' "$udc" > "$G/UDC" 2>/dev/null
 		[ "$bound" = 1 ] && log "UDC rebound -> $udc" || log "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
 		bound=1
+		check=2
+	fi
+	# Whether the host enumerated it, two ticks after each bind.
+	if [ -n "$check" ]; then
+		check=$((check - 1))
+		[ "$check" = 0 ] && { check=; log "after bind: $(cat "/sys/class/udc/$udc/state" 2>/dev/null), link $(cat "/sys/kernel/debug/usb/$udc/link_state" 2>/dev/null)"; }
 	fi
 	read -t 2 _ <&3
 done

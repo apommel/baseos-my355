@@ -83,7 +83,7 @@ constrains the design.
 | `/sys/class/udc/*/state` | NextUI, tools | `fcc00000.dwc3` | `fcc00000.usb` on mainline; read by listing the directory | Probably fine; check a literal use |
 | cpufreq `policy0`: governors `schedutil`/`performance`/`conservative`, `scaling_{min,max}_freq`, `scaling_setspeed`, `scaling_available_frequencies`; `cpu1`–`cpu3/online` | `governor.sh`, Settings | — | Standard interfaces, but different frequency steps; `second_max` and `mid` are picked by position | Keep stock's frequency list (no 1992 MHz) |
 | `/sys/class/devfreq/fde60000.gpu/{governor,min_freq}`, `/sys/class/devfreq/dmc/governor` | `GC.pak`, tools | present | kbase on mainline keeps `fde60000.gpu`; check the name zlyme's `rk3568-dmc` registers | Check |
-| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | Needs zlyme's deep-suspend work, and `deep` must be listed in `mem_sleep` | Port zlyme's BL31 suspend |
+| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `drivers/rockchip-pm-config.c` (after zlyme) sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since BaseOS runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
 | HDMI: polls `/sys/class/drm/card0-HDMI-A-1/status`. On connect, sound moves to the `rockchiphdmi` card, the panel goes to brightness 0, and rumble is skipped | NextUI, keymon, libmsettings | — | The connector name holds if rockchip-drm is `card0`; the card name needs the DT | as above |
 | `insmod /system/lib/modules/RTL8189FU.ko`, `insmod /lib/modules/rtk_btusb.ko` | `wifi_init.sh`, `bt_init.sh` | vendor modules | Fail harmlessly on mainline | Load our own modules first |
 | `wlan0`, nl80211, `/dev/rfkill` (`rfkill.elf`), `iw`, `wpa_cli`, `bluetoothctl`, `hciconfig`, `hcitool`, `bluealsa` | NextUI, radio scripts | — | Standard interfaces; the 8733bu driver names its interface `wlan0` | Keep `wlan0` |
@@ -242,6 +242,6 @@ Still to do:
 
 - the `modetest` connector id
 - SD UHS
-- suspend, DMC
-- WiFi and Bluetooth tested on the device
+- suspend: in game, Bluetooth after a wake, the work LED left on while asleep
+- DMC (zlyme's DFI resume patch comes with it)
 - the Panfrost switch
