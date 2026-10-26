@@ -167,6 +167,20 @@ config BT_RTK_BTUSB_SHIM
 EOF
     echo "obj-\$(CONFIG_BT_RTK_BTUSB_SHIM) += rtk_btusb.o" >> drivers/bluetooth/Makefile
   fi
+  cp /kernel/drivers/rockchip-pm-config.c drivers/soc/rockchip/
+  if ! grep -q ROCKCHIP_PM_CONFIG drivers/soc/rockchip/Kconfig; then
+    # Inside the closing endif, so it stays under ARCH_ROCKCHIP.
+    sed -i \$d drivers/soc/rockchip/Kconfig
+    cat >> drivers/soc/rockchip/Kconfig <<EOF
+config ROCKCHIP_PM_CONFIG
+	bool "Rockchip RK3568 BL31 suspend configuration"
+	depends on HAVE_ARM_SMCCC && OF && SUSPEND
+
+endif
+EOF
+    echo "obj-\$(CONFIG_ROCKCHIP_PM_CONFIG) += rockchip-pm-config.o" \
+      >> drivers/soc/rockchip/Makefile
+  fi
   cp /kernel/dts/*.dts arch/arm64/boot/dts/rockchip/
 
   export ARCH=arm64 CROSS_COMPILE="$CROSS"
