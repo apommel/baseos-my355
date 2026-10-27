@@ -130,6 +130,13 @@ done
 # The frontend reads the power key itself.
 pwrkeyd_running && kill "$PWRKEYD" 2>/dev/null
 
+# Mesa's shader cache (gpu=panfrost), which would go under $HOME, the read-only root.
+export MESA_SHADER_CACHE_DIR=/data/mesa-shader-cache
+# NextUI asks for GLES 3.2; Panfrost has 3.1 on the G52, and its shaders are 3.0.
+export MESA_GLES_VERSION_OVERRIDE=3.2
+# PanVK has the G52 (Bifrost v7) behind this opt-in.
+export PAN_I_WANT_A_BROKEN_VULKAN_DRIVER=1
+
 # Stock calls the updater, not launch.sh directly: it is what installs
 # MinUI.zip/*.pakz payloads before starting the frontend. Keeping that entry
 # point is what makes updates behave identically, and NextUI can draw its own
