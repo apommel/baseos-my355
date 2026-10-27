@@ -90,18 +90,14 @@ while [ "$i" -lt 100 ]; do
 done
 log "after wait: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
 
-# Mainline only: bound with no data cable, the idle PHY makes dwc3 fail EP0
-# ("failed to enable ep0out") and the host never sees the gadget (zlyme's
-# Phase 12D). So bind once the OTG PHY reports a host port, SDP or CDP.
+# Bound with no data cable, the idle PHY makes dwc3 fail EP0 ("failed to
+# enable ep0out") and the host never sees the gadget (zlyme's Phase 12D). So
+# bind once the OTG PHY reports a host port, SDP or CDP.
 extcon=
-case "$(uname -r)" in
-5.10.*) ;;
-*)
-	for e in /sys/class/extcon/*; do
-		case "$(cat "$e/name" 2>/dev/null)" in *fe8a0000*) extcon=$e/state ;; esac
-	done
-	log "extcon: ${extcon:-none, binding without waiting}" ;;
-esac
+for e in /sys/class/extcon/*; do
+	case "$(cat "$e/name" 2>/dev/null)" in *fe8a0000*) extcon=$e/state ;; esac
+done
+log "extcon: ${extcon:-none, binding without waiting}"
 data_cable() {
 	[ -z "$extcon" ] || grep -qE '^(SDP|CDP)=1$' "$extcon" 2>/dev/null
 }

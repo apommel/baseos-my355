@@ -1,6 +1,6 @@
 #!/bin/sh
 # Stock's modetest, with stock's object ids mapped: NextUI writes to 179, the
-# vendor kernel's DSI-1, and 164 is its HDMI-A-1. Mainline numbers them its way.
+# vendor kernel's DSI-1, and 164 is its HDMI-A-1. This kernel numbers them its way.
 id() { cat "/sys/class/drm/card0-$1/connector_id" 2>/dev/null || echo "$2"; }
 n=$#
 while [ "$n" -gt 0 ]; do

@@ -2,7 +2,7 @@
 # Publish the prepared-input bundle that fetch-prepared.sh restores.
 # Usage: ./cache-pack.sh [YYYYMMDD]
 #
-# Packs uboot.img, boot.img and stock-harvest.tar into one zstd stream, and
+# Packs uboot.img and stock-harvest.tar into one zstd stream, and
 # writes manifest/prepared/{source.json,bundle.sha256,bundle.url}.
 #
 # This redistributes vendor firmware. Read NOTICE before publishing.
@@ -38,7 +38,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   cd /in
   # Fixed metadata: the published hash then moves only when the firmware does.
   tar --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - \
-    prepared/uboot.img prepared/boot.img prepared/stock-harvest.tar \
+    prepared/uboot.img prepared/stock-harvest.tar \
     | zstd -19 -T0 -o "/out/$NAME" -f
   ls -l "/out/$NAME"
 '

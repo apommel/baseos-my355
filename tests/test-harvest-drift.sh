@@ -22,8 +22,7 @@ for p in ("usr/lib/libc.so.6", "usr/lib/libz.so.1", "usr/bin/curl",
     os.makedirs(os.path.dirname(os.path.join(root, p)), exist_ok=True)
     open(os.path.join(root, p), "w").write(p)
 os.makedirs(prepared)
-for name in ("uboot.img", "boot.img"):
-    open(os.path.join(prepared, name), "wb").write(name.encode())
+open(os.path.join(prepared, "uboot.img"), "wb").write(b"uboot.img")
 
 BASE = "/usr/lib/libc.so.6\n/usr/bin/curl\n/usr/share/zoneinfo\n!/usr/share/zoneinfo/right\n"
 list_path = os.path.join(tmp, "harvest.list")
@@ -36,8 +35,7 @@ def prepare(text):
     include, exclude = read_list(list_path)
     harvest(root, include, tar, exclude)
     source = {"target": "my355"}
-    for key, name in (("uboot", "uboot.img"), ("boot", "boot.img"),
-                      ("harvest", "stock-harvest.tar")):
+    for key, name in (("uboot", "uboot.img"), ("harvest", "stock-harvest.tar")):
         path = os.path.join(prepared, name)
         source[key] = {"size": os.path.getsize(path), "sha256": sha256_of(path)}
     json.dump(source, open(os.path.join(prepared, "source.json"), "w"))

@@ -2,16 +2,12 @@
 """Derive my355 build inputs from a NAND backup of a Miyoo Flip.
 
 The Flip's firmware lives in internal SPI NAND, so the inputs come from a backup
-of that (docs/recovery.md). Four files are produced:
+of that (docs/recovery.md). Three files are produced:
 
-    uboot.img          mtd1 verbatim — the Rockchip U-Boot FIT the SPL loads
-    boot.img           mtd2 verbatim — the Android boot image (kernel + DTB)
+    uboot.img          mtd1 verbatim — the Rockchip U-Boot FIT the SPL loads,
+                       for its BL31, OP-TEE and control device tree
     stock-harvest.tar  the allowlisted slice of mtd3's squashfs rootfs
-    source.json        sizes, hashes and provenance for the other three
-
-`boot.img` must be **pristine stock**. A unit whose bootlogo has been replaced
-carries a rewritten resource image — different logo geometry and a reordered
-entry table — which still boots but is not what should be redistributed.
+    source.json        sizes, hashes and provenance for the other two
 
 mtd3 is squashfs, and is unpacked to a container-local scratch directory rather
 than to a bind-mounted output path: the stock rootfs contains both /mnt/sdcard
@@ -43,7 +39,6 @@ import time
 from source_manifest import read_list, sha256_of
 
 MTD1 = "mtd1-uboot.img"
-MTD2 = "mtd2-boot.img"
 MTD3 = "mtd3-rootfs.img"
 
 
@@ -158,21 +153,17 @@ def main() -> int:
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     harvest_list = a.harvest_list or os.path.join(here, "manifest", "harvest.list")
     uboot_src = os.path.join(a.nand_dir, MTD1)
-    boot_src = os.path.join(a.nand_dir, MTD2)
     rootfs_src = os.path.join(a.nand_dir, MTD3)
-    for p in (uboot_src, boot_src, rootfs_src, harvest_list):
+    for p in (uboot_src, rootfs_src, harvest_list):
         if not os.path.exists(p):
             sys.exit(f"prepare_stock: missing {p}")
 
     os.makedirs(a.out_dir, exist_ok=True)
     uboot_out = os.path.join(a.out_dir, "uboot.img")
-    boot_out = os.path.join(a.out_dir, "boot.img")
     tar_out = os.path.join(a.out_dir, "stock-harvest.tar")
 
     shutil.copyfile(uboot_src, uboot_out)
-    shutil.copyfile(boot_src, boot_out)
     print(f"  uboot.img  {os.path.getsize(uboot_out)} bytes")
-    print(f"  boot.img   {os.path.getsize(boot_out)} bytes  (from {os.path.basename(boot_src)})")
 
     scratch = tempfile.mkdtemp(prefix="my355-prepare-")
     stock_root = os.path.join(scratch, "stock-root")
@@ -204,7 +195,6 @@ def main() -> int:
         "provenance": "nand-backup",
         "prepared_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "uboot": {"size": os.path.getsize(uboot_out), "sha256": sha256_of(uboot_out)},
-        "boot": {"size": os.path.getsize(boot_out), "sha256": sha256_of(boot_out)},
         "harvest": {"size": os.path.getsize(tar_out), "sha256": sha256_of(tar_out),
                     "paths": len(taken)},
         "source": {

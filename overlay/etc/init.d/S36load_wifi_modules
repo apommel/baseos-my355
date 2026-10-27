@@ -1,8 +1,8 @@
 #!/bin/sh
-# Called by NextUI's etc/wifi/wifi_init.sh. The vendor kernel has the driver
-# built in; mainline loads 8733bu here. Stock's S36 also seeds the supplicant
-# config, and wifi_init.sh starts `wpa_supplicant -c` on that path. Without the
-# file wpa_supplicant exits, and NextUI's scan finds nothing to talk to.
+# Called by NextUI's etc/wifi/wifi_init.sh: loads 8733bu, where wifi_init.sh's
+# vendor insmod fails. Stock's S36 also seeds the supplicant config, and
+# wifi_init.sh starts `wpa_supplicant -c` on that path. Without the file
+# wpa_supplicant exits, and NextUI's scan finds nothing to talk to.
 #
 # The template is ours: stock's placeholder network={ ssid="SSID" } stanza would
 # show up in the frontend as a saved network the user never added.
@@ -15,8 +15,7 @@ CONF=/userdata/cfg/wpa_supplicant.conf
 case "$1" in
   start|"")
 	/usr/sbin/wifibt-power want wifi
-	# Mainline only: WiFi is a module, which wifi_init.sh's vendor insmod is not.
-	[ -f "/lib/modules/$(uname -r)/modules.dep" ] && /sbin/modprobe 8733bu
+	/sbin/modprobe 8733bu
 	# wifi_init.sh stop kills wpa_supplicant just before a suspend, and on
 	# wake it is a zombie until init reaps it (about once a second); its
 	# pidof would take that for a running one and start none.

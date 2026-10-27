@@ -28,16 +28,17 @@ recovery.
 ```sh
 ./fetch-prepared.sh                           # → work/my355/prepared/
 ./build-uboot.sh                              # → work/my355/uboot-mainline.itb
+./build-kernel.sh                             # → work/my355/kernel/
+./build-gpu.sh                                # → work/my355/gpu/
 ./build-rootfs.sh                             # → work/my355/rootfs.tar
 ./build-image.sh                              # → work/my355/baseos-my355.img
 ./build-update.sh                             # → the .bosupd payload
 ./flash-card.sh diskN                         # macOS: the image → an SD card
 ```
 
-`./build-all.sh` runs the four builds and packages the release. The U-Boot is
-mainline, and the boot logo comes from `rcS` ([docs/uboot.md](docs/uboot.md)
-Part 3); `MY355_UBOOT=vendor` builds the vendor path instead and skips
-`build-uboot.sh`.
+`./build-all.sh` runs them all and packages the release. U-Boot, the kernel and
+Mesa keep their source trees cached, so a rerun is incremental. The kernel's
+command line is in its device tree, `tools/kernel/dts/rk3566-miyoo-flip.dts`.
 
 To derive the inputs instead — needed to move onto a new vendor release — replace
 the first line with
@@ -66,17 +67,12 @@ Build knobs:
 
 | | |
 |---|---|
-| `MY355_COMPRESS_KERNEL` | `zstd` (default) or `gzip`; on the vendor U-Boot path `gzip` (default) or `none`. Worth 1.8 s — [boot time](docs/boot-time.md) |
-| `MY355_SD_UHS` | boot-slot UHS ceiling: `sdr104` (default), `sdr50`, `off`. The vendor DTB caps at SDR25; measured 22.3 → 63.0 MB/s and 1.06 s off the boot — [boot time](docs/boot-time.md) |
-| `MY355_INITCALL_BLACKLIST` | built-in initcalls skipped by name; empty restores the vendor set. Worth 0.71 s — [boot time](docs/boot-time.md) |
-| `MY355_LOGO_SIZE`, `MY355_LOGO_ASSET` | boot logo, rebuilt into the resource image |
-| `MY355_UBOOT` | `mainline` (default), the U-Boot `build-uboot.sh` made, or `vendor` — [U-Boot](docs/uboot.md) |
 | `MY355_UBOOT_DEBUG` | `build-uboot.sh`: `0` (default) is the release build; `1` saves U-Boot's console to the card and signals stages on the charge LED, for bring-up and failed boots — [diagnostics](docs/diagnostics.md) |
 | `MY355_DIAG` | `1` to `build-uboot.sh` and `build-rootfs.sh`: boot-timing aids — a bootstage mark per U-Boot initcall and per card-init step, and a probe for the first frame (`baseos-bootinfo timeline`) and for what the panel shows (`/run/boot-display.log`). Not for release — [U-Boot](docs/uboot.md) |
 
 ## Debugging a device that cannot talk
 
-No UART is attached and the vendor kernel has no framebuffer console, so a dead boot
+No UART is attached and the kernel has no framebuffer console, so a dead boot
 looks like a good one. Do not iterate blind —
 [docs/diagnostics.md](docs/diagnostics.md) lists the signals that work, the failure
 signatures, and when to open the case and put a wire on `ttyS2` at 1500000 baud.
@@ -93,8 +89,8 @@ against its `EXT4-fs … mounted` printk, or an uptime reading echoed into `/dev
 — then read the `/run/boot-*` breadcrumbs and `/proc/<pid>/stat` field 22. Worked
 examples in [docs/boot-time.md](docs/boot-time.md).
 
-**Measure with USB unplugged.** A cable attached at power-on makes the vendor
-U-Boot run its charge animation first, and that lands in the arch counter. adb hot-plug works, so
+**Measure with USB unplugged.** A cable attached at power-on makes U-Boot check
+the charger first, and that lands in the arch counter. adb hot-plug works, so
 attach afterwards.
 
 ## Tests
@@ -111,10 +107,14 @@ real payload against the real image, so `./build-all.sh` has to have run first.
 
 ## Conventions
 
-- The vendor kernel, U-Boot and BL31 stay byte-for-byte. Rebuilding one is a design
+- The vendor BL31, OP-TEE and SPL stay byte-for-byte. Replacing one is a design
   decision, not an implementation detail — write it into
-  [docs/decisions.md](docs/decisions.md) first. The one such decision so far is
-  the mainline U-Boot, which replaces U-Boot proper and nothing else.
+  [docs/decisions.md](docs/decisions.md) first, as was done for U-Boot proper
+  and the kernel.
+- Stock-built software runs unmodified. What it needs from the kernel is
+  provided by the kernel ([docs/mainline-compat.md](docs/mainline-compat.md)),
+  with mainline's interface as the base and stock's as a thin layer over it;
+  in `tools/kernel`, `hardware/` is the board and `stock/` that layer.
 - Claims in `docs/` are *verified* (observed on hardware) or *inferred* (from
   binaries). Retracted ones are kept, not deleted, in
   [docs/history.md](docs/history.md).

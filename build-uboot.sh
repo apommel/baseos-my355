@@ -1,13 +1,11 @@
 #!/bin/sh
-# Build the mainline U-Boot that boots the vendor kernel on the my355 path.
+# Build the mainline U-Boot for my355.
 #
 # Produces, in work/my355:
 #   uboot-mainline.itb    the FIT the SPL loads from the card's `uboot`
 #                         partition: our U-Boot proper, plus the vendor's BL31,
 #                         OP-TEE and control device tree byte-for-byte
 #   uboot-mainline.json   what it was built with; build-image.sh checks it
-#
-# Then: ./build-image.sh (MY355_UBOOT=mainline is the default)
 #
 # Nothing here touches NAND. If the FIT is broken the SPL moves on to SPI NAND
 # and stock comes up; reverting is a re-flash (docs/uboot.md).
@@ -50,7 +48,7 @@ case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 CLEAN=0
 case "${1:-}" in
   --clean) CLEAN=1 ;;
-  -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
   "") ;;
   *) echo "unknown option: $1" >&2; exit 2 ;;
 esac
@@ -75,8 +73,8 @@ eval "$(python3 "$HERE/tools/mkfit.py" addresses)"
 # only returns on failure; then the board powers itself off rather than sit
 # dark until the battery runs flat.
 #
-# The panel's supply (gpio0 PC7), which the kernel only switches on at ~2.0 s:
-# powered from here, rkbootimg.py can drop the kernel's power-up waits.
+# The panel's supply (gpio0 PC7): powered from here, the panel driver can skip
+# most of its power-up waits (the device tree's panel delays).
 PANEL="gpio set A23;"
 # First, before the panel: charging off stays in U-Boot with the charge LED
 # lit, until full, unplugged or the power key held; a flat battery powers off.

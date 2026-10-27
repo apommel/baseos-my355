@@ -9,6 +9,11 @@ differences under ~100 mW are noise. The CPU's time per rate comes from
 a game pushes `schedutil` over the 600 → 1416 MHz step with the sampler's own
 processes, 40% of samples at 1416 MHz where the counters said 2%.
 
+These figures are from the vendor kernel, which BaseOS ran until 1.3.0. The
+mainline kernel's, measured against them, are in
+[mainline compatibility](mainline-compat.md); they agree within run-to-run
+noise.
+
 ## Idle, screen on
 
 NextUI or the Developer Pak in front, WiFi associated, brightness at ~2% duty:
@@ -35,6 +40,9 @@ against 2571 mW: within the noise, so they are left as the vendor set them. That
 
 ## The DDR touch boost — removed
 
+The mainline DMC driver (`rk3568-dmc.c`) has no touch boost. The vendor one
+did:
+
 The vendor DMC driver (`rockchip_dmc.c`) registers an input handler that holds
 the DDR at `boost_rate` for 500 ms after any `EV_KEY` or `EV_ABS` event.
 `miyoo_inputd`'s virtual pad (`MIYOO Player1`) re-reports stick noise about 87
@@ -45,9 +53,9 @@ within a second.
 Holding 1056 against 324 MHz cost 80 mW in one back-to-back pair and ~180 mW in
 another. The wake-ups themselves cost nothing measurable; the rate does.
 
-`rkbootimg.drop_dmc_touchboost` removes `SYS_STATUS_BOOST` from
-`dmc/system-status-level`, so `boost_rate` stays 0 and
-`rockchip_dmcfreq_boost_init()` registers no handler. Rate selection is then
+The build removed `SYS_STATUS_BOOST` from
+the vendor `dmc/system-status-level`, so `boost_rate` stayed 0 and
+`rockchip_dmcfreq_boost_init()` registered no handler. Rate selection was then
 the driver's load-based path (`auto-freq-en`, upthreshold 40%, 324 MHz floor)
 plus the VOP's bandwidth requests (`vop-bw-dmc-freq`), both unchanged.
 
@@ -95,8 +103,7 @@ cutting it.
 `wifibt-power want|release wifi|bt` holds the two intents and is the only thing
 that touches the switch: off when WiFi is released and Bluetooth is not wanted,
 on as soon as either is wanted. It decides from whether the chip is on the USB
-bus, found by its ID `0bda:b733` (`2-1` on the vendor kernel, `3-1` on
-mainline), and writes the switches only to change them. A `flock` serialises
+bus, found by its ID `0bda:b733` (`3-1`; `2-1` on the vendor kernel), and writes the switches only to change them. A `flock` serialises
 callers, because `launch.sh` starts WiFi and Bluetooth in parallel.
 
 | | wanted | released |
