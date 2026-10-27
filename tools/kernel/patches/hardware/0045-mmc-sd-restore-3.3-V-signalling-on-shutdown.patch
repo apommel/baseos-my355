@@ -1,0 +1,44 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] mmc: sd: restore 3.3 V signalling on shutdown
+
+Shutdown powers the card off but leaves vqmmc at 1.8 V after UHS. A restart
+through PSCI keeps the PMIC's rails, so the next boot finds the card's I/O
+rail at 1.8 V and the boot ROM and preloader, at 3.3 V, cannot read it: the
+Miyoo Flip then boots from its NAND. Return vqmmc to 3.3 V after the power
+off, as the vendor kernel's mmc_sd_shutdown() does.
+
+---
+--- a/drivers/mmc/core/sd.c	2026-10-27 17:40:55
++++ b/drivers/mmc/core/sd.c	2026-10-27 17:57:54
+@@ -1763,7 +1763,22 @@
+ 
+ 	return err;
+ }
++
++/* A restart keeps the PMIC's rails, and the boot ROM reads the card at 3.3 V. */
++static int mmc_sd_shutdown(struct mmc_host *host)
++{
++	int err = mmc_sd_suspend(host);
+ 
++	if (host->ios.signal_voltage != MMC_SIGNAL_VOLTAGE_330) {
++		/* Power off cleared vdd, which the 3.3 V range is taken from. */
++		host->ios.signal_voltage = MMC_SIGNAL_VOLTAGE_330;
++		host->ios.vdd = fls(host->ocr_avail) - 1;
++		mmc_regulator_set_vqmmc(host, &host->ios);
++	}
++
++	return err;
++}
++
+ /*
+  * This function tries to determine if the same card is still present
+  * and, if so, restore all state to it.
+@@ -1842,7 +1857,7 @@
+ 	.suspend = mmc_sd_suspend,
+ 	.resume = mmc_sd_resume,
+ 	.alive = mmc_sd_alive,
+-	.shutdown = mmc_sd_suspend,
++	.shutdown = mmc_sd_shutdown,
+ 	.hw_reset = mmc_sd_hw_reset,
+ 	.cache_enabled = sd_cache_enabled,
+ 	.flush_cache = sd_flush_cache,
