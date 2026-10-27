@@ -22,7 +22,9 @@ working unmodified. Where the mainline build stands against it is under
   `libmsettings/` and `keymon/`.
 
 Exercised: menus, Settings (volume, brightness, contrast, saturation), WiFi
-and Bluetooth off/on, sleep and wake, HDMI hotplug, GBA (`minarch.elf`), N64
+and Bluetooth off/on, Bluetooth audio and its reconnect after a deep sleep,
+sleep and wake (work LED off while asleep), charge mode on a shutdown with
+the charger in, HDMI hotplug, GBA (`minarch.elf`), N64
 (`mupen64plus`), and the Tools paks (Battery, Clock, Files, Grout, Input, RA
 Explorer, ScrapeGoat, Status LED, Game Tracker, Base Jumper, Developer,
 NextCommander).
@@ -294,7 +296,8 @@ Where the 0.6 W went, in game, 45 s points:
   `LPS mode: MAX` at level 0 ([power](power.md)), now set here:
   `rtw_power_mgnt=2` gave 3013 and 3017 mW, `=1` 3003, 2918 and 2909, off
   3357, with no ping loss in any. The deeper `rtw_lps_level`s are not
-  built into this driver.
+  built into this driver. Bluetooth audio still works with it, with the
+  occasional dropout stock has too.
 - **DDR, ~100 mW.** With no DMC driver it stayed at 1056 MHz; main's
   load-based rate sits at 324 MHz in this game, measured there at 153 mW.
   zlyme's DMC driver is now built in (`drivers/hardware/rk3568-dmc.c`, stock's
@@ -302,11 +305,11 @@ Where the 0.6 W went, in game, 45 s points:
   the game, 2924 mW against ~3015. It returns to 1056 MHz before suspend; after
   a lid sleep it was back at 324 and still rose under load. Unlike stock, it
   does not tell BL31 about the VOP, so the switch is not timed to the
-  panel's blanking.
+  panel's blanking; no glitch was seen.
 
 Still to do:
 
 - the `modetest` connector id
-- suspend: Bluetooth after a wake, the work LED left on while asleep
 - the last ~0.2 W against main in game
 - the Panfrost switch
+- optional: Bluetooth audio dropouts, as on stock
