@@ -142,11 +142,22 @@ It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
 
 Different from stock, found on the first boots:
 
-- **SD speed.** With UHS, tuning fails on the boot slot (`-5`), the card then
-  stops answering (`-110`) and the root never mounts. Keeping the card rails
-  on (`regulator-boot-on`, as stock) and 36 tuning steps did not help. The slot
-  runs at high speed, 50 MHz and 3.3 V. The vendor kernel does SDR104 on the
-  same card.
+- **SD speed.** With UHS, tuning failed on the boot slot (`-5`, all phases
+  bad), the card then stopped answering (`-110`) and the root never mounted.
+  The io-domains driver defers on the PMIC's regulators and is only retried
+  at late_initcall, so the slot had switched to 1.8 V and tuned before
+  vccio3's pads left 3.3 V mode; the core's retry power-cycles the card, which
+  does not come back on this board. zlyme's first tuning fails the same way,
+  and its retry works only because its card power is not wired. A known
+  upstream race (Jonas Karlman on the rock-3b UHS series, 2024). An
+  `io-domains-supply` on the slot makes fw_devlink probe it after the
+  io-domains: SDR104 at 0.56 s, 64.6 MB/s (high speed: 22.5), and through
+  lid sleep (2026-10-27).
+- **Restart at 1.8 V.** Shutdown left `vccio_sd` at 1.8 V, and a PSCI restart
+  keeps the PMIC's rails: the preloader could not read the card and booted
+  stock from NAND. The SD core now returns vqmmc to 3.3 V after the power-off,
+  as the vendor kernel's `mmc_sd_shutdown()` does (`0045`). A PMIC restart
+  would also fix it but loses the reboot-mode flag (*Restart*, below).
 - **adb.** Bound with no data cable attached, the USB2 PHY stays idle and dwc3
   fails EP0 (`failed to enable ep0out`), as zlyme found in its Phase 12D
   research. `peripheral` mode didn't help. `usb-gadget-adb` waits for the OTG
@@ -259,15 +270,21 @@ Against main, 2026-10-26, warm reboots and gambatte on battery:
 | | mainline | main |
 |---|---|---|
 | U-Boot hands off | 0.82 s | 0.94 s |
-| `Run /init` | 1.35 s | 1.83 s |
-| frontend hand-off | 1.65 s | 1.99 s |
-| `nextui.elf` start | 2.52 s | 2.40 s |
+| `Run /init` | 1.35 s, 1.40 s at SDR104 | 1.83 s |
+| frontend hand-off | 1.65 s, 1.64 s at SDR104 | 1.99 s |
+| `nextui.elf` start | 2.52 s, 2.32–2.34 s at SDR104 | 2.40 s |
 | Game Boy, 408 MHz most of the time | 3.30 W, 3.38 W with `cpu-sleep` | 2.70 W |
 | the same, WiFi power save as stock | 2.92–3.02 W | |
 | the same, DMC | 2.92 W | |
 
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
-is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main.
+is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main:
+`launch.sh`'s first `nextval.elf` takes 0.72 s at boot (0.03 s warm, 0.26 s
+cold alone), mapping `libmali` (18 MB) and SDL from the card while keymon,
+batmon and audiomon load theirs. The card reads 22.5 MB/s at high speed,
+against 63 MB/s at SDR104 on main. At SDR104 (64.6 MB/s, 2026-10-27) the
+root mounts ~60 ms later, after the io-domains, and `nextui.elf` starts
+1.50–1.52 s after kernel entry, against 1.70 s.
 
 Where the 0.6 W went, in game, 45 s points:
 
@@ -290,8 +307,6 @@ Where the 0.6 W went, in game, 45 s points:
 Still to do:
 
 - the `modetest` connector id
-- SD UHS
 - suspend: Bluetooth after a wake, the work LED left on while asleep
 - the last ~0.2 W against main in game
-- the 0.45 s from hand-off to `nextui.elf`
 - the Panfrost switch
