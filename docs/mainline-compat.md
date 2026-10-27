@@ -82,7 +82,7 @@ constrains the design.
 | LEDs `work` and `charger`: `brightness`, `max_brightness`, `trigger` set to `battery-charging`, `default-on`, `heartbeat` | Status LED pak | present | zlyme labels them `green:power` and `red:status`; `battery-charging` only exists if the supply is named `battery` | DT labels `work` and `charger` |
 | `/sys/class/udc/*/state` | NextUI, tools | `fcc00000.dwc3` | `fcc00000.usb` on mainline; read by listing the directory | Probably fine; check a literal use |
 | cpufreq `policy0`: governors `schedutil`/`performance`/`conservative`, `scaling_{min,max}_freq`, `scaling_setspeed`, `scaling_available_frequencies`; `cpu1`–`cpu3/online` | `governor.sh`, Settings | — | Standard interfaces, but different frequency steps; `second_max` and `mid` are picked by position | Stock's list, 1992 MHz included and not marked turbo, so `second_max` is 1800 MHz as on stock. Mainline stops at 1800, which made it 1608 |
-| `/sys/class/devfreq/fde60000.gpu/{governor,min_freq}`, `/sys/class/devfreq/dmc/governor` | `GC.pak`, tools | present | kbase on mainline keeps `fde60000.gpu`; check the name zlyme's `rk3568-dmc` registers | Check |
+| `/sys/class/devfreq/fde60000.gpu/{governor,min_freq}`, `/sys/class/devfreq/dmc/governor` | `GC.pak`, tools | present | kbase on mainline keeps `fde60000.gpu`; the DMC is `dmc`, named after its node | Node named `dmc`; the `performance` and `powersave` devfreq governors are built in |
 | Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `drivers/hardware/rockchip-pm-config.c` (after zlyme) sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since BaseOS runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
 | HDMI: polls `/sys/class/drm/card0-HDMI-A-1/status`. On connect, sound moves to the `rockchiphdmi` card, the panel goes to brightness 0, and rumble is skipped | NextUI, keymon, libmsettings | — | The connector name holds if rockchip-drm is `card0`; the card name needs the DT | as above |
 | `insmod /system/lib/modules/RTL8189FU.ko`, `insmod /lib/modules/rtk_btusb.ko` | `wifi_init.sh`, `bt_init.sh` | vendor modules | Fail harmlessly on mainline | Load our own modules first |
@@ -263,18 +263,35 @@ Against main, 2026-10-26, warm reboots and gambatte on battery:
 | frontend hand-off | 1.65 s | 1.99 s |
 | `nextui.elf` start | 2.52 s | 2.40 s |
 | Game Boy, 408 MHz most of the time | 3.30 W, 3.38 W with `cpu-sleep` | 2.70 W |
+| the same, WiFi power save as stock | 2.92–3.02 W | |
+| the same, DMC | 2.92 W | |
 
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
 is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main.
+
+Where the 0.6 W went, in game, 45 s points:
+
+- **WiFi, ~350–450 mW.** The powered chip cost 1030 mW (cut: 2340 mW), and
+  `wlan0` down saved nothing. zlyme's options turned station power save off,
+  after a hotspot problem its own log puts down to distance. Stock runs
+  `LPS mode: MAX` at level 0 ([power](power.md)), now set here:
+  `rtw_power_mgnt=2` gave 3013 and 3017 mW, `=1` 3003, 2918 and 2909, off
+  3357, with no ping loss in any. The deeper `rtw_lps_level`s are not
+  built into this driver.
+- **DDR, ~100 mW.** With no DMC driver it stayed at 1056 MHz; main's
+  load-based rate sits at 324 MHz in this game, measured there at 153 mW.
+  zlyme's DMC driver is now built in (`drivers/hardware/rk3568-dmc.c`, stock's
+  40/20 thresholds), with its DFI suspend patch (`0035`): 324 MHz throughout
+  the game, 2924 mW against ~3015. It returns to 1056 MHz before suspend; after
+  a lid sleep it was back at 324 and still rose under load. Unlike stock, it
+  does not tell BL31 about the VOP, so the switch is not timed to the
+  panel's blanking.
 
 Still to do:
 
 - the `modetest` connector id
 - SD UHS
 - suspend: Bluetooth after a wake, the work LED left on while asleep
-- DMC (zlyme's DFI resume patch comes with it)
-- the 0.6 W over main in game: DDR rate, WiFi power save, rails
+- the last ~0.2 W against main in game
 - the 0.45 s from hand-off to `nextui.elf`
-- `vdd_cpu` on units with a TCS4525 at `0x1c`: the stock tree lists it as
-  the alternative to the RK8600, and ours has only the RK8600
 - the Panfrost switch
