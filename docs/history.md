@@ -585,6 +585,117 @@ The PMIC theory was never supported: on a healthy boot the battery read `Full`,
 **Since done (2026-09-21):** `rcS` mounts `pstore` and keeps the records of a
 boot that crashed ([diagnostics](diagnostics.md)).
 
+## The vendor boot image (to 1.3.0)
+
+Until the kernel became mainline ([decisions](decisions.md)), the vendor kernel
+booted from its own Android boot image, edited at build time by
+`tools/rkbootimg.py` (removed with that path). Kept for what it took:
+
+
+On the default, mainline U-Boot path, `tools/mkfit.py boot` packs the vendor
+kernel (zstd) and `rk-kernel.dtb` into a FIT instead, with the same device tree
+edits as below except the logo, plus what the vendor U-Boot used to do for the
+kernel ([U-Boot](uboot.md), *How this build works*). The rest of this section is
+the vendor path.
+
+`tools/rkbootimg.py setargs` repacks the vendor Android boot image. The kernel
+is never modified — it is stored gzipped, and the tool asserts that what it
+writes decompresses to the vendor bytes. Five things change:
+
+| what | why |
+|---|---|
+| `/chosen/bootargs`, in every `rk-kernel.dtb*` | repoint `root=` at the card, drop `earlycon=`, add our tokens — see below |
+| `sd-uhs-sdr50/104` on `dwmmc@fe2b0000` | raise the boot slot's bus above the vendor's SDR25 ([boot time](boot-time.md)) |
+| `vqmmc-supply` removed from `dwmmc@fe2c0000` | the left slot named the boot slot's I/O rail, and its 3.3 V request during card init failed the boot card's 1.8 V switch on resume ([history](history.md)) |
+| `logo.bmp`, `logo_kernel.bmp` | tell, on a console-less device, whether U-Boot came from the card or NAND. Size is ours to choose — see below |
+| the header's SHA1 `id` | **mandatory** — see below |
+
+Every other resource entry is copied verbatim, and the tool re-reads what it
+wrote: the entry set, the id, and each device tree's `bootargs`.
+
+#### The resource image is rebuilt, not patched
+
+Early versions patched the vendor resource in place, which forced our logo to
+match the vendor's exact byte count. That turned out to matter for a reason
+nothing warned about:
+
+**A 943 616-byte resource hangs this U-Boot before display init** — no backlight,
+no logo, nothing. 465 408 bytes boots. The stock image's two 480x198 logos are
+what push it over; the exact threshold is unmeasured, somewhere between the two.
+
+Symptom to recognise: *the backlight never lights at all*. That is different from
+a blank logo, and it means U-Boot never reached display init — it reads the
+resource image, and uses `rk-kernel.dtb` from it as its own control device tree,
+before it touches the display.
+
+`ResourceImage.build()` therefore composes a fresh resource image, so the logo is
+sized for looks and for headroom rather than to match the vendor. The default
+`240x48` lands the resource at **442 880 bytes**, comfortably under the largest
+size proven to boot. `rkbootimg.py` warns above `RESOURCE_SAFE_BYTES`.
+
+#### The boot image `id` is verified
+
+The `ANDROID!` header carries a SHA1 over `kernel|size · ramdisk|size ·
+second|size`. U-Boot checks it (`ANDROID: Hash OK`) and **refuses the image if
+it is stale**. Any edit to the resource image must refresh it.
+
+This produces a deeply misleading failure: U-Boot reads the resource image
+*early and unverified* to fetch the DTB and draw the logo, so a replaced logo
+appears normally — and then nothing boots. `rkbootimg.py` now recomputes the id
+on every repack and asserts it before writing; `info` reports `valid`/`STALE`.
+
+#### The command line outgrows its slot
+
+The vendor line uses **100 of 100** available bytes. `earlycon=` is dropped as
+dead weight with no UART attached. Ours no longer fits, so `rkbootimg.py` grows
+the FDT property rather than padding it in place — the same relayout the
+`sd-uhs` flags need, and this U-Boot accepts both:
+
+```
+console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait ro init=/init quiet
+cpufreq.default_governor=performance
+initcall_blacklist=tracer_init_tracefs,alpu_init
+```
+
+(one line on the device). `quiet`, the governor and the initcall list are boot
+time; see [docs/01](boot-time.md).
+
+**`init=/init` is required.** For a *disk* root the kernel only tries
+`/sbin/init`, `/etc/init`, `/bin/init`, `/bin/sh` — `/init` is the initramfs
+convention. Without it the kernel execs `/bin/sh`, which then waits forever on a
+console that does not exist: root mounted, nothing happening, no panic.
+
+`rkbootimg.py info` reports the length in each device tree.
+
+The logo is the project wordmark, cropped from `assets/bootlogo.bmp` and scaled
+to `--size` (default `240x48`). The artwork's near-black gradient backdrop is
+subtracted so it composites to true black — otherwise it shows as a lighter
+rectangle against the panel.
+
+#### Check the logo before spending a boot
+
+`mkbootlogo.py` prints a percent-painted figure and `--preview` renders
+ASCII, both run by the build. A logo that renders almost blank looks exactly like
+a boot failure on this device, and did once: the vendor BMP is **top-down**
+(`height = -198`), and using the raw negative height in the scale calculation
+silently produced 5x7-pixel text.
+
+#### The kernel is stored compressed
+
+The vendor kernel is a raw 34.9 MiB arm64 `Image`; U-Boot reads all of it off the
+card each boot. Storing it gzipped (11.9 MiB, 34%) takes pre-kernel time from
+**4.96 s to 2.86 s** — see [boot time](boot-time.md).
+
+`MY355_COMPRESS_KERNEL` selects `gzip` (default) or `none`. It is encoded with
+`libdeflate-gzip -12` rather than zlib: the same deflate format U-Boot's
+inflater already takes, 486 KB smaller. `rkbootimg.py setargs` runs in
+`alpine:3.20`, which pins the encoder; run by hand it needs `libdeflate-gzip` on
+the host. This U-Boot also accepts lz4, which was tried and measured slower —
+[history](history.md).
+
+The build asserts `decompress(stored) == vendor kernel` before writing, so the
+"vendor kernel byte-for-byte" property is preserved — only its storage changes.
+
 ## Measurement history
 
 The tables [boot time](boot-time.md) replaced, kept because every later figure is

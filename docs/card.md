@@ -32,7 +32,7 @@ via `--shell` rather than duplicating constants.
 ```
 entry 1  uboot     16384 ..   32767     8 MiB   U-Boot FIT: ours + vendor BL31/OP-TEE
   —      (spare)   32768 ..   49151     8 MiB
-entry 2  boot      49152 ..  131071    40 MiB   kernel + DTB: a FIT (vendor path: Android boot image)
+entry 2  boot      49152 ..  131071    40 MiB   kernel + DTB: a FIT
   —      (spare)  131072 ..  212991    40 MiB
 entry 3  rootfs   212992 .. 1261567   512 MiB            <- root=/dev/mmcblk1p3
   —      (spare) 1261568 .. 2310143   512 MiB
@@ -172,139 +172,44 @@ and `boot_android` finds `boot` at 131072, so neither is pinned to the address i
 shipped at. An ordinary boot costs ~15 ms for the check, ~85 ms when a payload is
 left on the card and has to be weighed up again.
 
-## Boot image surgery
+## The boot FIT
 
-On the default, mainline U-Boot path, `tools/mkfit.py boot` packs the vendor
-kernel (zstd) and `rk-kernel.dtb` into a FIT instead, with the same device tree
-edits as below except the logo, plus what the vendor U-Boot used to do for the
-kernel ([U-Boot](uboot.md), *How this build works*). The rest of this section is
-the vendor path.
-
-`tools/rkbootimg.py setargs` repacks the vendor Android boot image. The kernel
-is never modified — it is stored gzipped, and the tool asserts that what it
-writes decompresses to the vendor bytes. Five things change:
-
-| what | why |
-|---|---|
-| `/chosen/bootargs`, in every `rk-kernel.dtb*` | repoint `root=` at the card, drop `earlycon=`, add our tokens — see below |
-| `sd-uhs-sdr50/104` on `dwmmc@fe2b0000` | raise the boot slot's bus above the vendor's SDR25 ([boot time](boot-time.md)) |
-| `vqmmc-supply` removed from `dwmmc@fe2c0000` | the left slot named the boot slot's I/O rail, and its 3.3 V request during card init failed the boot card's 1.8 V switch on resume ([history](history.md)) |
-| `logo.bmp`, `logo_kernel.bmp` | tell, on a console-less device, whether U-Boot came from the card or NAND. Size is ours to choose — see below |
-| the header's SHA1 `id` | **mandatory** — see below |
-
-Every other resource entry is copied verbatim, and the tool re-reads what it
-wrote: the entry set, the id, and each device tree's `bootargs`.
-
-### The resource image is rebuilt, not patched
-
-Early versions patched the vendor resource in place, which forced our logo to
-match the vendor's exact byte count. That turned out to matter for a reason
-nothing warned about:
-
-**A 943 616-byte resource hangs this U-Boot before display init** — no backlight,
-no logo, nothing. 465 408 bytes boots. The stock image's two 480x198 logos are
-what push it over; the exact threshold is unmeasured, somewhere between the two.
-
-Symptom to recognise: *the backlight never lights at all*. That is different from
-a blank logo, and it means U-Boot never reached display init — it reads the
-resource image, and uses `rk-kernel.dtb` from it as its own control device tree,
-before it touches the display.
-
-`ResourceImage.build()` therefore composes a fresh resource image, so the logo is
-sized for looks and for headroom rather than to match the vendor. The default
-`240x48` lands the resource at **442 880 bytes**, comfortably under the largest
-size proven to boot. `rkbootimg.py` warns above `RESOURCE_SAFE_BYTES`.
-
-### The boot image `id` is verified
-
-The `ANDROID!` header carries a SHA1 over `kernel|size · ramdisk|size ·
-second|size`. U-Boot checks it (`ANDROID: Hash OK`) and **refuses the image if
-it is stale**. Any edit to the resource image must refresh it.
-
-This produces a deeply misleading failure: U-Boot reads the resource image
-*early and unverified* to fetch the DTB and draw the logo, so a replaced logo
-appears normally — and then nothing boots. `rkbootimg.py` now recomputes the id
-on every repack and asserts it before writing; `info` reports `valid`/`STALE`.
-
-### The command line outgrows its slot
-
-The vendor line uses **100 of 100** available bytes. `earlycon=` is dropped as
-dead weight with no UART attached. Ours no longer fits, so `rkbootimg.py` grows
-the FDT property rather than padding it in place — the same relayout the
-`sd-uhs` flags need, and this U-Boot accepts both:
-
-```
-console=ttyFIQ0 root=/dev/mmcblk1p3 rootfstype=ext4 rootwait ro init=/init quiet
-cpufreq.default_governor=performance
-initcall_blacklist=tracer_init_tracefs,alpu_init
-```
-
-(one line on the device). `quiet`, the governor and the initcall list are boot
-time; see [docs/01](boot-time.md).
+`tools/mkfit.py boot` packs the kernel (zstd, tuned for U-Boot's decoder) and
+`rk3566-miyoo-flip.dtb` into a FIT, behind a 512-byte header that carries its
+length ([U-Boot](uboot.md), *How this build works*). Nothing is edited on the
+way: the command line is the device tree's own `/chosen/bootargs`, and the
+tool only checks that it names the `root=` `mkgpt.py` derives and that the tree
+reserves OP-TEE, then reads the kernel and the tree back out of what it wrote.
 
 **`init=/init` is required.** For a *disk* root the kernel only tries
 `/sbin/init`, `/etc/init`, `/bin/init`, `/bin/sh` — `/init` is the initramfs
 convention. Without it the kernel execs `/bin/sh`, which then waits forever on a
 console that does not exist: root mounted, nothing happening, no panic.
 
-`rkbootimg.py info` reports the length in each device tree.
-
-The logo is the project wordmark, cropped from `assets/bootlogo.bmp` and scaled
-to `--size` (default `240x48`). The artwork's near-black gradient backdrop is
-subtracted so it composites to true black — otherwise it shows as a lighter
-rectangle against the panel.
-
-### Check the logo before spending a boot
-
-`mkbootlogo.py` prints a percent-painted figure and `--preview` renders
-ASCII, both run by the build. A logo that renders almost blank looks exactly like
-a boot failure on this device, and did once: the vendor BMP is **top-down**
-(`height = -198`), and using the raw negative height in the scale calculation
-silently produced 5x7-pixel text.
-
-### The kernel is stored compressed
-
-The vendor kernel is a raw 34.9 MiB arm64 `Image`; U-Boot reads all of it off the
-card each boot. Storing it gzipped (11.9 MiB, 34%) takes pre-kernel time from
-**4.96 s to 2.86 s** — see [boot time](boot-time.md).
-
-`MY355_COMPRESS_KERNEL` selects `gzip` (default) or `none`. It is encoded with
-`libdeflate-gzip -12` rather than zlib: the same deflate format U-Boot's
-inflater already takes, 486 KB smaller. `rkbootimg.py setargs` runs in
-`alpine:3.20`, which pins the encoder; run by hand it needs `libdeflate-gzip` on
-the host. This U-Boot also accepts lz4, which was tried and measured slower —
+The vendor Android boot image this replaced, and what it took to edit it, is in
 [history](history.md).
-
-The build asserts `decompress(stored) == vendor kernel` before writing, so the
-"vendor kernel byte-for-byte" property is preserved — only its storage changes.
 
 ## ext4 features
 
-`^orphan_file` only. This kernel is **5.10.160**: `orphan_file` needs 5.15+, but
-`metadata_csum`, `metadata_csum_seed` and `64bit` are all fine. Verified: the
-vendor kernel mounts these filesystems.
+`^orphan_file` only: the stock 5.10.160 kernel has no `orphan_file` (5.15+), and
+reading a BaseOS card from stock, in the left slot, is how a failed boot is
+debugged ([diagnostics](diagnostics.md)). `metadata_csum`, `metadata_csum_seed`
+and `64bit` are all fine there.
 
 ## Build and flash
 
 ```sh
 ./fetch-prepared.sh                # or ./prepare-stock.sh NAND_DIR
-./build-all.sh                     # rootfs -> image -> .img.zip + .bosupd
+./build-all.sh                     # U-Boot, kernel, GPU, rootfs, image, .bosupd
 ```
 
-`build-all.sh` runs the three steps below, each of which also stands alone:
-`build-rootfs.sh` (harvest + overlay + BusyBox), `build-image.sh` (this page)
-and `build-update.sh` (the `.bosupd` payload).
-
-`MY355_SD_UHS` raises the boot slot's UHS ceiling: `sdr104` (default), `sdr50`,
-or `off` for the vendor's SDR25. `tools/rkbootimg.py` inserts the missing
-`sd-uhs-*` flags into `dwmmc@fe2b0000` in every `rk-kernel.dtb*`, relaying out
-the struct and strings blocks and reading the result back before returning.
-Slot 1 is left alone: its pins sit in a fixed 3.3 V I/O domain, so it cannot do
-UHS. See [boot time](boot-time.md).
+`build-all.sh` runs the steps below, each of which also stands alone:
+`build-uboot.sh`, `build-kernel.sh` and `build-gpu.sh` (cached trees, so a
+rerun is incremental), `build-rootfs.sh` (harvest + overlay + BusyBox),
+`build-image.sh` (this page) and `build-update.sh` (the `.bosupd` payload).
 
 The build verifies as it goes: `sgdisk -v` clean, `e2fsck -fn` on both ext4
-filesystems, the boot image id valid, and the stored kernel decompressing back
-to the vendor bytes.
+filesystems, and the kernel and device tree read back out of the boot FIT.
 
 Flashing, on macOS:
 

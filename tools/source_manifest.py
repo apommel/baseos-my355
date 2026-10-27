@@ -22,7 +22,7 @@ import sys
 import tarfile
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ARTIFACTS = {"uboot": "uboot.img", "boot": "boot.img", "harvest": "stock-harvest.tar"}
+ARTIFACTS = {"uboot": "uboot.img", "harvest": "stock-harvest.tar"}
 
 
 def sha256_of(path: str) -> str:

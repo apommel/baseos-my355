@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the mainline rootfs's two GPU stacks (experimental; docs/mainline-compat.md).
+# Build the rootfs's two GPU stacks (docs/mainline-compat.md).
 #
 # Produces, in work/my355/gpu:
 #   libmali.tar   Rockchip's latest G52 libmali (g29p1) with its EGL, GLES and
@@ -7,8 +7,8 @@
 #   mesa.tar      Mesa's Panfrost and PanVK, in usr/lib/mesa
 #   gpu.json      what they were built from
 #
-# MY355_KERNEL=mainline ./build-rootfs.sh installs both; baseos.conf's gpu= picks
-# one at boot (overlay-mainline/usr/sbin/baseos-gpu).
+# ./build-rootfs.sh installs both; baseos.conf's gpu= picks one at boot
+# (overlay/usr/sbin/baseos-gpu).
 #
 # Usage: ./build-gpu.sh [--clean]
 set -eu
@@ -158,4 +158,3 @@ EOF
 
 echo
 echo "  $OUT"
-echo "  next: MY355_KERNEL=mainline ./build-rootfs.sh"

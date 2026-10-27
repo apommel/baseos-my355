@@ -7,10 +7,13 @@ behaves exactly as it does on stock.
 
 ```
 ./fetch-prepared.sh  published bundle → work/my355/prepared/
-./prepare-stock.sh   NAND backup      → the same four files:
-                             uboot.img, boot.img, stock-harvest.tar, source.json
-./build-rootfs.sh    harvest + overlay + static BusyBox → rootfs.tar
-./build-image.sh     prepared + rootfs → baseos-my355.img
+./prepare-stock.sh   NAND backup      → the same three files:
+                             uboot.img, stock-harvest.tar, source.json
+./build-kernel.sh    Linux, its device tree and modules
+./build-gpu.sh       libmali g29p1's wrappers, Mesa
+./build-rootfs.sh    harvest + Debian libraries + modules + GPU + overlay
+                     + static BusyBox → rootfs.tar
+./build-image.sh     U-Boot + kernel + rootfs → baseos-my355.img
 ```
 
 Both routes produce byte-identical inputs, and `source.json` — which travels in
@@ -138,10 +141,11 @@ kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init
 `init=/init` is not optional; see [the card](card.md).
 
 `rcS` runs in **0.06 s**, with `dbus-daemon --system` started in the background
-(see [boot time](boot-time.md)). It stays short because the vendor kernel does
-the work an init script would otherwise do: `devtmpfs` is mounted by the kernel,
-and Mali, WiFi and the panel are built in, so nothing is `insmod`ed here
-([hardware](hardware.md)).
+(see [boot time](boot-time.md)). It stays short because the kernel does the
+work an init script would otherwise do: `devtmpfs` is mounted by the kernel,
+and the panel and storage are built in. The GPU driver is the one module it
+loads (`baseos-gpu`, in the background); WiFi and Bluetooth load with their
+radio ([mainline compatibility](mainline-compat.md)).
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed,
 **loopback**, USB authorization in the background (the kernel holds USB drivers

@@ -21,7 +21,7 @@ KO=/lib/modules/rtk_btusb.ko
 RK=$SYS/class/rkwifi
 
 btusb_loaded() { grep -q '^rtk_btusb ' "$MODULES"; }
-# On USB exactly while it is powered: 2-1 on the vendor kernel, 3-1 on mainline.
+# On USB exactly while it is powered, found by its ID rather than its port.
 chip_present() {
 	for d in "$SYS"/bus/usb/devices/*; do
 		[ "$(cat "$d/idVendor" "$d/idProduct" 2>/dev/null)" = "0bda

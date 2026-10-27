@@ -2,8 +2,8 @@
 # Restore the prepared build inputs without a NAND dump of your own.
 # Usage: ./fetch-prepared.sh [--from BUNDLE] [--force]
 #
-# Fetches uboot.img, boot.img and stock-harvest.tar, and installs the
-# source.json describing them from git.
+# Fetches uboot.img and stock-harvest.tar, and installs the source.json
+# describing them from git.
 #
 # A cache restore, not a second build path: bundle.sha256 covers the download,
 # source.json covers the contents and is what every build checks.
@@ -91,13 +91,11 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   alpine:3.20 sh -euc '
   apk add -q tar zstd
   cd /out
-  zstd -dc "/bundle/$NAME" | tar -xf - \
-    prepared/uboot.img prepared/boot.img prepared/stock-harvest.tar
+  zstd -dc "/bundle/$NAME" | tar -xf - prepared/uboot.img prepared/stock-harvest.tar
 '
 
-# Stale now: keeping them lets a build mix a fresh boot image with an old rootfs.
-rm -f "$HERE/work/my355/rootfs.tar" "$HERE/work/my355/boot-sd.img" \
-      "$HERE/work/my355/baseos-my355.img" "$HERE/work/my355/baseos-logo.bmp"
+# Stale now: keeping them lets a build mix fresh inputs with an old rootfs.
+rm -f "$HERE/work/my355/rootfs.tar" "$HERE/work/my355/baseos-my355.img"
 
 python3 "$HERE/tools/source_manifest.py" verify "$WORK/source.json" "$WORK"
 

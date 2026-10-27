@@ -4,18 +4,14 @@
 # Four sources, assembled in this order so each can override the last:
 #   1. the merged-/usr skeleton the harvest assumes
 #   2. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
-#   3. the stock harvest (work/my355/prepared/stock-harvest.tar) — Mali, SDL2,
+#   3. the stock harvest (work/my355/prepared/stock-harvest.tar) — SDL2,
 #      adbd, wpa_supplicant; a verified closure, see prepare-stock.sh — with
-#      manifest/debian.list's libraries over it: Debian trixie's glibc and GCC
-#      runtime, and the Vulkan loader
-#   4. overlay/ — init, inittab, rcS, the frontend session, and with
-#      MY355_DIAG=1 overlay-diag/ on top: boot-timing probes, not for release
-#
-# MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental),
-# ./build-gpu.sh's libmali and Mesa, and overlay-mainline/: the stock files its
-# drivers replace, baseos-gpu, which picks between them, a modetest wrapper,
-# WiFi's regulatory database, and stock's Bluetooth firmware under btrtl's
-# names. The vendor kernel has everything built in.
+#      over it manifest/debian.list's libraries (Debian trixie's glibc and GCC
+#      runtime, and the Vulkan loader), ./build-kernel.sh's modules and
+#      ./build-gpu.sh's libmali and Mesa
+#   4. overlay/ — init, rcS, the frontend session, and the stand-ins for the
+#      stock files mainline drivers replace; with MY355_DIAG=1 overlay-diag/ on
+#      top: boot-timing probes, not for release
 #
 # fbsplash is built from src/fbsplash.c: this device has no console, so a status
 # message on the panel is the only way to say "insert a card" or "installing
@@ -44,15 +40,10 @@ DIAG="${MY355_DIAG:-0}"
 case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 [ "$DIAG" = 1 ] && echo "== MY355_DIAG=1: adding overlay-diag/ (not for release) =="
 
-KERNEL="${MY355_KERNEL:-vendor}"
-case "$KERNEL" in
-  vendor) ;;
-  mainline) [ -f "$WORK/kernel/modules.tar" ] || {
-    echo "missing $WORK/kernel/modules.tar (run ./build-kernel.sh)" >&2; exit 1; }
-    [ -f "$WORK/gpu/mesa.tar" ] || {
-    echo "missing $WORK/gpu/mesa.tar (run ./build-gpu.sh)" >&2; exit 1; } ;;
-  *) echo "MY355_KERNEL must be vendor or mainline (got '$KERNEL')" >&2; exit 1 ;;
-esac
+[ -f "$WORK/kernel/modules.tar" ] || {
+  echo "missing $WORK/kernel/modules.tar (run ./build-kernel.sh)" >&2; exit 1; }
+[ -f "$WORK/gpu/mesa.tar" ] || {
+  echo "missing $WORK/gpu/mesa.tar (run ./build-gpu.sh)" >&2; exit 1; }
 
 # manifest/debian.list's packages, from snapshot.debian.org.
 USERLAND="$HERE/work/userland"
@@ -71,8 +62,7 @@ done
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$WORK":/work -v "$HERE/overlay":/overlay:ro -v "$USERLAND":/userland:ro \
   -v "$HERE/manifest/debian.list":/debian.list:ro \
-  -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" -e KERNEL="$KERNEL" \
-  -v "$HERE/overlay-mainline":/overlay-mainline:ro \
+  -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
   alpine:3.20 sh -euc '
@@ -115,21 +105,22 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
       rm -f "$R/usr/lib/$l" && cp -L "$f" "$R/usr/lib/$l"
     done
   done
-  # lib/modules/<release>, depmod already run; rcS loads the GPU driver from it.
+  # lib/modules/<release>, depmod already run.
+  tar -xf /work/kernel/modules.tar -C "$R"/usr
+  # bt_init.sh insmods this path: the stand-in that loads mainline btusb.
+  cp "$R"/usr/lib/modules/*/kernel/drivers/bluetooth/rtk_btusb.ko "$R"/usr/lib/modules/
   # The GPU stacks baseos-gpu picks from: libmali g29p1 over the harvest g13p0,
   # whose hook it replaces, and Mesa in usr/lib/mesa.
-  if [ "$KERNEL" = mainline ]; then
-    tar -xf /work/kernel/modules.tar -C "$R"/usr
-    rm "$R"/usr/lib/libmali_hook.so.1
-    tar -xf /work/gpu/libmali.tar -C "$R"
-    tar -xf /work/gpu/mesa.tar -C "$R"
-  fi
+  rm "$R"/usr/lib/libmali_hook.so.1
+  tar -xf /work/gpu/libmali.tar -C "$R"
+  tar -xf /work/gpu/mesa.tar -C "$R"
+  # The stock modetest moves aside for the wrapper in overlay/ that maps its object ids.
+  mv "$R"/usr/bin/modetest "$R"/usr/libexec/modetest
 
   # dropbear is multicall (dispatches on argv[0]); sftp-server is the path it
   # was compiled to exec.
   ln -sf dropbear         "$R"/usr/sbin/dropbearkey
   ln -sf ../sbin/dropbear "$R"/usr/bin/scp
-  mkdir -p "$R"/usr/libexec
   ln -sf gesftpserver     "$R"/usr/libexec/sftp-server
 
   # fbsplash: the panel is the only output device this hardware has.
@@ -155,10 +146,6 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
     strip "$R"/usr/sbin/"$t"
   done
 
-  # Ships with debug_info: 2.3 MB on disk, 131 KB stripped. insmod reads the
-  # whole file when bt_init.sh loads it.
-  strip --strip-debug "$R"/usr/lib/modules/rtk_btusb.ko
-
   # 4. The overlay wins over everything. cp -a carries the modes across, and
   #    every script in overlay/ is committed executable.
   # overlay/usr/sbin/poweroff replaces an applet link; cp would write through
@@ -166,17 +153,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   rm -f "$R"/usr/sbin/poweroff
   cp -a /overlay/. "$R"/
   if [ "$DIAG" = 1 ]; then cp -a /overlay-diag/. "$R"/; fi
-  # Stock binaries the mainline drivers stand in for (miyoo_inputd).
-  if [ "$KERNEL" = mainline ]; then
-    # The stock modetest moves aside for the wrapper that maps its object ids.
-    mv "$R"/usr/bin/modetest "$R"/usr/libexec/modetest
-    cp -a /overlay-mainline/. "$R"/
-    # bt_init.sh insmods this path: the stand-in that loads mainline btusb.
-    cp "$R"/usr/lib/modules/*/kernel/drivers/bluetooth/rtk_btusb.ko "$R"/usr/lib/modules/
-    # cfg80211 reads it at load, or every channel stays at the world limits.
-    apk add -q wireless-regdb
-    cp /lib/firmware/regulatory.db /lib/firmware/regulatory.db.p7s "$R"/usr/lib/firmware/
-  fi
+
+  # cfg80211 reads it at load, or every channel stays at the world limits.
+  apk add -q wireless-regdb
+  cp /lib/firmware/regulatory.db /lib/firmware/regulatory.db.p7s "$R"/usr/lib/firmware/
 
   # All three from VERSION so they cannot drift. NextUI reads
   # /usr/miyoo/version for its About screen.

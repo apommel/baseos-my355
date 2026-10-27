@@ -1,13 +1,10 @@
 #!/bin/sh
 # Derive my355 build inputs from a NAND backup of a Miyoo Flip.
 #
-# Produces work/my355/prepared/{uboot.img, boot.img, stock-harvest.tar,
-# source.json} — the same set fetch-prepared.sh restores from a published bundle.
-# NAND_DIR holds mtd1-uboot.img, mtd2-boot.img and mtd3-rootfs.img, as
-# docs/recovery.md describes taking them.
-#
-# boot.img must be PRISTINE stock: a unit whose bootlogo has been replaced
-# carries a rewritten resource image, which is not what should be redistributed.
+# Produces work/my355/prepared/{uboot.img, stock-harvest.tar, source.json} —
+# the same set fetch-prepared.sh restores from a published bundle. NAND_DIR
+# holds mtd1-uboot.img and mtd3-rootfs.img, as docs/recovery.md describes
+# taking them.
 #
 # Usage: ./prepare-stock.sh NAND_DIR
 set -eu

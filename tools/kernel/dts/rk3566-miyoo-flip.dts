@@ -28,8 +28,13 @@
 	};
 
 	chosen {
-		/* mkfit.py rewrites this in place, so it must exist. */
-		bootargs = "";
+		/*
+		 * root= is GPT entry 3 (tools/mkgpt.py; mkfit.py checks it). init=:
+		 * a disk root only tries /sbin/init and friends. The performance
+		 * governor holds until the frontend picks one. USB devices wait for
+		 * rcS to authorize them, or the WiFi chip's probe races the root mount.
+		 */
+		bootargs = "root=/dev/mmcblk1p3 rootfstype=ext4 rootwait ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0";
 		stdout-path = "serial2:1500000n8";
 	};
 
@@ -876,8 +881,8 @@
 };
 
 /*
- * vccio_sd is shared with the boot slot and belongs to it, as on the vendor
- * path (rkbootimg.detach_sd_slot1_vqmmc): high speed only, no UHS switch.
+ * vccio_sd is shared with the boot slot and belongs to it: high speed only,
+ * no UHS switch. Slot 1's pins are on a fixed 3.3 V domain.
  */
 &sdmmc1 {
 	max-frequency = <150000000>;

@@ -6,28 +6,31 @@ else lives in the page for the thing it affects.
 
 ## Settled
 
-### Keep the vendor kernel, replace only the userland
+### A mainline kernel, replacing the vendor's
 
-The alternative was a mainline kernel, ROCKNIX-style: Experiment 4 booted one
-from SD on this hardware ([history](history.md)), so it is available.
+Until the `feat/mainline` branch, BaseOS booted the vendor 5.10.160 kernel
+byte-for-byte and replaced only the userland. That kept hardware support
+complete for free, but froze the port on a 2025 BSP fork with no upstream
+fixes, and the GPU on a g13p0 libmali with no Panfrost or PanVK.
 
-| | **stock kernel — chosen** | mainline kernel |
+| | vendor kernel (to 1.3.0) | **mainline — chosen** |
 |---|---|---|
-| kernel / DTB | vendor 5.10.160 from `mtd2` | mainline with `rk3566-miyoo-flip.dtb` |
-| hardware support | complete by construction, vendor-tested | good, but tracked by the ROCKNIX effort |
-| userland | BusyBox + harvested glibc 2.36 from the stock squashfs | same approach, different libc source |
-| risks | a 2025 BSP fork, no upstream fixes | DMC, suspend and WiFi carry out-of-tree pieces |
+| kernel / DTB | 5.10.160 from `mtd2`, its DTB rewritten at build | Linux 7.2 from source, our own `rk3566-miyoo-flip.dts` |
+| GPU | kbase g18p0, libmali g13p0 | ROCKNIX's `mali_kbase` (libmali g29p1) or Panfrost and PanVK, picked by `gpu=` |
+| stock interface | native | a thin layer: device tree names, three small drivers, two patches, a `modetest` wrapper ([mainline-compat](mainline-compat.md)) |
+| out of tree | everything | `mali_kbase`, `8733bu`, the panel, gamepad, DMC and suspend-config drivers |
+| boot | `Run /init` 1.83 s, `nextui.elf` 2.40 s | 1.40 s, 2.33 s |
 
-The stock kernel is the smaller step and keeps perfect hardware support for
-free. Rebuilding or replacing it is a design decision, not an implementation
-detail: write it down here first.
+The two ran side by side while the mainline one was brought up; once it ran
+NextUI, its emulators, sleep, WiFi, Bluetooth audio and HDMI at stock's power
+draw, the vendor path was removed rather than kept beside it. Going back is a
+matter of history: everything before the removal is in git.
 
-One loose end if mainline is ever revisited: Experiment 4's ROCKNIX boot reached
-the kernel but never its UI. The likely cause is local to that test card — the
-GPT partition added at LBA 4292608 sat immediately behind ROCKNIX's `storage`
-partition, whose first-boot expansion then had nowhere to go, and which never
-retries. Re-test with the added partitions removed before concluding anything
-about mainline here.
+What the kernel change does not change: the vendor BL31, OP-TEE and the SPL's
+control tree stay byte-for-byte (the DDR blob is paired with that BL31), and
+the stock-built userland stays unmodified, which is what the compatibility
+layer is for. Its rule is in [mainline-compat](mainline-compat.md): mainline's
+interface is the base, stock's a layer that forwards to it.
 
 ### Patch the user's preloader rather than ship one
 
@@ -81,9 +84,9 @@ runs the panel and HDMI at the same time with independent content, and makes
 hot-plug and hot-unplug work. Stock cannot: it disables the panel to use a TV,
 and has to reboot to switch.
 
-It became the default on 2026-09-19 and first shipped in 0.7.0;
-`MY355_UBOOT=vendor` still builds the vendor path. It replaces U-Boot proper and
-nothing else: BL31, OP-TEE and the SPL's control tree stay the vendor's,
+It became the default on 2026-09-19 and first shipped in 0.7.0, and is the
+only path since the vendor kernel went. It replaces U-Boot proper and nothing
+else: BL31, OP-TEE and the SPL's control tree stay the vendor's,
 byte-for-byte. Its seven U-Boot patches and its control tree are ours to carry;
 three of the patches — the RK3568 SD clock (an upstream bug), the data cache
 before relocation and the 1608/1800 MHz CPU rates — are worth sending upstream.
@@ -119,22 +122,13 @@ image ([rootfs](rootfs.md)).
 
 ## Open
 
-- **The real resource-size threshold** (vendor U-Boot path only). 465 408 bytes
-  boots, 943 616 hangs U-Boot before display init. The build stays under the proven figure, but the
-  actual limit is unknown ([the card](card.md)).
 - **spruceOS as a frontend.** Its card would be mounted and its `updater`
   executed, but whether it finds the userland it expects in the harvest is
   unchecked.
-- **A mainline kernel, for Panfrost and PanVK.** Revisits the first settled
-  decision, as an opt-in build path for now: `./build-kernel.sh`, then
-  `MY355_KERNEL=mainline` for `build-rootfs.sh` and `build-image.sh`. It builds
-  Linux 7.2.10 with ROCKNIX's `mali_kbase` beside Panfrost, so the stock
-  libmali stays usable. The device tree is ours, and every name stock-built
-  software reads follows the vendor DTB, not zlyme's. The full list is
-  [mainline-compat.md](mainline-compat.md). It boots to NextUI with adb, the
-  boot slot at SDR104. The gamepad is a kernel driver
-  presenting stock's `MIYOO Player1`, and `miyoo_inputd` a shim. `gpu=` in
-  `baseos.conf` picks libmali g29p1 or Mesa's Panfrost.
+- **The harvest after the kernel change.** The published bundle still carries
+  `boot.img` and harvest entries the mainline build overwrites or no longer
+  needs (glibc 2.36, the GCC 11 runtime, libmali g13p0, `rtk_btusb.ko`,
+  `miyoo_inputd`). Pruning them is a `harvest.list` edit plus a new bundle.
 - **Debian trixie's glibc and GCC runtime under the harvest.** glibc 2.41 and
   libstdc++ from GCC 14 replace the harvest's 2.36 and GCC 11, with the Vulkan
   loader added, all from one pinned list (`manifest/debian.list`, from

@@ -3,31 +3,14 @@
 #
 # The Flip's boot chain lives in internal SPI NAND, so the card supplies only
 # what that chain reaches for — a U-Boot FIT in a GPT partition named `uboot`,
-# and whatever that U-Boot boots from one named `boot` — plus the BaseOS rootfs.
+# and the kernel FIT that U-Boot boots from one named `boot` — plus the rootfs.
 #
 # This requires a preloader with a working /pinctrl in mtd5; see docs/boot-chain.md.
 #
-# Inputs come from ./fetch-prepared.sh or ./prepare-stock.sh, in
-# work/my355/prepared:
-#   uboot.img   stock Rockchip U-Boot FIT, used verbatim
-#   boot.img    stock Android boot image; the kernel stays byte-for-byte
-#               identical, only the DTB's bootargs and logo are rewritten
-#
-# Environment:
-#   MY355_KERNEL     vendor (default): the stock 5.10 kernel and DTB.
-#                    mainline: ./build-kernel.sh's kernel and device tree
-#                    (experimental; docs/mainline-compat.md). Needs MY355_UBOOT=mainline
-#                    and a rootfs built with the same MY355_KERNEL.
-#   MY355_UBOOT      mainline (default): ./build-uboot.sh's FIT, booting a FIT
-#                    of the vendor kernel (docs/uboot.md). vendor: the stock
-#                    U-Boot FIT verbatim, booting a rewritten Android boot image.
-#   MY355_SD_UHS     boot slot UHS ceiling: off | sdr50 | sdr104 (default
-#                    sdr104; the vendor caps at sdr25 = 50 MHz = 22 MB/s)
-#   MY355_COMPRESS_KERNEL   vendor: gzip (default) | none
-#                    mainline: zstd (default) | gzip
-#   MY355_INITCALL_BLACKLIST  built-in initcalls to skip; empty restores the
-#                    vendor set
-#   MY355_LOGO_SIZE, MY355_LOGO_ASSET   boot logo
+# Inputs, from the other build steps:
+#   uboot-mainline.itb   ./build-uboot.sh
+#   kernel/              ./build-kernel.sh: Image, the device tree, kernel.json
+#   rootfs.tar           ./build-rootfs.sh, with the same kernel's modules
 #
 # Usage: ./build-image.sh
 set -eu
@@ -37,46 +20,22 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/tools/common.sh"
 
 WORK="$HERE/work/my355"
-PREPARED="$WORK/prepared"
 OUT="$WORK/baseos-my355.img"
 ROOTFS_TAR="$WORK/rootfs.tar"
-UBOOT_SRC="$PREPARED/uboot.img"
-BOOT_SRC="$PREPARED/boot.img"
+UBOOT_IMG="$WORK/uboot-mainline.itb"
+BOOT_IMG="$WORK/boot-fit.img"
 
-# The kernel must stay byte-for-byte vendor, and so must U-Boot on the vendor path.
-baseos_require_prepared "$PREPARED"
+[ -f "$UBOOT_IMG" ] && [ -f "$WORK/uboot-mainline.json" ] || {
+  echo "missing $UBOOT_IMG (run ./build-uboot.sh)" >&2; exit 1; }
+# Its boot script bakes in mkfit.py's DRAM map and header layout.
+python3 "$HERE/tools/mkfit.py" verify-uboot "$WORK/uboot-mainline.json" "$UBOOT_IMG"
 
-UBOOT="${MY355_UBOOT:-mainline}"
-case "$UBOOT" in
-  vendor)
-    UBOOT_IMG="$UBOOT_SRC"
-    BOOT_IMG="$WORK/boot-sd.img" ;;
-  mainline)
-    UBOOT_IMG="$WORK/uboot-mainline.itb"
-    BOOT_IMG="$WORK/boot-fit.img"
-    [ -f "$UBOOT_IMG" ] && [ -f "$WORK/uboot-mainline.json" ] || {
-      echo "missing $UBOOT_IMG (run ./build-uboot.sh)" >&2; exit 1; }
-    # Its boot script bakes in mkfit.py's DRAM map and header layout.
-    python3 "$HERE/tools/mkfit.py" verify-uboot "$WORK/uboot-mainline.json" "$UBOOT_IMG" ;;
-  *) echo "MY355_UBOOT must be vendor or mainline (got '$UBOOT')" >&2; exit 1 ;;
-esac
-
-KERNEL="${MY355_KERNEL:-vendor}"
-case "$KERNEL" in
-  vendor) ;;
-  mainline)
-    [ "$UBOOT" = mainline ] || { echo "MY355_KERNEL=mainline needs MY355_UBOOT=mainline" >&2; exit 1; }
-    [ -f "$WORK/kernel/kernel.json" ] || { echo "missing $WORK/kernel (run ./build-kernel.sh)" >&2; exit 1; }
-    KREL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["kernelrelease"])' "$WORK/kernel/kernel.json")"
-    # The rootfs carries the modules for one kernel release; booting another loses the GPU.
-    tar -tf "$ROOTFS_TAR" | grep -qE "^(\./)?usr/lib/modules/$KREL/modules\.dep$" || {
-      echo "$ROOTFS_TAR has no modules for $KREL (MY355_KERNEL=mainline ./build-rootfs.sh)" >&2; exit 1; } ;;
-  *) echo "MY355_KERNEL must be vendor or mainline (got '$KERNEL')" >&2; exit 1 ;;
-esac
-
+[ -f "$WORK/kernel/kernel.json" ] || { echo "missing $WORK/kernel (run ./build-kernel.sh)" >&2; exit 1; }
 [ -f "$ROOTFS_TAR" ] || { echo "missing $ROOTFS_TAR (run ./build-rootfs.sh)" >&2; exit 1; }
-
-mkdir -p "$WORK"
+KREL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["kernelrelease"])' "$WORK/kernel/kernel.json")"
+# The rootfs carries the modules for one kernel release; booting another loses the GPU.
+tar -tf "$ROOTFS_TAR" | grep -qE "^(\./)?usr/lib/modules/$KREL/modules\.dep$" || {
+  echo "$ROOTFS_TAR has no modules for $KREL (run ./build-rootfs.sh)" >&2; exit 1; }
 
 # tools/mkgpt.py is the single source of truth for the sector layout and
 # for which partition root= must name.
@@ -88,101 +47,16 @@ eval "$(python3 "$HERE/tools/mkgpt.py" --shell)"
 FWIMG="$WORK/miyoo355_fw.img"
 python3 "$HERE/tools/preloader-installer/mkfwimg.py" "$FWIMG" >/dev/null
 
-# The vendor kernel is a raw 34.9 MiB arm64 Image and U-Boot reads every byte off
-# the card each boot, so storing it compressed is the big pre-kernel lever:
-# 4.96 s raw -> 2.86 s gzip.
-if [ "$UBOOT" = mainline ]; then
-  COMPRESS="${MY355_COMPRESS_KERNEL:-zstd}"   # zstd | gzip
-else
-  COMPRESS="${MY355_COMPRESS_KERNEL:-gzip}"   # none | gzip
-fi
-
-# The vendor DTB declares sd-uhs-sdr12/sdr25 on the boot slot and stops there,
-# which pins the bus at 50 MHz: both cards measure 22.3 MB/s, exactly the SDR25
-# ceiling, so the controller is the limit and not the media. The RK3566 sdmmc
-# does SDR104, max-frequency is already 150 MHz, and vccio_sd already sits at
-# 1.8 V because the card negotiates SDR25 today — so this is a clock change, not
-# a voltage change. Slot 1 cannot follow: its pins are on a fixed 3.3 V domain.
-# Modes negotiate down, so a card that cannot do SDR104 lands on SDR50 or SDR25
-# by itself. Set MY355_SD_UHS=sdr50 to be conservative, or =off for the vendor
-# behaviour. See docs/boot-time.md.
-SD_UHS="${MY355_SD_UHS:-sdr104}"              # off | sdr50 | sdr104
-case "$SD_UHS" in
-  off|sdr50|sdr104) ;;
-  *) echo "MY355_SD_UHS must be off, sdr50 or sdr104 (got '$SD_UHS')" >&2; exit 1 ;;
-esac
-
-# Built-in initcalls skipped by name, so the kernel stays the vendor's
-# byte-for-byte: tracefs is never mounted (0.38 s), alpu is the anti-clone
-# chip (0.11 s). OHCI stays: the top USB-C port needs it for full-speed devices.
-# MY355_INITCALL_BLACKLIST="" restores the vendor set. See docs/boot-time.md.
-INITCALL_BLACKLIST="${MY355_INITCALL_BLACKLIST-tracer_init_tracefs,alpu_init}"
-
-# The vendor command line fills its 100-byte slot; rkbootimg.py grows the FDT
-# when ours does not fit. `earlycon=` is dead weight on a unit with no UART
-# attached, so it goes. What we add:
-#
-#   init=/init   REQUIRED. For a disk root the kernel only tries /sbin/init,
-#                /etc/init, /bin/init and /bin/sh — `/init` is the initramfs
-#                convention. Without this the kernel execs /bin/sh, which waits
-#                forever on a console that does not exist.
-#   ro           nothing writes to the root filesystem: state is on /data,
-#                tmpfs or the card. An unclean power-off cannot dirty it.
-#   quiet        nothing to the FIQ debugger UART, which no one reads; dmesg
-#                still holds every line.
-#   cpufreq.default_governor=performance
-#                full speed from cpufreq's probe (~0.58 s into the kernel) until
-#                the frontend picks its own; frontend-session drops to ondemand
-#                when there is none.
-#   usbcore.authorized_default=0
-#                USB drivers wait for rcS, which authorizes the devices. With
-#                rootwait, the root mount waits out any probe in flight, and the
-#                WiFi chip's takes ~0.3 s: it starts within ms of the card being
-#                ready, and about half the boots lost that race.
-DROP="earlycon="
-APPEND="ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0${INITCALL_BLACKLIST:+ initcall_blacklist=$INITCALL_BLACKLIST}"
-
-# The BaseOS wordmark. Size keeps the rebuilt resource image well under the
-# largest one proven to boot (tools/rkbootimg.py, RESOURCE_SAFE_BYTES).
-MY355_LOGO_SIZE="${MY355_LOGO_SIZE:-240x48}"
-MY355_LOGO_ASSET="${MY355_LOGO_ASSET:-$HERE/assets/bootlogo.bmp}"
-python3 "$HERE/tools/mkbootlogo.py" "$MY355_LOGO_ASSET" \
-  "$WORK/baseos-logo.bmp" --size "$MY355_LOGO_SIZE" --preview
-
-# In Alpine so the gzip (libdeflate) and zstd encoders come pinned with the
-# release rather than from whatever the host has installed.
-if [ "$UBOOT" = vendor ]; then
-  echo "== repointing the vendor boot image at the card =="
-  set -- rkbootimg.py setargs /work/prepared/boot.img --logo /work/baseos-logo.bmp --compress-kernel "$COMPRESS"
-else
-  # A FIT names its compression, so zstd is reachable here and not on the
-  # vendor path. No logo: mainline U-Boot has no display driver for this SoC.
-  case "$COMPRESS" in zstd|gzip) ;; *)
-    echo "the mainline path stores the kernel as zstd or gzip" >&2; exit 1 ;; esac
-  if [ "$KERNEL" = mainline ]; then
-    echo "== packing the mainline kernel ($KREL) and device tree as a FIT =="
-    set -- mkfit.py boot-mainline /work/kernel/Image /work/kernel/rk3566-miyoo-flip.dtb \
-      --release "$KREL" --compress "$COMPRESS" --slot-sectors "$MY355_BOOT_SLOT_SECTORS"
-  else
-    echo "== packing the vendor kernel and device tree as a FIT =="
-    set -- mkfit.py boot /work/prepared/boot.img --compress "$COMPRESS" \
-      --slot-sectors "$MY355_BOOT_SLOT_SECTORS"
-  fi
-fi
-set -- "$@" "/work/$(basename "$BOOT_IMG")" --root "$MY355_ROOT_DEV" --rootfstype ext4
-if [ "$KERNEL" = mainline ]; then
-  # Our own tree carries the SD modes, and there is no vendor command line or
-  # initcall to edit. rootwait: the card probes asynchronously.
-  set -- "$@" --append "rootwait ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0"
-else
-  set -- "$@" --drop "$DROP" --append "$APPEND" --sd-uhs "$SD_UHS"
-fi
+# In Alpine so the zstd encoder comes pinned with the release rather than from
+# whatever the host has installed. The command line is the device tree's own.
+echo "== packing the kernel ($KREL) and device tree as a FIT =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -v "$WORK":/work -v "$HERE/tools":/tools:ro \
   alpine:3.20 sh -euc '
-  apk add -q python3 libdeflate-utils zstd
-  tool=$1; shift
-  python3 "/tools/$tool" "$@"' sh "$@"
+  apk add -q python3 zstd
+  python3 /tools/mkfit.py "$@"' sh \
+  boot /work/kernel/Image /work/kernel/rk3566-miyoo-flip.dtb "/work/$(basename "$BOOT_IMG")" \
+  --release "$KREL" --root "$MY355_ROOT_DEV" --slot-sectors "$MY355_BOOT_SLOT_SECTORS"
 
 # Both go in an A/B slot, and an update writes a whole slot, so overflowing one
 # would corrupt the reserved half rather than just this partition.
@@ -215,8 +89,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   dd if="/work/$UBOOT_IMG" of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none
   dd if="/work/$BOOT_IMG"  of="$OUT" bs=512 seek="$BOOT_START"  conv=notrunc status=none
 
-  # The vendor kernel is 5.10.160 and orphan_file needs 5.15+, so it is off on
-  # both paths: a card can be flashed for either kernel. The rest is fine.
+  # Stock 5.10 has no orphan_file (5.15+), and reading the card from stock in
+  # the left slot is how a failed boot is debugged (docs/diagnostics.md).
   EXT4_OPTS="^orphan_file"
 
   R=/tmp/r; rm -rf "$R"; mkdir "$R"
@@ -252,9 +126,5 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   mdir -i "$OUT@@$((PRIMARY_START * 512))" :: 2>/dev/null | grep -q -i miyoo355 && n=$((n + 1))
   [ "$n" -eq 3 ] && echo "  preloader installer on all 3 mountable filesystems"
 '
-if [ "$UBOOT" = vendor ]; then
-  python3 "$HERE/tools/rkbootimg.py" info "$BOOT_IMG" | grep -E "image id|bootargs"
-else
-  python3 "$HERE/tools/mkfit.py" info "$BOOT_IMG"
-fi
-echo "image: $OUT (U-Boot: $UBOOT)"
+python3 "$HERE/tools/mkfit.py" info "$BOOT_IMG"
+echo "image: $OUT ($KREL)"

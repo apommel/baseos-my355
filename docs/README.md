@@ -14,7 +14,8 @@ not deleted, in [history](history.md).
 
 | | |
 |---|---|
-| [hardware](hardware.md) | SoC, MTD layout, kernel config, SD slots. Start here. |
+| [hardware](hardware.md) | SoC, MTD layout, SD slots. Start here. |
+| [mainline compatibility](mainline-compat.md) | What stock-built software needs from the kernel, and how this one provides it. |
 | [boot chain](boot-chain.md) | The preloader patch, the card installer, and how SD boot works at all. |
 | [the card](card.md) | Partition layout, image build, boot image surgery, first-boot expansion, A/B updates. |
 | [rootfs](rootfs.md) | The harvest, the overlay, init, adb, and what NextUI needs from the OS. |
@@ -48,7 +49,7 @@ place, from a card, with a backup written first — and leaves the stock U-Boot 
 NAND, the kernel and the stock rootfs untouched. Card in: BaseOS. Card out:
 stock, exactly as before.
 
-From there the card supplies a mainline U-Boot, the vendor kernel with a rewritten
-command line, and a BusyBox userland built on a measured subset of the stock
-libraries. Power-on to frontend hand-off is **1.99 s** (3.73 s with the vendor
-U-Boot), against stock's 15.79 s.
+From there the card supplies a mainline U-Boot, a mainline kernel that presents
+the vendor kernel's interfaces to stock-built software, and a BusyBox userland
+built on a measured subset of the stock libraries. Power-on to frontend
+hand-off is **1.64 s**, against stock's 15.79 s.

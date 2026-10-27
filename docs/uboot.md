@@ -3,9 +3,13 @@
 **Part 1**: tuning the vendor U-Boot — tried, measured at 22 ms, code removed.
 **Part 2**: replacing it — evaluated 2026-08-22 and shelved. **Part 3**: replacing
 it after all — a first build booted on 2026-09-05; this one is rebuilt from what
-that taught, and is what BaseOS boots since 0.7.0. `MY355_UBOOT=vendor` builds
-the vendor path. The decision is in
+that taught, and is what BaseOS boots since 0.7.0. The decision is in
 [decisions](decisions.md); what each is worth is in [boot time](boot-time.md).
+
+Part 3 was developed and measured under the vendor 5.10 kernel, which BaseOS
+booted until 1.3.0. U-Boot itself did not change with the move to a mainline
+kernel; what the vendor kernel needed from it, and the vendor path's
+comparisons, are kept as they were measured.
 
 ---
 
@@ -233,8 +237,8 @@ From the build that was made and then removed (U-Boot v2026.07,
 
 # Part 3 — Mainline U-Boot, the default since 0.7.0
 
-`./build-all.sh` builds it, or `./build-uboot.sh` then `./build-image.sh`;
-`MY355_UBOOT=vendor` puts the vendor U-Boot back. It reaches `Run /init`
+`./build-all.sh` builds it, or `./build-uboot.sh` then `./build-image.sh`.
+It reached `Run /init`
 **1.8 s earlier** than the vendor path: 1.79–1.80 s against 3.58 s, with NextUI
 starting at 2.40–2.42 s against 4.19–4.23 s (2026-09-21, three warm reboots;
 U-Boot's own timings agree with cold boots). Everything below is measured on
@@ -445,8 +449,7 @@ Patch `0003` builds `lib/zstd`, `lib/zlib` and `lib/xxhash` with
 `-mno-strict-align` and clears `SCTLR.A` in `image_decomp()`: bootm decompresses
 after relocation, with the MMU on and DRAM mapped as normal memory, where that
 bit is all that could forbid an unaligned access. `CONFIG_ZSTD_LIB_MINIFY` is
-off. `mkfit.py` owns the encoder settings; `MY355_COMPRESS_KERNEL=gzip` still
-builds a gzip FIT.
+off. `mkfit.py` owns the encoder settings.
 
 ## Kernel compression, revisited
 
@@ -658,6 +661,9 @@ minimal tree for this SoC, is built. `quartz64-a-rk3566_defconfig` remains the
 Kconfig base.
 
 ## What the kernel relied on the vendor U-Boot for
+
+Written for the vendor kernel. The mainline device tree carries the OP-TEE
+reservation itself, and the boot script still runs `my355 fg`.
 
 The vendor U-Boot edits the kernel's world before hand-off, and the vendor
 kernel depends on each edit without saying so. Mainline does none of them, so
@@ -906,7 +912,7 @@ took three fixes, each found on the device with `baseos-frameprobe` (below):
   250 + 32 and `enable-delay-ms` 200 before the DSI link streams a pixel. There
   is no reset line, so the first two only wait out power-on. The boot script
   now powers the panel first (`gpio set A23`, gpio0 PC7, `vcc3v3_lcd0_n`), and
-  `rkbootimg.set_panel_delays` sets 160/200/200 to 0/20/0: the link streams at
+  the vendor tree's delays went from 160/200/200 to 0/20/0: the link streams at
   2.43 s against 2.99. The init sequence's 250 ms after sleep-out (DCS
   `0x11`) is now 120 ms, the usual requirement: 2.29 s in 12 warm boots
   (2.286–2.311 s), and cold boots showed a clean image each time. 2.15 s
@@ -967,15 +973,13 @@ overlapped with the card read, for a logo at ~0.5–0.9 s.
 and replaces only the `uboot` image: BL31, OP-TEE and the SPL's control FDT stay
 byte-for-byte, layout and `loadables` mirror the vendor's, and every image carries
 the sha256 the SPL checks (it checks no signature: `## Verified-boot: 0`). The DDR
-blob in `mtd5` is paired with its BL31, and the vendor kernel reaches BL31 for DDR
-scaling, so U-Boot stays the only variable. `CONFIG_TEXT_BASE` is the vendor's
+blob in `mtd5` is paired with its BL31, and the kernel's DMC driver reaches BL31
+for DDR scaling, so U-Boot stays the only variable. `CONFIG_TEXT_BASE` is the vendor's
 `0x00a00000`, the address the first build booted at.
 
-**The boot FIT.** `mkfit.py boot` packs the vendor kernel (zstd by default,
-round-trip checked) and `rk-kernel.dtb` with the same command line, SD flags and
-root as the vendor path, plus the OP-TEE reservation, the VOP2 plane
-assignment and the panel's shorter waits (above), read back from the written
-FIT. No hash nodes: bootm treats them as optional, and a hash over the kernel
+**The boot FIT.** `mkfit.py boot` packs the kernel (zstd, round-trip checked)
+and its device tree, which carries the command line and the OP-TEE reservation
+itself; the tool checks both and reads them back from the written FIT. No hash nodes: bootm treats them as optional, and a hash over the kernel
 is the work this path exists to delete. A 512-byte header in front carries `MY355FIT` and the FIT's sector
 count.
 
