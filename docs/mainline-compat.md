@@ -285,6 +285,7 @@ Against main, 2026-10-26, warm reboots and gambatte on battery:
 | Game Boy, 408 MHz most of the time | 3.30 W, 3.38 W with `cpu-sleep` | 2.70 W |
 | the same, WiFi power save as stock | 2.92–3.02 W | |
 | the same, DMC | 2.92 W | |
+| the same, one session, both on this branch (2026-10-27) | 2.77–2.97 W | 2.93 W |
 
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
 is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main:
@@ -294,6 +295,11 @@ batmon and audiomon load theirs. The card reads 22.5 MB/s at high speed,
 against 63 MB/s at SDR104 on main. At SDR104 (64.6 MB/s, 2026-10-27) the
 root mounts ~60 ms later, after the io-domains, and `nextui.elf` starts
 1.50–1.52 s after kernel entry, against 1.70 s.
+
+The last row is this branch's build on each kernel, back to back, 60 s runs.
+Main's 2.70 W was another session; on the same build the two kernels are
+within run-to-run noise (~0.2 W). At brightness 5 stock drives the backlight
+at 22/255 and mainline at 5/255; at 22/255 mainline read 2.99–3.04 W.
 
 Where the 0.6 W went, in game, 45 s points:
 
@@ -316,6 +322,16 @@ Where the 0.6 W went, in game, 45 s points:
 
 Still to do:
 
-- the last ~0.2 W against main in game
 - the Panfrost switch
 - optional: Bluetooth audio dropouts, as on stock
+- optional: per-chip voltages. Stock picks its OPP voltages by the chip's
+  leakage bin, and mainline has no bin selection, so this unit runs the
+  common table:
+  - CPU: this unit is bin L3, where stock is lower from 1104 MHz up (1416 MHz:
+    925 against 1025 mV). Both use 850 mV up to 816 MHz, where a Game Boy
+    game spends ~97% of its time, so it matters for heavier cores.
+  - `vdd_logic`: stock's DMC runs it at 875 mV, mainline at 900 mV, worth
+    ~10–20 mW.
+
+  Hardcoding either is unsafe on other units: it needs stock's bin read from
+  the OTP, as the BSP's `rockchip_opp_select` does.
