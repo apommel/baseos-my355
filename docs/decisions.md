@@ -133,4 +133,18 @@ image ([rootfs](rootfs.md)).
   software reads follows the vendor DTB, not zlyme's. The full list is
   [mainline-compat.md](mainline-compat.md). It boots to NextUI with adb, the
   boot slot at SDR104. The gamepad is a kernel driver
-  presenting stock's `MIYOO Player1`, and `miyoo_inputd` a shim.
+  presenting stock's `MIYOO Player1`, and `miyoo_inputd` a shim. `gpu=` in
+  `baseos.conf` picks libmali g29p1 or Mesa's Panfrost.
+- **Debian trixie's glibc and GCC runtime under the harvest.** glibc 2.41 and
+  libstdc++ from GCC 14 replace the harvest's 2.36 and GCC 11, with the Vulkan
+  loader added, all from one pinned list (`manifest/debian.list`, from
+  snapshot.debian.org). Newer is backwards compatible for the stock binaries,
+  none of which use glibc's private symbols, and `build-gpu.sh` builds in the
+  same release, so its LLVM, SPIR-V tools and meson come from packages.
+  Debian over Buildroot: prebuilt and signed, a pin per package, minutes
+  instead of hours, and no toolchain of our own to keep up. The stock programs
+  stay: Debian's SDL2 links X11, Wayland and PulseAudio, its adbd protobuf and
+  systemd, its dbus-daemon AppArmor, SELinux and systemd, and its curl a dozen
+  protocol libraries, each against the harvest's lean, tested closure. Debian
+  supplies libraries the harvest has an older ABI-compatible copy of, or
+  lacks.

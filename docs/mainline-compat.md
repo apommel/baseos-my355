@@ -63,8 +63,8 @@ constrains the design.
 
 | What | Who | Stock kernel | Mainline gap | Fix |
 |---|---|---|---|---|
-| `/dev/mali0`: kbase ioctls, dma-buf | NextUI, every SDL/GLES program | kbase g18p0 | ROCKNIX `mali_kbase` gives `/dev/mali0` | Test the g13p0 and g29p1 blobs against it |
-| `/dev/dri/card0`: legacy KMS (`SETCRTC`, `PAGE_FLIP`, dumb buffers, PRIME), `SET_MASTER` | NextUI, minarch, tools | rockchip-drm is `card0` | Panfrost also registers a `card` node, so `card0` must stay rockchip-drm | Probe order, or build Panfrost as a module loaded later |
+| `/dev/mali0`: kbase ioctls, dma-buf | NextUI, every SDL/GLES program | kbase g18p0 | ROCKNIX `mali_kbase` gives `/dev/mali0` | Done: libmali g29p1 on it, or Mesa with `gpu=panfrost` |
+| `/dev/dri/card0`: legacy KMS (`SETCRTC`, `PAGE_FLIP`, dumb buffers, PRIME), `SET_MASTER` | NextUI, minarch, tools | rockchip-drm is `card0` | Panfrost also registers a `card` node, so `card0` must stay rockchip-drm | Done: Panfrost is a module, loaded after rockchip-drm |
 | `/sys/class/drm/card0-HDMI-A-1/status` | libmsettings, keymon, NextUI | present | Same name as long as rockchip-drm is `card0` | as above |
 | `modetest -M rockchip -w 179:contrast:N`, `179:saturation:N` | libmsettings `SetRawContrast`, `SetRawSaturation` | vendor VOP2 properties on connector 179, `DSI-1` (`HDMI-A-1` is 164) | zlyme `1013` (our `0040`) adds the TV properties with the same names and range, under other object IDs (`DSI-1` is 59). Setting them needs DRM master, which NextUI holds; the vendor kernel skips the check (`DRM_IGNORE_IOTCL_PERMIT`) | Done: a `modetest` wrapper maps 179 and 164 by `connector_id`, and `stock/0065` lets root set properties without master |
 | `/dev/i2c-0`, `I2C_SLAVE_FORCE 0x20`, writes to `RK817_DDAC_VOLL`/`VOLR` (`0x31`/`0x32`) | libmsettings `SetVolume`, speaker path | Goes past the driver because `SPK Volume` stops at -37.5 dB. Written on every volume change after `Playback Path`, so the bottom levels reach -57 dB | Needs `CONFIG_I2C_CHARDEV` and `i2c0` as bus 0. If it fails, only the lowest volume levels get louder, down to the -37.5 dB floor | Keep the bus alias. Better: a mainline volume control with the codec's full range, then the write is harmless |
@@ -178,6 +178,25 @@ Different from stock, found on the first boots:
 - **GPU rail.** `mali_kbase` disables `vdd_gpu` on runtime suspend without
   having enabled it, and the unused-regulator cleanup then cut the rail. It
   is always-on again, as in zlyme.
+- **GPU drivers.** `gpu=` in `baseos.conf` picks `mali` (the default) or
+  `panfrost`, read by `baseos-gpu` once the frontend card is mounted.
+  `build-gpu.sh` builds both: Rockchip's newest G52 libmali (g29p1, from
+  `libmali-next`) with its wrappers, hook and Vulkan ICD, and Mesa 26.2.5's
+  Panfrost and PanVK in `/usr/lib/mesa`, mounted over libmali's names and
+  `/usr/share/vulkan` for Panfrost. The Vulkan loader is Debian's.
+  - g29p1's GBM allocates from `/dev/dma_heap/system`; the heaps are built in.
+  - NextUI, minarch and nextval link `libmali.so.1` and `libmali_hook.so.1`,
+    not `libEGL`, so Mesa's side has a `libmali.so.1` that pulls in its EGL,
+    GLES and GBM, and a hook with only `mali_injected`.
+  - NextUI asks for GLES 3.2, and Panfrost has 3.1 on the G52: its shaders
+    are 3.0, so `MESA_GLES_VERSION_OVERRIDE=3.2`. The shader cache is on
+    `/data`.
+  - PanVK has the G52 behind `PAN_I_WANT_A_BROKEN_VULKAN_DRIVER=1`, set for
+    the frontend, and gives Vulkan 1.0; libmali gives 1.3. Both have
+    `VK_KHR_display`. libmali's Wayland and X11 layer is left out.
+
+  Both run NextUI, minarch with shaders and N64 (2026-10-27). In game,
+  Panfrost drew 2.92 W, as libmali.
 - **HDMI sound.** No `rockchiphdmi` card: dw-hdmi only registers its audio
   codec with `DRM_DW_HDMI_I2S_AUDIO` built in, and it was a module. Built in
   now.
@@ -322,7 +341,6 @@ Where the 0.6 W went, in game, 45 s points:
 
 Still to do:
 
-- the Panfrost switch
 - optional: Bluetooth audio dropouts, as on stock
 - optional: per-chip voltages. Stock picks its OPP voltages by the chip's
   leakage bin, and mainline has no bin selection, so this unit runs the
