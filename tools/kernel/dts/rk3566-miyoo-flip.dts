@@ -859,12 +859,17 @@
 	bus-width = <4>;
 	cap-sd-highspeed;
 	disable-wp;
-	/*
-	 * High speed only for now: with UHS, tuning fails (-5), the card then
-	 * stops answering (-110) and the root never mounts.
-	 */
+	sd-uhs-sdr12;
+	sd-uhs-sdr25;
+	sd-uhs-sdr50;
+	sd-uhs-sdr104;
 	vmmc-supply = <&vcc_sd>;
 	vqmmc-supply = <&vccio_sd>;
+	/*
+	 * Not a regulator: fw_devlink probes the slot after the io-domains, so
+	 * UHS tuning doesn't run with vccio3's pads still in 3.3 V mode.
+	 */
+	io-domains-supply = <&pmu_io_domains>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdmmc0_bus4 &sdmmc0_clk &sdmmc0_cmd &sdmmc0_det>;
 	status = "okay";
