@@ -133,6 +133,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   driver hardware/rockchip-pm-config.c drivers/soc/rockchip ROCKCHIP_PM_CONFIG bool \
     "Rockchip RK3568 BL31 suspend configuration" \
     "ARCH_ROCKCHIP && HAVE_ARM_SMCCC && OF && SUSPEND"
+  driver hardware/rk3568-dmc.c drivers/devfreq ARM_RK3568_DMC_DEVFREQ bool \
+    "RK3566/RK3568 DDR frequency scaling through BL31" \
+    "ARCH_ROCKCHIP && HAVE_ARM_SMCCC && PM_DEVFREQ_EVENT && DEVFREQ_GOV_SIMPLE_ONDEMAND"
   driver stock/hall-mh248.c drivers/input/misc INPUT_HALL_MH248 tristate \
     "Miyoo Flip lid sensor, as hall-mh248" "INPUT_MISC && GPIOLIB && OF"
   driver stock/rkwifi.c drivers/misc MISC_RKWIFI tristate \

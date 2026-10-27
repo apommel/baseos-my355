@@ -3,8 +3,7 @@
  * Miyoo Flip (my355) for BaseOS on mainline Linux.
  *
  * Hardware description after zlyme/ROCKNIX; every name stock-built software
- * reads follows the vendor DTB instead (docs/mainline-compat.md). Deferred:
- * DMC.
+ * reads follows the vendor DTB instead (docs/mainline-compat.md).
  */
 /dts-v1/;
 
@@ -269,6 +268,43 @@
 		compatible = "rockchip,pm-rk3568";
 		rockchip,sleep-mode-config = <0x5ec>;
 		rockchip,wakeup-config = <0x10>;
+	};
+
+	/*
+	 * DDR scaling through BL31 (drivers/hardware/rk3568-dmc.c), named as on
+	 * stock: devfreq/dmc. The rates are BL31's; stock lists them at 900 mV.
+	 */
+	dmc: dmc {
+		compatible = "rockchip,rk3568-dmc";
+		interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "complete";
+		devfreq-events = <&dfi>;
+		center-supply = <&vdd_logic>;
+		/* SCMI_CLK_DDR, which the bindings header lacks. */
+		clocks = <&scmi_clk 3>;
+		clock-names = "dmc_clk";
+		operating-points-v2 = <&dmc_opp_table>;
+	};
+
+	dmc_opp_table: dmc-opp-table {
+		compatible = "operating-points-v2";
+
+		opp-324000000 {
+			opp-hz = /bits/ 64 <324000000>;
+			opp-microvolt = <900000>;
+		};
+		opp-528000000 {
+			opp-hz = /bits/ 64 <528000000>;
+			opp-microvolt = <900000>;
+		};
+		opp-780000000 {
+			opp-hz = /bits/ 64 <780000000>;
+			opp-microvolt = <900000>;
+		};
+		opp-1056000000 {
+			opp-hz = /bits/ 64 <1056000000>;
+			opp-microvolt = <900000>;
+		};
 	};
 };
 
