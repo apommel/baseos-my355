@@ -19,7 +19,7 @@ Ordered by how early they fire.
 
 | signal | proves | how |
 |---|---|---|
-| **boot logo** | vendor path: U-Boot ran *and* read the card's `boot` partition. Mainline path: `rcS` is running | vendor path: `mkbootlogo.py` repaints the vendor BMP; only our card carries it. Mainline path: `fbsplash`, from 2.00 s |
+| **boot logo** | `rcS` is running | `fbsplash`, from 2.00 s |
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
 | **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |
@@ -58,10 +58,9 @@ Stock also lets you test binaries against the *exact* kernel before trusting
 them: `adb shell /media/sdcardN/bin/busybox` confirmed our static aarch64
 busybox runs, ruling out the rootfs while the real bug was elsewhere.
 
-## The mainline U-Boot path
+## U-Boot
 
-On the mainline U-Boot path (the default; [U-Boot](uboot.md) Part 3) U-Boot
-draws nothing: the panel stays dark until the kernel lights it and `rcS` draws
+U-Boot ([U-Boot](uboot.md) Part 3) draws nothing: the panel stays dark until the kernel lights it and `rcS` draws
 the logo at ~2.0 s, so a dark panel before then says nothing about whether the
 boot worked. A debug build (`MY355_UBOOT_DEBUG=1`) makes up for it two ways.
 The default release build (`0`) has neither: a failed boot is dark, then off.

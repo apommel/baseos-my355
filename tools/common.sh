@@ -50,9 +50,9 @@ baseos_version() {
   printf '%s\n' "$version"
 }
 
-# The prepared inputs arrive as a set, so every step wants the same four.
+# The prepared inputs arrive as a set, so every step wants the same three.
 baseos_require_prepared() {
-  for artifact in source.json uboot.img boot.img stock-harvest.tar; do
+  for artifact in source.json uboot.img stock-harvest.tar; do
     [ -f "$1/$artifact" ] || {
       echo "missing $1/$artifact" >&2
       echo "run ./fetch-prepared.sh, or ./prepare-stock.sh from a NAND dump" >&2

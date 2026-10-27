@@ -76,7 +76,7 @@ constrains the design.
 | `/sys/class/backlight/backlight/bl_power` | NextUI | present | Same if the DT node is named `backlight` | DT |
 | `/sys/devices/platform/hall-mh248/hallvalue` (polled about 30 times a second) | NextUI, libmsettings, `suspend` | vendor hall driver attribute | Mainline has a `gpio-keys` `SW_LID` instead | A small `hall-mh248` platform driver exposing `hallvalue` |
 | `mv /dev/input/event1 /dev/input/event1.disabled` | `launch.sh` | event1 = `hall wake key` | Mainline numbering would hide whichever device lands at event1 | Keep the hall input at event1 |
-| keymon opens **`event0` only**, plus USB input nodes, for volume and power keys (`CODE_POWER` 102, `CODE_PLUS` 128, `CODE_MINUS` 129). It skips `adc-keys` because it duplicates `event0` | keymon | event0 = `gpio-keys-polled` | Whatever lands at event0 on mainline is what keymon reads | event0 must be a `gpio-keys` device with stock's key codes. The stock DTB in `boot.img` is the reference |
+| keymon opens **`event0` only**, plus USB input nodes, for volume and power keys (`CODE_POWER` 102, `CODE_PLUS` 128, `CODE_MINUS` 129). It skips `adc-keys` because it duplicates `event0` | keymon | event0 = `gpio-keys-polled` | Whatever lands at event0 on mainline is what keymon reads | event0 must be a `gpio-keys` device with stock's key codes. The stock DTB (in `mtd2`) is the reference |
 | The rest of input goes through SDL joystick button indices: `JOY_B` 0, `JOY_A` 1, `JOY_Y` 2, `JOY_X` 3, `L1` 4, `R1` 5, `SELECT` 6, `START` 7, `MENU` 8, `L3` 9, `R3` 10. Keyboard codes from `gpio-keys-polled` are ignored | NextUI, minarch (`platform.h`) | `MIYOO Player1` | SDL numbers buttons in key-code order, so the indices only hold if the key set is identical | Present the same device, below |
 | `MIYOO Player1`: bus 3 (USB), `045e:028e` version `0114` (Xbox 360 pad IDs), keys `BTN_SOUTH`, `EAST`, `NORTH`, `WEST`, `TL`, `TR`, `SELECT`, `START`, `MODE`, `THUMBL`, `THUMBR`, axes `ABS_X`, `Y`, `Z`, `RX`, `RY`, `RZ`, `HAT0X`, `HAT0Y`, no force feedback. Created by `miyoo_inputd` from `/dev/ttyS1` (stick MCU), `/dev/miyooio`, `/sys/class/miyooio_chr_dev/joy_type`, through `/dev/uinput` | `launch.sh` starts it | vendor `miyooio` character driver | No `miyooio` on mainline | zlyme's gamepad driver presenting exactly this identity (name, bus, IDs, keys, axes and their ranges). Or a `miyooio` compatibility driver so the stock daemon runs. The driver is less code to carry, but `miyoo_inputd` then has to fail harmlessly |
 | Other input numbering: event1 `hall wake key`, event2 `rk805 pwrkey`, event3 `adc-keys`, event4 `hdmi_cec_key`, event5 `MIYOO Player1` | `launch.sh` (event1), SDL's enumeration | registration order | Only event0 and event1 are named by number | Keep event0 and event1 fixed; the others can float |
@@ -98,7 +98,7 @@ constrains the design.
 
 - `wifibt-power`, which writes `/sys/class/rkwifi/wifi_power` (also written by
   spruceOS, so stock-facing) and finds the chip by its USB ID, `0bda:b733`:
-  it is `2-1` on the vendor kernel and `3-1` on mainline.
+  it is `2-1` on the vendor kernel and `3-1` here.
 - `S36load_wifi_modules`, `S40bluetooth`, `S41dhcpcd`, `wifibtd`.
 - The rootfs copies of `modetest` and `amixer`, which is where the wrappers
   would go.
@@ -125,8 +125,10 @@ constrains the design.
 tree, the config fragment, and the patches and drivers, each split in two.
 `hardware/` makes the board work on mainline and could go upstream; `stock/`
 is the vendor interface on top, BaseOS-only. The out-of-tree `mali_kbase`
-and `8733bu` carry their own patches. The build adds both as modules. `MY355_KERNEL=mainline` puts the modules
-in the rootfs and the kernel in the boot FIT, and rcS loads `mali_kbase`.
+and `8733bu` carry their own patches. The build adds both as modules. It is
+the only kernel BaseOS builds since the vendor path was removed
+([decisions](decisions.md)); the comparisons with "main" below are against
+the last vendor-kernel build.
 
 It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
 

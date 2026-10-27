@@ -2,9 +2,8 @@
 # my355 base OS early init.
 #
 # Budget: well under a second on a normal boot. Nothing sleeps; anything slow
-# runs in the background. The vendor kernel already mounts /dev
-# (CONFIG_DEVTMPFS_MOUNT=y) and carries Mali and the panel built in; a mainline
-# kernel needs only its GPU driver loaded (baseos-gpu, below).
+# runs in the background. The only module loaded here is the GPU driver
+# (baseos-gpu, below); WiFi and Bluetooth load with their radio.
 #
 # Boot forensics land in /run/boot-* and one log on /data, because this device
 # has neither a UART attached nor a framebuffer console — see docs/diagnostics.md.
@@ -22,29 +21,16 @@ grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 
 mark /run/boot-rcS-start
 
-# Mainline only (its GPU driver is a module, loaded by baseos-gpu below).
-if [ -f "/lib/modules/$(uname -r)/modules.dep" ]; then
-	# The codec's mux starts on its first entry, HP: the speaker, as on stock
-	# once launch.sh sets SPK, for software that never picks a path.
-	printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
-		/usr/bin/amixer -q -c 0 -s &
-fi
+# The codec's mux starts on its first entry, HP: the speaker, as on stock
+# once launch.sh sets SPK, for software that never picks a path.
+printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
+	/usr/bin/amixer -q -c 0 -s &
 
-# The boot logo and backlight, unless the vendor U-Boot handed its own logo to
-# the kernel (logo,offset). In the background: its pan waits for the panel.
-if [ ! -e /proc/device-tree/display-subsystem/route/route-dsi0/logo,offset ]; then
-	{ /usr/bin/fbsplash 0; mark /run/boot-logo; } &
-	echo 0 > /sys/class/backlight/backlight/bl_power 2>/dev/null
-fi
+# The boot logo and backlight. In the background: its pan waits for the panel.
+{ /usr/bin/fbsplash 0; mark /run/boot-logo; } &
+echo 0 > /sys/class/backlight/backlight/bl_power 2>/dev/null
 # NextUI's launch.sh reads the backlight's duty here to keep the panel lit.
 /bin/mount -t debugfs -o nodev,noexec,nosuid debugfs /sys/kernel/debug
-
-# The vendor kernel restores rails from RK817 POWER_EN_SAVE1 on shutdown; if it
-# reads 0 that cuts vcc_1v8/vcc3v3_pmu and the device hangs. Nothing else sets it.
-if [ -w /sys/rk8xx/rk8xx_dbg ]; then
-	echo "r a4" > /sys/rk8xx/rk8xx_dbg
-	echo "w a4 07" > /sys/rk8xx/rk8xx_dbg
-fi
 
 /bin/mount -t tmpfs -o mode=755,size=64m   tmpfs /var
 /bin/mkdir -p /var/lib /var/log /var/tmp /var/empty /var/lib/dbus /run/dbus
@@ -118,7 +104,7 @@ fi
 /bin/ln -sf /run/machine-id /var/lib/dbus/machine-id
 /bin/ln -sf /userdata/bluetooth /var/lib/bluetooth
 # Carry entropy across boots, credited, before dbus-daemon: it blocks on the
-# crng, which mainline only has ready at ~3 s (the vendor kernel before init).
+# crng, which is only ready at ~3 s otherwise (the RK3566 TRNG is off).
 /usr/sbin/seedrng /data/random-seed 2>/dev/null
 mark /run/boot-dbus-start
 # The system bus, as stock's S30dbus does: NextUI's audiomon.elf connects to it
@@ -149,8 +135,8 @@ mark /run/boot-dbus-start
 # Mount point and the /mnt/sdcard alias are baked into the image.
 /usr/sbin/mount-frontend
 
-# Mainline only: libmali or Mesa, from baseos.conf, before the frontend starts.
-[ -x /usr/sbin/baseos-gpu ] && /usr/sbin/baseos-gpu
+# libmali or Mesa, from baseos.conf, before the frontend starts.
+/usr/sbin/baseos-gpu
 
 mark /run/boot-update-start
 # A *.bosupd on either card writes the reserved half of each region, verifies it

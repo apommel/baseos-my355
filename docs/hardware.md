@@ -57,18 +57,20 @@ writable from a running stock system, no `/dev/mem` hack and no disassembly.
 
 ### Kernel config points that matter
 
-Confirmed from `/proc/config.gz`. Between them these are why `rcS` is as short as
-it is:
+From `tools/kernel/my355.config`, over arm64 `defconfig`. Between them these
+are why `rcS` is as short as it is:
 
 - `CONFIG_DEVTMPFS_MOUNT=y` — the kernel mounts `/dev` itself.
-- No initramfs in use: the kernel mounts root directly.
-- `ext4`, `vfat`, `squashfs`, `overlay`, `ntfs`, `xfs`, `f2fs`-adjacent all built in.
-- `CONFIG_DRM_FBDEV_EMULATION=y` → `/dev/fb0` exists, so `fbsplash` works.
-- `CONFIG_KALLSYMS=y`, which is what makes `initcall_blacklist=` work
-  ([boot time](boot-time.md)).
-- Essentially every driver is built in. Only one module is loaded at runtime
-  (`RTL8189FU`, unused). Mali, `rtl8733bu` (WiFi) and the DSI panel are all
-  in-kernel, so the rootfs needs almost no module handling.
+- No initramfs: the kernel mounts root directly.
+- `CONFIG_DRM_FBDEV_EMULATION=y` → `/dev/fb0` exists, so `fbsplash` works;
+  `CONFIG_FRAMEBUFFER_CONSOLE` is off, as on the vendor kernel, since its first
+  modeset held kernel init for 1.2 s.
+- `CONFIG_I2C_CHARDEV=y` and `CONFIG_SWAP=y`, which stock-built software uses.
+- The panel, storage and input are built in. The GPU (`mali_kbase` or
+  `panfrost`), WiFi (`8733bu`) and Bluetooth are modules, loaded on demand.
+
+The vendor 5.10 kernel BaseOS booted until 1.3.0 had essentially every driver
+built in, and only one module loaded at runtime (`RTL8189FU`, unused).
 
 ---
 

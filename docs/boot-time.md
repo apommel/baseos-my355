@@ -4,8 +4,14 @@ Where the time goes from power-on, what each change was worth, and what is left.
 Superseded tables and the measurements that led here are in
 [history](history.md).
 
+Measured on the vendor 5.10 kernel, which BaseOS booted until 1.3.0. The
+mainline kernel's figures, against these, are in
+[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.40 s
+and `nextui.elf` at 2.33 s. The initcall list below has no counterpart there;
+the SD and `rcS` findings carry over.
+
 Figures are cold boots on hardware with **USB unplugged at power-on** — a
-cable makes the vendor U-Boot run its charge animation first, and that lands in
+cable makes U-Boot check the charger first, and that lands in
 the arch counter — unless marked *warm* (a reboot from BaseOS).
 
 ## Where a boot goes today
@@ -32,7 +38,7 @@ boots on 2026-10-07, after the top USB port's OHCI came back (+0.05 s).
 `baseos-bootinfo timeline` prints these for any boot; the first frame needs a
 `MY355_DIAG=1` rootfs ([U-Boot](uboot.md), *Measuring it*).
 
-On the vendor U-Boot (`MY355_UBOOT=vendor`, as released in 0.6.0):
+On the vendor U-Boot (as released in 0.6.0):
 
 | phase | at power-on | source |
 |---|---|---|
@@ -166,7 +172,7 @@ the edge of the card's bad window (60–105° on this card) can get no data at a
 and wait out the controller's ~113 ms data timeout, which is most of the
 difference between card init at ~77 ms and at ~200 ms. At the vendor default of
 1° steps the edge was hit in 13 of 16 boots; `rockchip,desired-num-phases = 36`
-(10° steps, `rkbootimg.SD_TUNING_PHASES`) cut it to 6 of 22, both paths. The
+(10° steps) cut it to 6 of 22, both paths. The
 timeout itself is in the kernel's tuning code, out of reach. A fixed phase
 (`rockchip,use-v2-tuning`) would skip tuning altogether but suits only the card
 it was chosen for. All warm reboots, one card.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stands in for the stock daemon frontends start: on mainline, MIYOO Player1 is
+# Stands in for the stock daemon frontends start: MIYOO Player1 is
 # the kernel's miyoo-player1 driver. Like the daemon at start, it hands over the
 # stock calibration files, then idles so the frontend still finds it running.
 for n in /sys/class/input/input*/name; do

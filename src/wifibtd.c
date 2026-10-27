@@ -27,8 +27,8 @@
 #define MODULE_ADD "add@/module/rtk_btusb"
 #define BLOCK_SETTLE_S 2
 
-// struct rfkill_event as 5.10 sends it: 8 bytes, which mainline also returns
-// to a read of that size.
+// struct rfkill_event's original 8 bytes, which the kernel returns to a read
+// of that size.
 struct rfkill_ev {
 	unsigned int idx;
 	unsigned char type, op, soft, hard;

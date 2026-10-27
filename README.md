@@ -25,31 +25,36 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 
 | power-on → | stock | **BaseOS** |
 |---|---|---|
-| the kernel's first line | 4.30 s | **0.99 s** |
-| frontend starts | 15.79 s | **1.99 s** |
-| `nextui.elf` starts | — | **2.40–2.42 s** |
-| NextUI's first frame | 31.50 s | **2.93–2.98 s** |
+| the kernel's first line | 4.30 s | **0.82 s** |
+| frontend starts | 15.79 s | **1.64 s** |
+| `nextui.elf` starts | — | **2.32–2.34 s** |
+| NextUI's first frame | 31.50 s | not yet measured on the mainline kernel (2.93–2.98 s on the vendor one) |
 
 Measured with USB unplugged.
 
 Where the time is saved:
 
 - **Stock boot scripts are replaced** by a small BusyBox init, saving 9.9 s.
-- **A mainline U-Boot**, built from source, starts the kernel at 0.94 s
+- **A mainline U-Boot**, built from source, starts the kernel at 0.82 s
   ([docs/uboot.md](docs/uboot.md)).
-- **The kernel is stored compressed**, so about 12 MiB is read from the card
-  instead of 34.9 MiB.
-- **The SD card runs at full speed**: 63 MB/s instead of 22 MB/s.
-- **Unused kernel startup steps are skipped**, halving the kernel's own startup.
+- **The kernel is stored compressed**, so about 10.4 MiB is read from the card
+  instead of 26 MiB.
+- **The SD card runs at full speed**: 64 MB/s instead of 22 MB/s.
+- **The kernel is built for this device**: no framebuffer console, and the
+  panel's power-up waits shortened.
 - **Vendor libraries load from the SD card** instead of the slower internal storage.
 
-Details are in [docs/boot-time.md](docs/boot-time.md).
+The vendor-kernel measurements behind most of this are in
+[docs/boot-time.md](docs/boot-time.md).
 
 ## How it works
 
-The vendor kernel, BL31 and OP-TEE are kept unchanged. U-Boot is mainline, built
-from source. The vendor userland is replaced by a BusyBox init, plus the parts of
-the stock libraries that frontends need.
+U-Boot and Linux are mainline, built from source; the vendor's BL31 and OP-TEE
+are kept unchanged. The vendor userland is replaced by a BusyBox init, plus the
+parts of the stock libraries that frontends need. Stock-built frontends run
+unmodified: the kernel presents the interfaces they expect from the vendor
+kernel ([docs/mainline-compat.md](docs/mainline-compat.md)). The GPU driver is
+Rockchip's libmali or Mesa's Panfrost, picked in `baseos.conf`.
 
 ## Building
 
@@ -61,7 +66,7 @@ emulation once:
 docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
 
-The build needs three files from the stock firmware. Download them:
+The build needs two files from the stock firmware. Download them:
 
 ```sh
 ./fetch-prepared.sh
@@ -86,6 +91,8 @@ prepare-stock.sh    extract the stock files from a NAND backup
 cache-pack.sh       package the stock files for publishing
 build-all.sh        build everything: the release .img.zip, .bosupd and SHA256SUMS
 build-uboot.sh      build U-Boot
+build-kernel.sh     build Linux, its device tree and modules
+build-gpu.sh        build libmali's wrappers and Mesa
 build-rootfs.sh     build the root filesystem
 build-image.sh      build the SD card image
 build-update.sh     build the update file (.bosupd)
@@ -93,7 +100,7 @@ flash-card.sh       write the image to an SD card (macOS)
 tests/              offline tests
 overlay/            init scripts and the frontend launcher
 manifest/           list of stock files to keep
-tools/              image and boot chain tools; U-Boot patches in tools/uboot/
+tools/              image and boot chain tools; U-Boot in tools/uboot/, Linux in tools/kernel/
 src/                boot splash and small helper programs
 docs/               documentation — start at docs/README.md
 ```
@@ -101,7 +108,7 @@ docs/               documentation — start at docs/README.md
 ## Relationship to BaseOS for H700
 
 Forked from [BaseOS](https://github.com/pvaibhav/BaseOS) for Allwinner H700
-handhelds, with the same approach: keep the vendor kernel, replace the vendor
-userland, measure everything. The hardware is different, so the boot chain, image
+handhelds, with the same approach: replace the vendor userland, keep what
+frontends depend on, measure everything. The hardware is different, so the boot chain, image
 format and build are separate. The boot splash, artwork and some build helpers are
 shared, and the card setup and update system are adapted from it. See [NOTICE](NOTICE).

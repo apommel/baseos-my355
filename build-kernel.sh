@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the mainline Linux kernel for my355 (experimental; docs/mainline-compat.md).
+# Build the Linux kernel for my355 (docs/mainline-compat.md).
 #
 # Produces, in work/my355/kernel:
 #   Image                    the arm64 kernel, uncompressed (mkfit.py compresses)
@@ -11,8 +11,6 @@
 #
 # Patches and drivers sit in hardware/ (the board on mainline, upstreamable)
 # or stock/ (the vendor kernel's interface on top, BaseOS-only).
-#
-# Then: MY355_KERNEL=mainline ./build-rootfs.sh && MY355_KERNEL=mainline ./build-image.sh
 #
 # Usage: ./build-kernel.sh [--clean]
 set -eu
@@ -45,7 +43,7 @@ VOLUME="baseos-kernel-build"
 CLEAN=0
 case "${1:-}" in
   --clean) CLEAN=1 ;;
-  -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
   "") ;;
   *) echo "unknown option: $1" >&2; exit 2 ;;
 esac
@@ -223,4 +221,3 @@ EOF
 
 echo
 echo "  $OUT ($KREL)"
-echo "  next: MY355_KERNEL=mainline ./build-rootfs.sh && MY355_KERNEL=mainline ./build-image.sh"
