@@ -1,0 +1,16 @@
+#!/bin/sh
+# Stock's modetest, with stock's object ids mapped: NextUI writes to 179, the
+# vendor kernel's DSI-1, and 164 is its HDMI-A-1. Mainline numbers them its way.
+id() { cat "/sys/class/drm/card0-$1/connector_id" 2>/dev/null || echo "$2"; }
+n=$#
+while [ "$n" -gt 0 ]; do
+	a=$1
+	shift
+	n=$((n - 1))
+	case $a in
+	179:*) a=$(id DSI-1 179):${a#179:} ;;
+	164:*) a=$(id HDMI-A-1 164):${a#164:} ;;
+	esac
+	set -- "$@" "$a"
+done
+exec /usr/libexec/modetest "$@"

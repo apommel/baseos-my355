@@ -10,9 +10,9 @@
 #      MY355_DIAG=1 overlay-diag/ on top: boot-timing probes, not for release
 #
 # MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental), and
-# overlay-mainline/: the stock files its drivers replace, WiFi's regulatory
-# database, and stock's Bluetooth firmware under btrtl's names. The vendor
-# kernel has everything built in.
+# overlay-mainline/: the stock files its drivers replace, a modetest wrapper,
+# WiFi's regulatory database, and stock's Bluetooth firmware under btrtl's
+# names. The vendor kernel has everything built in.
 #
 # fbsplash is built from src/fbsplash.c: this device has no console, so a status
 # message on the panel is the only way to say "insert a card" or "installing
@@ -130,6 +130,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   if [ "$DIAG" = 1 ]; then cp -a /overlay-diag/. "$R"/; fi
   # Stock binaries the mainline drivers stand in for (miyoo_inputd).
   if [ "$KERNEL" = mainline ]; then
+    # The stock modetest moves aside for the wrapper that maps its object ids.
+    mv "$R"/usr/bin/modetest "$R"/usr/libexec/modetest
     cp -a /overlay-mainline/. "$R"/
     # bt_init.sh insmods this path: the stand-in that loads mainline btusb.
     cp "$R"/usr/lib/modules/*/kernel/drivers/bluetooth/rtk_btusb.ko "$R"/usr/lib/modules/
