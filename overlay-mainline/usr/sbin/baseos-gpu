@@ -1,0 +1,47 @@
+#!/bin/sh
+# The GPU stack that baseos.conf's gpu= picks, set up by rcS before the
+# frontend starts: mali (the default: libmali and mali_kbase) or panfrost (Mesa).
+
+. /usr/share/baseos/log.sh
+
+# baseos.conf lives on this card's FAT volume, wherever the frontend is.
+own=/tmp/.baseos-gpu conf=
+if grep -q '^/dev/mmcblk1p5 /mnt/SDCARD ' /proc/mounts; then
+	conf=/mnt/SDCARD/baseos.conf
+elif /bin/mkdir -p "$own" && /bin/mount -t vfat -o ro /dev/mmcblk1p5 "$own" 2>/dev/null; then
+	conf=$own/baseos.conf
+fi
+
+gpu=mali
+if [ -r "$conf" ]; then
+	while IFS= read -r line || [ -n "$line" ]; do
+		line=${line%%#*}
+		case "$line" in *=*) ;; *) continue ;; esac
+		key=${line%%=*} value=${line#*=}
+		key=${key#"${key%%[![:space:]]*}"} key=${key%"${key##*[![:space:]]}"}
+		[ "$key" = gpu ] || continue
+		value=${value#"${value%%[![:space:]]*}"} value=${value%"${value##*[![:space:]]}"}
+		case "$value" in
+			mali|panfrost) gpu=$value ;;
+			*) log "baseos.conf: unknown gpu=$value, using mali"; gpu=mali ;;
+		esac
+	done < "$conf"
+fi
+[ "$conf" = "$own/baseos.conf" ] && /bin/umount "$own"
+
+if [ "$gpu" = panfrost ]; then
+	# Everything finds these by soname in /usr/lib, so Mesa's go over libmali's;
+	# NextUI links libmali itself.
+	for l in libmali.so.1 libmali_hook.so.1 libEGL.so.1 libGLESv1_CM.so.1 \
+		libGLESv2.so.2 libgbm.so.1; do
+		/bin/mount --bind "/usr/lib/mesa/$l" "/usr/lib/$l"
+	done
+	# The Vulkan loader reads ICDs from here.
+	/bin/mount --bind /usr/lib/mesa/vulkan /usr/share/vulkan
+	module=panfrost
+else
+	module=mali_kbase
+fi
+echo "$gpu" > /run/gpu
+# Backgrounded: nothing in rcS draws with it.
+{ /sbin/modprobe "$module" && mark /run/boot-gpu; } &

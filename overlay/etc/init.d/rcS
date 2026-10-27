@@ -4,7 +4,7 @@
 # Budget: well under a second on a normal boot. Nothing sleeps; anything slow
 # runs in the background. The vendor kernel already mounts /dev
 # (CONFIG_DEVTMPFS_MOUNT=y) and carries Mali and the panel built in; a mainline
-# kernel needs only its GPU driver loaded (below).
+# kernel needs only its GPU driver loaded (baseos-gpu, below).
 #
 # Boot forensics land in /run/boot-* and one log on /data, because this device
 # has neither a UART attached nor a framebuffer console — see docs/diagnostics.md.
@@ -22,10 +22,8 @@ grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 
 mark /run/boot-rcS-start
 
-# Mainline only: the GPU driver is a module, so the stock libmali (mali_kbase)
-# and Mesa (panfrost) stay a choice. Backgrounded: nothing in rcS draws with it.
+# Mainline only (its GPU driver is a module, loaded by baseos-gpu below).
 if [ -f "/lib/modules/$(uname -r)/modules.dep" ]; then
-	{ /sbin/modprobe mali_kbase && mark /run/boot-gpu; } &
 	# The codec's mux starts on its first entry, HP: the speaker, as on stock
 	# once launch.sh sets SPK, for software that never picks a path.
 	printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
@@ -150,6 +148,9 @@ mark /run/boot-dbus-start
 # block device, only /mnt/SDCARD.
 # Mount point and the /mnt/sdcard alias are baked into the image.
 /usr/sbin/mount-frontend
+
+# Mainline only: libmali or Mesa, from baseos.conf, before the frontend starts.
+[ -x /usr/sbin/baseos-gpu ] && /usr/sbin/baseos-gpu
 
 mark /run/boot-update-start
 # A *.bosupd on either card writes the reserved half of each region, verifies it

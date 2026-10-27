@@ -4,13 +4,16 @@
 # Four sources, assembled in this order so each can override the last:
 #   1. the merged-/usr skeleton the harvest assumes
 #   2. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
-#   3. the stock harvest (work/my355/prepared/stock-harvest.tar) — glibc, Mali,
-#      SDL2, adbd, wpa_supplicant; a verified closure, see prepare-stock.sh
+#   3. the stock harvest (work/my355/prepared/stock-harvest.tar) — Mali, SDL2,
+#      adbd, wpa_supplicant; a verified closure, see prepare-stock.sh — with
+#      manifest/debian.list's libraries over it: Debian trixie's glibc and GCC
+#      runtime, and the Vulkan loader
 #   4. overlay/ — init, inittab, rcS, the frontend session, and with
 #      MY355_DIAG=1 overlay-diag/ on top: boot-timing probes, not for release
 #
-# MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental), and
-# overlay-mainline/: the stock files its drivers replace, a modetest wrapper,
+# MY355_KERNEL=mainline adds ./build-kernel.sh's modules (experimental),
+# ./build-gpu.sh's libmali and Mesa, and overlay-mainline/: the stock files its
+# drivers replace, baseos-gpu, which picks between them, a modetest wrapper,
 # WiFi's regulatory database, and stock's Bluetooth firmware under btrtl's
 # names. The vendor kernel has everything built in.
 #
@@ -45,12 +48,29 @@ KERNEL="${MY355_KERNEL:-vendor}"
 case "$KERNEL" in
   vendor) ;;
   mainline) [ -f "$WORK/kernel/modules.tar" ] || {
-    echo "missing $WORK/kernel/modules.tar (run ./build-kernel.sh)" >&2; exit 1; } ;;
+    echo "missing $WORK/kernel/modules.tar (run ./build-kernel.sh)" >&2; exit 1; }
+    [ -f "$WORK/gpu/mesa.tar" ] || {
+    echo "missing $WORK/gpu/mesa.tar (run ./build-gpu.sh)" >&2; exit 1; } ;;
   *) echo "MY355_KERNEL must be vendor or mainline (got '$KERNEL')" >&2; exit 1 ;;
 esac
 
+# manifest/debian.list's packages, from snapshot.debian.org.
+USERLAND="$HERE/work/userland"
+mkdir -p "$USERLAND"
+grep -v -e '^#' -e '^$' "$HERE/manifest/debian.list" | while read -r deb sum _; do
+  f="$USERLAND/${deb##*/}"
+  [ -f "$f" ] && [ "$(baseos_sha256 "$f")" = "$sum" ] && continue
+  echo "== fetching ${deb##*/} =="
+  curl -fSL --retry 3 -o "$f.part" \
+    "https://snapshot.debian.org/archive/debian/$BASEOS_DEBIAN_SNAPSHOT/pool/main/$deb"
+  got="$(baseos_sha256 "$f.part")"
+  [ "$got" = "$sum" ] || { echo "${deb##*/} sha256 is $got, expected $sum" >&2; rm -f "$f.part"; exit 1; }
+  mv "$f.part" "$f"
+done
+
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
-  -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
+  -v "$WORK":/work -v "$HERE/overlay":/overlay:ro -v "$USERLAND":/userland:ro \
+  -v "$HERE/manifest/debian.list":/debian.list:ro \
   -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" -e KERNEL="$KERNEL" \
   -v "$HERE/overlay-mainline":/overlay-mainline:ro \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
@@ -84,8 +104,26 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # 3. The stock harvest. Applied after BusyBox so vendor binaries win where
   #    both provide a name.
   tar -xf /work/prepared/stock-harvest.tar -C "$R"
+  # manifest/debian.list over it.
+  apk add -q binutils
+  grep -v -e "^#" -e "^\$" /debian.list | while read -r deb _ libs; do
+    U=/tmp/deb; rm -rf "$U"; mkdir -p "$U"
+    (cd "$U" && ar x "/userland/${deb##*/}" data.tar.xz && tar -xJf data.tar.xz)
+    for l in $libs; do
+      f="$U/usr/lib/aarch64-linux-gnu/$l"
+      [ -e "$f" ] || { echo "no $l in ${deb##*/}" >&2; exit 1; }
+      rm -f "$R/usr/lib/$l" && cp -L "$f" "$R/usr/lib/$l"
+    done
+  done
   # lib/modules/<release>, depmod already run; rcS loads the GPU driver from it.
-  if [ "$KERNEL" = mainline ]; then tar -xf /work/kernel/modules.tar -C "$R"/usr; fi
+  # The GPU stacks baseos-gpu picks from: libmali g29p1 over the harvest g13p0,
+  # whose hook it replaces, and Mesa in usr/lib/mesa.
+  if [ "$KERNEL" = mainline ]; then
+    tar -xf /work/kernel/modules.tar -C "$R"/usr
+    rm "$R"/usr/lib/libmali_hook.so.1
+    tar -xf /work/gpu/libmali.tar -C "$R"
+    tar -xf /work/gpu/mesa.tar -C "$R"
+  fi
 
   # dropbear is multicall (dispatches on argv[0]); sftp-server is the path it
   # was compiled to exec.
