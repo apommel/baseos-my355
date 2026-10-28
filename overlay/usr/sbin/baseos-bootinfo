@@ -22,7 +22,7 @@ be32() { printf '%d' "0x$(od -An -tx1 "$1" | tr -d ' \n')"; }
 # first frame needs a MY355_DIAG=1 rootfs (baseos-frameprobe). `panel` is when
 # the DSI link starts streaming: the boot logo's first moment on the glass.
 timeline() {
-	pk() { dmesg | awk -F'[][]' -v re="$1" '$0 ~ re {printf "%.3f", $2; exit}'; }
+	pk() { dmesg | awk -F'[][]' -v re="$1" -v b="$base" '$0 ~ re {printf "%.3f", $2 + b; exit}'; }
 	started() { cut -d')' -f2 "/proc/$1/stat" | awk '{printf "%.2f", $20 / 100}'; }
 
 	uboot=-
@@ -30,6 +30,9 @@ timeline() {
 		[ "$(tr -d '\000' < "$rec/name" 2>/dev/null)" = start_kernel ] &&
 			uboot=$(awk -v t="$(be32 "$rec/mark")" 'BEGIN {printf "%.3f", t / 1e6}')
 	done
+	# The mainline kernel's printk clock starts at its own entry, not at power-on.
+	base=0
+	[ "$uboot" != - ] && [ "$(pk 'Booting Linux')" = 0.000 ] && base=$uboot
 	mount=$(pk 'EXT4-fs \\(mmcblk1p3\\): mounted')
 	probe=$(pk 'fe2b0000.mmc: Version')
 	card=$(pk 'mmc1: new')

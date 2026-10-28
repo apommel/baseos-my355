@@ -341,11 +341,25 @@ Against main, 2026-10-26, warm reboots and gambatte on battery:
 | the same, WiFi power save as stock | 2.92–3.02 W | |
 | the same, DMC | 2.92 W | |
 | the same, one session, both on this branch (2026-10-27) | 2.77–2.97 W | 2.93 W |
+| the same, CPU and `vdd_logic` bins, kernel cut to the board (2026-10-28) | 2.83–2.92 W | |
+| the same, NextUI's WiFi off | 2.25 W | |
 
 With the kernel cut to the board (2026-10-28), four warm reboots: U-Boot hands
 off at 0.59 s, reading the boot image in 294 ms instead of 460 and
 decompressing it in 96 instead of 154, and `Run /init` is at 1.08–1.09 s
 (1.22 s when SDR104 tuning hits the bad window's edge).
+
+Six warm reboots over adb with the tuning timeout at 15 ms (`0046`): frontend hand-off
+1.33–1.37 s, `nextui.elf` 1.90–2.02 s, first NextUI frame **2.48–2.63 s**
+against main's 2.93–2.98. Tuning still lands on the window's edge on three
+boots of six, about half since `vdd_logic` went to 875 mV (6 of 22 before),
+but it costs ~32 ms instead of 128.
+
+Six more on `gpu=mali`, the default: hand-off 1.32–1.36 s, `nextui.elf`
+2.27–2.38 s, first frame **3.01–3.14 s**, so ~0.45 s behind Panfrost and just
+behind main. `launch.sh`'s first `nextval.elf` takes 0.56 s at boot: it is the
+first to map libmali g29p1 (60 MB, stripped, 100k relocations), while keymon,
+batmon and audiomon map it too. Mesa's `libmali.so.1` is a small shim.
 
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
 is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main:

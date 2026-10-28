@@ -102,6 +102,10 @@ chip stayed on USB with it at 0. Developer Pak in front, BT never bound, two run
 So **off is not off**: the powered, enumerated chip costs ~320 mW more than
 cutting it.
 
+On mainline in gambatte (Oracle of Ages, 2026-10-28), 75 s points ABBA twice,
+NextUI's off with the chip's power cut: 2887 mW on, 2252 off, **−635 mW**. The
+CPU's time per rate did not move: ~61% at 816 MHz, ~19% at 1104, ~19% at 1800.
+
 ### Cutting the chip when both are off
 
 `wifibt-power want|release wifi|bt` holds the two intents and is the only thing

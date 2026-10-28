@@ -111,6 +111,7 @@ likely does the same.
 | **Mainline U-Boot** | **1.8 s** | first printk 2.85 → 0.99 s; step by step under *What is left*, below |
 | USB probes held back until `rcS` | ~0.3 s on half the boots | the WiFi chip's probe no longer delays the root mount; below |
 | SDR104 tuning in 10° steps | ~0.12 s on half the boots | a tuning read on the edge of the card's bad window waits out a 113 ms timeout in 6 of 22 boots, not 13 of 16; below |
+| Tuning data timeout 15 ms (`0046`) | ~0.1 s on half the boots | the read on the bad window's edge waits 15 ms instead of the controller's 112 ms maximum: card init 80–112 ms instead of 80–214, six boots (2026-10-28) |
 | `quiet` + `performance` governor | ~0.1 s | full speed from cpufreq's probe until the frontend picks its own |
 | `rcS` trimming + clean shutdown | ~30 ms, plus up to 0.2 s of journal replay | see below |
 
