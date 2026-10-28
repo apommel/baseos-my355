@@ -140,7 +140,7 @@ It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
 - GPIO chips at 0, 32, 64, 96 and 128, so `gpio150` and `gpio20` are free
 - `MIYOO Player1`: name, IDs, keys, axes and ranges, from a kernel driver
 - ALSA `rockchiprk817` as card 0, `rockchiphdmi` as card 1
-- the codec's `Playback Path`, `Capture MIC Path` and `SPK Volume`
+- the codec's `Playback Path` and `SPK Volume`
 - the reboot modes, so a shutdown with the charger in restarts into charge mode
 - `/dev/mali0` (r54p2), `card0` with `DSI-1` and `HDMI-A-1`
 
@@ -156,7 +156,13 @@ Different from stock, found on the first boots:
   upstream race (Jonas Karlman on the rock-3b UHS series, 2024). An
   `io-domains-supply` on the slot makes fw_devlink probe it after the
   io-domains: SDR104 at 0.56 s, 64.6 MB/s (high speed: 22.5), and through
-  lid sleep (2026-10-27).
+  lid sleep (2026-10-27). `rockchip,desired-num-phases = 36`, as on the
+  vendor path, keeps tuning off the bad window's edge ([boot
+  time](boot-time.md)).
+- **Charge voltage.** Mainline programs the RK817's charge voltage straight
+  from the battery node, which had 4.25 V; the vendor tree charges to 4.2 V
+  and ends at 300 mA. The node now has the vendor's values and `ocv_table`
+  end points (2026-10-27).
 - **Restart at 1.8 V.** Shutdown left `vccio_sd` at 1.8 V, and a PSCI restart
   keeps the PMIC's rails: the preloader could not read the card and booted
   stock from NAND. The SD core now returns vqmmc to 3.3 V after the power-off,
@@ -258,10 +264,11 @@ Different from stock, found on the first boots:
   matches on it, so a more standard name would lose existing mappings.
 - **Codec controls.** Mainline's codec has `Playback Mux` (`HP`, `SPK`),
   which nothing stock sets, and it starts on `HP`, so the speaker was silent.
-  A patch adds the vendor's `Playback Path` (all eleven entries),
-  `Capture MIC Path` and `SPK Volume` first, as views of the mainline
-  controls: `Playback Mux`, the card's `Speaker Switch`, `Headphone Switch`
-  and `Mic Jack Switch` pin switches, and `Master Playback Volume`. The
+  A patch adds the vendor's `Playback Path` (all eleven entries) and
+  `SPK Volume` first, as views of the mainline controls: `Playback Mux`, the
+  card's `Speaker Switch` and `Headphone Switch` pin switches, and
+  `Master Playback Volume`. `Capture MIC Path` is left out: nothing stock-built
+  sets it. The
   `SPK` entries pick the speaker, the `HP` ones the headphones. `SPK_HP` and
   `RING_SPK_HP` play on the speaker only, as the two outputs share a pin, and
   `BT` is silent. Read back, `Playback Path` is `OFF`, `SPK` or `HP`.
