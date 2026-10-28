@@ -125,7 +125,11 @@ constrains the design.
 tree, the config fragment, and the patches and drivers, each split in two.
 `hardware/` makes the board work on mainline and could go upstream; `stock/`
 is the vendor interface on top, BaseOS-only. The out-of-tree `mali_kbase`
-and `8733bu` carry their own patches. The build adds both as modules. It is
+and `8733bu` carry their own patches. The build adds both as modules. The
+config is arm64 `defconfig` cut to this board: what the board lacks or BaseOS
+never uses is switched off in the fragment, and `localmodconfig` keeps only
+the modules in `modules.list`, since nothing loads a hotplugged device's
+module. 27.2 → 16.5 MB Image, 855 → 20 modules (2026-10-28). It is
 the only kernel BaseOS builds since the vendor path was removed
 ([decisions](decisions.md)); the comparisons with "main" below are against
 the last vendor-kernel build.
@@ -337,6 +341,11 @@ Against main, 2026-10-26, warm reboots and gambatte on battery:
 | the same, WiFi power save as stock | 2.92–3.02 W | |
 | the same, DMC | 2.92 W | |
 | the same, one session, both on this branch (2026-10-27) | 2.77–2.97 W | 2.93 W |
+
+With the kernel cut to the board (2026-10-28), four warm reboots: U-Boot hands
+off at 0.59 s, reading the boot image in 294 ms instead of 460 and
+decompressing it in 96 instead of 154, and `Run /init` is at 1.08–1.09 s
+(1.22 s when SDR104 tuning hits the bad window's edge).
 
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
 is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main:

@@ -107,6 +107,7 @@ likely does the same.
 | **Kernel stored gzipped** | **1.82 s** | the payload is 34.9 MiB raw, 11.9 MiB gzipped, and U-Boot reads every byte each boot. `libdeflate-gzip -12` is the same format zlib produces, 486 KB smaller, worth a further 41 ms |
 | **SD bus raised to SDR104** | **1.06 s** | the vendor DTB stops at `sd-uhs-sdr25`, pinning the bus at 50 MHz. 22.3 → 63.0 MB/s measured |
 | **Three initcalls skipped** | **0.71 s** | `initcall_blacklist=` on the command line; the kernel stays the vendor's |
+| **Kernel cut to the board** | **~0.3 s** | 27.2 → 16.5 MB Image, 10.4 → 6.6 MiB read: U-Boot hands off at 0.59 s instead of 0.82, and the kernel reaches `/init` ~60 ms sooner ([mainline compat](mainline-compat.md)) |
 | **Mainline U-Boot** | **1.8 s** | first printk 2.85 → 0.99 s; step by step under *What is left*, below |
 | USB probes held back until `rcS` | ~0.3 s on half the boots | the WiFi chip's probe no longer delays the root mount; below |
 | SDR104 tuning in 10° steps | ~0.12 s on half the boots | a tuning read on the edge of the card's bad window waits out a 113 ms timeout in 6 of 22 boots, not 13 of 16; below |

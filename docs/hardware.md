@@ -57,7 +57,8 @@ writable from a running stock system, no `/dev/mem` hack and no disassembly.
 
 ### Kernel config points that matter
 
-From `tools/kernel/my355.config`, over arm64 `defconfig`. Between them these
+From `tools/kernel/my355.config`, over arm64 `defconfig`, with modules cut to
+`tools/kernel/modules.list`: a module a pak needs goes there. Between them these
 are why `rcS` is as short as it is:
 
 - `CONFIG_DEVTMPFS_MOUNT=y` — the kernel mounts `/dev` itself.

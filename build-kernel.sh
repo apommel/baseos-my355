@@ -151,6 +151,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   make defconfig >/dev/null
   ./scripts/kconfig/merge_config.sh -m -O . .config /kernel/my355.config >/dev/null
   make olddefconfig >/dev/null
+  grep -v "^#" /kernel/modules.list > /tmp/modules.list
+  make LSMOD=/tmp/modules.list localmodconfig >/dev/null 2>&1
+  make olddefconfig >/dev/null
 
   # Kconfig drops a fragment line silently (a `select`, a `depends on`).
   fail=0
