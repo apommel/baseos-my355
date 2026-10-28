@@ -25,7 +25,7 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 
 | power-on → | stock | **BaseOS** |
 |---|---|---|
-| the kernel's first line | 4.30 s | **0.82 s** |
+| the kernel's first line | 4.30 s | **0.59 s** |
 | frontend starts | 15.79 s | **1.64 s** |
 | `nextui.elf` starts | — | **2.32–2.34 s** |
 | NextUI's first frame | 31.50 s | not yet measured on the mainline kernel (2.93–2.98 s on the vendor one) |
@@ -35,10 +35,10 @@ Measured with USB unplugged.
 Where the time is saved:
 
 - **Stock boot scripts are replaced** by a small BusyBox init, saving 9.9 s.
-- **A mainline U-Boot**, built from source, starts the kernel at 0.82 s
+- **A mainline U-Boot**, built from source, starts the kernel at 0.59 s
   ([docs/uboot.md](docs/uboot.md)).
-- **The kernel is stored compressed**, so about 10.4 MiB is read from the card
-  instead of 26 MiB.
+- **The kernel is built for this board and stored compressed**, so about
+  6.6 MiB is read from the card instead of 26 MiB.
 - **The SD card runs at full speed**: 64 MB/s instead of 22 MB/s.
 - **The kernel is built for this device**: no framebuffer console, and the
   panel's power-up waits shortened.
