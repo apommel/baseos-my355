@@ -280,7 +280,7 @@
 
 	/*
 	 * DDR scaling through BL31 (drivers/hardware/rk3568-dmc.c), named as on
-	 * stock: devfreq/dmc. The rates are BL31's; stock lists them at 900 mV.
+	 * stock: devfreq/dmc. The rates are BL31's, the voltages stock's per bin.
 	 */
 	dmc: dmc {
 		compatible = "rockchip,rk3568-dmc";
@@ -296,22 +296,37 @@
 
 	dmc_opp_table: dmc-opp-table {
 		compatible = "operating-points-v2";
+		nvmem-cells = <&log_leakage>, <&cpu_pvtm>, <&mbist_vmin>;
+		nvmem-cell-names = "leakage", "pvtm", "mbist-vmin";
+		mbist-vmin = <825000 900000 950000>;
+		rockchip,leakage-voltage-sel = <
+			1	80	0
+			81	254	1
+		>;
+		rockchip,pvtm-voltage-sel = <
+			0	84000	0
+			84001	100000	1
+		>;
 
 		opp-324000000 {
 			opp-hz = /bits/ 64 <324000000>;
 			opp-microvolt = <900000>;
+			opp-microvolt-L1 = <875000>;
 		};
 		opp-528000000 {
 			opp-hz = /bits/ 64 <528000000>;
 			opp-microvolt = <900000>;
+			opp-microvolt-L1 = <875000>;
 		};
 		opp-780000000 {
 			opp-hz = /bits/ 64 <780000000>;
 			opp-microvolt = <900000>;
+			opp-microvolt-L1 = <875000>;
 		};
 		opp-1056000000 {
 			opp-hz = /bits/ 64 <1056000000>;
 			opp-microvolt = <900000>;
+			opp-microvolt-L1 = <875000>;
 		};
 	};
 };

@@ -181,6 +181,11 @@ Different from stock, found on the first boots:
   Lowering the voltage further only lowers the clock (~1393 MHz at 850 mV on
   "1800"), so undervolting is underclocking here, as on stock. The PLL steps
   up to 816 MHz are exact, at 850 mV in every bin.
+
+  `vdd_logic` follows the same way: `rk3568-dmc` takes the DMC table's bin,
+  the higher of its PVTM and `log-leakage` bins as on stock, before loading
+  it. This unit is L1 (leakage 73 is L0, PVTM L1): 875 mV at every DDR rate
+  instead of 900.
 - **Restart at 1.8 V.** Shutdown left `vccio_sd` at 1.8 V, and a PSCI restart
   keeps the PMIC's rails: the preloader could not read the card and booted
   stock from NAND. The SD core now returns vqmmc to 3.3 V after the power-off,
@@ -369,6 +374,3 @@ Where the 0.6 W went, in game, 45 s points:
 Still to do:
 
 - optional: Bluetooth audio dropouts, as on stock
-- optional: `vdd_logic` per chip. Stock's DMC runs it at 875 mV on this
-  unit, mainline at 900 mV, worth ~10–20 mW. Like the CPU's, it needs the
-  bin from the OTP: hardcoding it is unsafe on other units.

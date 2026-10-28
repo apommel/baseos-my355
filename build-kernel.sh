@@ -135,7 +135,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
     "RK3566 CPU voltage bin from the OTP" "CPUFREQ_DT && NVMEM && OF"
   driver hardware/rk3568-dmc.c drivers/devfreq ARM_RK3568_DMC_DEVFREQ bool \
     "RK3566/RK3568 DDR frequency scaling through BL31" \
-    "ARCH_ROCKCHIP && HAVE_ARM_SMCCC && PM_DEVFREQ_EVENT && DEVFREQ_GOV_SIMPLE_ONDEMAND"
+    "ARCH_ROCKCHIP && HAVE_ARM_SMCCC && PM_DEVFREQ_EVENT && DEVFREQ_GOV_SIMPLE_ONDEMAND && ARM_ROCKCHIP_CPUFREQ_NVMEM"
   driver stock/hall-mh248.c drivers/input/misc INPUT_HALL_MH248 tristate \
     "Miyoo Flip lid sensor, as hall-mh248" "INPUT_MISC && GPIOLIB && OF"
   driver stock/rkwifi.c drivers/misc MISC_RKWIFI tristate \
