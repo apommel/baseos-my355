@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * RK3566 CPU voltage bin, as the vendor's rockchip_opp_select picks it: the
- * OTP's PVTM count, times 10, against rockchip,pvtm-voltage-sel.
+ * RK3566 voltage bins, as the vendor's rockchip_opp_select picks them from the
+ * OTP. Also used by rk3568-dmc for vdd_logic.
  */
 
 #include <linux/cpu.h>
 #include <linux/init.h>
+#include <linux/minmax.h>
+#include <linux/module.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -13,7 +15,7 @@
 #include <linux/slab.h>
 
 #define PVTM_SCALE	10
-/* The lowest voltage of any bin: a lower mbist-vmin floor changes nothing. */
+/* No bin goes lower, so an mbist-vmin floor up to it changes nothing. */
 #define BIN_MIN_UV	850000
 
 static int rk_cpufreq_read_cell(struct device_node *np, const char *name,
@@ -39,19 +41,39 @@ static int rk_cpufreq_read_cell(struct device_node *np, const char *name,
 	return 0;
 }
 
-static int rk_cpufreq_bin(struct device *dev, struct device_node *np)
+static int rk_opp_sel(struct device_node *np, const char *prop, u32 value)
 {
-	u32 pvtm, index, vmin, min, sel;
-	int i, n, bin = -ENOENT, ret;
+	int i, n, bin = -ENOENT;
+	u32 min, sel;
+
+	n = of_property_count_u32_elems(np, prop);
+	for (i = 0; i + 3 <= n; i += 3) {
+		of_property_read_u32_index(np, prop, i, &min);
+		of_property_read_u32_index(np, prop, i + 2, &sel);
+		if (value >= min)
+			bin = sel;
+	}
+	return bin;
+}
+
+/* Also called by rk3568-dmc. The higher of the PVTM and leakage bins. */
+int rockchip_opp_bin(struct device *dev, struct device_node *np);
+int rockchip_opp_bin(struct device *dev, struct device_node *np)
+{
+	u32 pvtm = 0, leakage, index, vmin;
+	int ret, bin = -ENOENT;
 
 	ret = rk_cpufreq_read_cell(np, "pvtm", &pvtm);
 	if (ret == -EPROBE_DEFER)
 		return ret;
-	if (ret || !pvtm) {
-		dev_info(dev, "no PVTM count, keeping the common table\n");
-		return -ENOENT;
-	}
-	pvtm *= PVTM_SCALE;
+	if (!ret && pvtm)
+		bin = rk_opp_sel(np, "rockchip,pvtm-voltage-sel", pvtm * PVTM_SCALE);
+
+	ret = rk_cpufreq_read_cell(np, "leakage", &leakage);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+	if (!ret)
+		bin = max(bin, rk_opp_sel(np, "rockchip,leakage-voltage-sel", leakage));
 
 	/* As for the vendor, an index past the table is no floor. */
 	ret = rk_cpufreq_read_cell(np, "mbist-vmin", &index);
@@ -59,25 +81,16 @@ static int rk_cpufreq_bin(struct device *dev, struct device_node *np)
 		return ret;
 	if (!ret && index &&
 	    !of_property_read_u32_index(np, "mbist-vmin", index - 1, &vmin) &&
-	    vmin > BIN_MIN_UV) {
-		dev_info(dev, "pvtm %u, mbist-vmin %u uV: keeping the common table\n",
-			 pvtm, vmin);
-		return -ENOENT;
-	}
+	    vmin > BIN_MIN_UV)
+		bin = -ENOENT;
 
-	n = of_property_count_u32_elems(np, "rockchip,pvtm-voltage-sel");
-	for (i = 0; i + 3 <= n; i += 3) {
-		of_property_read_u32_index(np, "rockchip,pvtm-voltage-sel", i, &min);
-		of_property_read_u32_index(np, "rockchip,pvtm-voltage-sel", i + 2, &sel);
-		if (pvtm >= min)
-			bin = sel;
-	}
 	if (bin < 0)
-		dev_info(dev, "pvtm %u matches no bin, keeping the common table\n", pvtm);
+		dev_info(dev, "pvtm %u: keeping the common table\n", pvtm * PVTM_SCALE);
 	else
-		dev_info(dev, "pvtm %u: bin L%d\n", pvtm, bin);
+		dev_info(dev, "pvtm %u: bin L%d\n", pvtm * PVTM_SCALE, bin);
 	return bin;
 }
+EXPORT_SYMBOL_GPL(rockchip_opp_bin);
 
 static int rk_cpufreq_probe(struct platform_device *pdev)
 {
@@ -91,7 +104,7 @@ static int rk_cpufreq_probe(struct platform_device *pdev)
 	np = dev_pm_opp_of_get_opp_desc_node(get_cpu_device(0));
 	if (!np)
 		return -ENOENT;
-	bin = rk_cpufreq_bin(&pdev->dev, np);
+	bin = rockchip_opp_bin(&pdev->dev, np);
 	of_node_put(np);
 	if (bin == -EPROBE_DEFER)
 		return bin;
