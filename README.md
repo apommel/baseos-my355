@@ -26,11 +26,13 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 | power-on → | stock | **BaseOS** |
 |---|---|---|
 | the kernel's first line | 4.30 s | **0.59 s** |
-| frontend starts | 15.79 s | **1.64 s** |
-| `nextui.elf` starts | — | **2.32–2.34 s** |
-| NextUI's first frame | 31.50 s | not yet measured on the mainline kernel (2.93–2.98 s on the vendor one) |
+| frontend starts | 15.79 s | **1.33–1.37 s** |
+| `nextui.elf` starts | — | **2.27–2.38 s** |
+| NextUI's first frame | 31.50 s | **3.01–3.14 s** |
 
-Measured with USB unplugged.
+Stock measured with USB unplugged; BaseOS over warm reboots by adb, on the
+default `gpu=mali`. With `gpu=panfrost`, NextUI starts at 1.90–2.02 s and
+draws at 2.48–2.63 s: it doesn't load libmali's 60 MB.
 
 Where the time is saved:
 
