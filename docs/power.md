@@ -36,7 +36,11 @@ EVB's camera LDOs `vcc1v8_dvp` and `vcc2v8_dvp` (`always-on`), which nothing in
 the tree references. Switched off through `rk8xx_dbg`, nothing broke (buttons,
 sticks, lid, sound, panel, HDMI hotplug), and six 30 s on/off pairs gave 2587
 against 2571 mW: within the noise, so they are left as the vendor set them. That is why CPU undervolting (`feat/undervolting`) moved little at idle —
-`vdd_cpu` is not where idle power goes.
+`vdd_cpu` is not where idle power goes. Nor in a game: gambatte pinned at 816
+MHz, where it spends two thirds of its time, drew 2685 mW at 850 mV and 2664 at
+zlyme's 790 mV (four 40 s runs each, ABBA, 2026-10-28), so ~20 mW, below
+stock's floor for every bin. Above 816 MHz a lower voltage only lowers the
+clock ([mainline compat](mainline-compat.md)).
 
 ## The DDR touch boost — removed
 
