@@ -41,7 +41,7 @@ new file mode 100644
 index 0000000..1dea617
 --- /dev/null
 +++ b/cmd/my355.c
-@@ -0,0 +1,652 @@
+@@ -0,0 +1,648 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * BaseOS my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
@@ -249,8 +249,9 @@ index 0000000..1dea617
 + * The RK817 keeps a coulomb counter and the kernel's last SOC and capacity
 + * across power-off. The counter decays while off, so only a rise (charge
 + * gained while off) is believed; otherwise the saved state is kept, as the
-+ * vendor's fg_rk817.c does. FG_INIT makes the kernel take the result instead
-+ * of restarting from 0. Register map and units from that driver.
++ * vendor's fg_rk817.c does. The counter is reloaded from the result and
++ * OFF_CNT cleared, so the kernel takes the counter rather than re-estimating
++ * from the power-on voltage. Register map and units from that driver.
 + */
 +#define RK817_ADDR		0x20
 +#define RK817_ID_MSB		0xed
@@ -270,8 +271,6 @@ index 0000000..1dea617
 +#define RK817_SOC_REG0		0x9a
 +#define RK817_REMAIN_CAP_REG0	0x9d
 +#define RK817_NEW_FCC_REG0	0xa0
-+#define RK817_FG_INIT		0xa5
-+#define RK817_FG_INIT_DONE	BIT(7)
 +#define RK817_SAMPLE_RES	10	/* mOhm, the Flip's tree */
 +#define RK817_DESIGN_MAH	3000	/* design_capacity */
 +#define RK817_QMAX_MAH		3300	/* design_qmax */
@@ -432,11 +431,8 @@ index 0000000..1dea617
 +	for (i = 0; i < 4 && !ret; i++)
 +		ret = dm_i2c_reg_write(pmic, RK817_Q_INIT_H3 + i,
 +				       (adc >> (8 * (3 - i))) & 0xff);
-+	/* The vendor clears it here too; it is only reported now */
++	/* Past 3 (~30 min) the kernel would take the power-on voltage instead */
 +	ret = ret || dm_i2c_reg_write(pmic, RK817_OFF_CNT, 0);
-+	sts = dm_i2c_reg_read(pmic, RK817_FG_INIT);
-+	ret = ret || sts < 0 ||
-+	      dm_i2c_reg_write(pmic, RK817_FG_INIT, sts | RK817_FG_INIT_DONE);
 +	printf("my355 fg: soc %d.%03d -> %d.%03d%%%s, cap %d -> %d mAh of %d, off %d, cnt %d mAh%s\n",
 +	       pre_soc / 1000, pre_soc % 1000, soc / 1000, soc % 1000,
 +	       moved ? moved_by[basis] : "", pre_cap, cap, fcc, off,
