@@ -32,6 +32,9 @@
 
 #include <soc/rockchip/rockchip_sip.h>
 
+/* rockchip-cpufreq-nvmem.c */
+int rockchip_opp_bin(struct device *dev, struct device_node *np);
+
 /* RK3568 V2 SIP values. Linux 7.2.10 still has ROCKCHIP_SIP_DRAM_FREQ
  * and the RK3399 DRAM subcommands. These six are the ones the old 1012b
  * patch added to that header. They stay here so this module does not
@@ -530,8 +533,12 @@ static int rk3568_dmcfreq_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct rk3568_dmcfreq *data;
 	struct arm_smccc_res res;
+	struct dev_pm_opp_config config = {};
 	struct dev_pm_opp *opp;
+	struct device_node *np;
+	char name[] = "LXXXXXXXXXXX";
 	int complt_irq;
+	int bin;
 	int ret;
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
@@ -621,6 +628,20 @@ static int rk3568_dmcfreq_probe(struct platform_device *pdev)
 	/* Read boot frequency */
 	data->rate = clk_get_rate(data->dmc_clk);
 	data->boot_rate = data->rate;
+
+	/* vdd_logic by the chip's bin, as stock */
+	np = dev_pm_opp_of_get_opp_desc_node(dev);
+	bin = rockchip_opp_bin(dev, np);
+	of_node_put(np);
+	if (bin == -EPROBE_DEFER)
+		return bin;
+	if (bin >= 0) {
+		snprintf(name, sizeof(name), "L%d", bin);
+		config.prop_name = name;
+		ret = devm_pm_opp_set_config(dev, &config);
+		if (ret)
+			return ret;
+	}
 
 	/* Load and adjust OPP table */
 	ret = devm_pm_opp_of_add_table(dev);
