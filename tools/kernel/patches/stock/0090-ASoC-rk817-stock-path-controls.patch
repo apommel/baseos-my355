@@ -1,9 +1,9 @@
 From: Aurélien Pommel <aurelien.pommel@gmail.com>
 Subject: [PATCH] ASoC: rk817: the vendor driver's controls, over mainline's
 
-Stock-built software sets "Playback Path", "Capture MIC Path" and
-"SPK Volume" by name, which only the vendor driver has. They are added
-first, as views of "Playback Mux", the card's pin switches and
+Stock-built software sets "Playback Path" and "SPK Volume" by name, which
+only the vendor driver has. They are added first, as views of
+"Playback Mux", the card's speaker and headphone switches and
 "Master Playback Volume", which stay as they are.
 
 ---
@@ -18,15 +18,15 @@ first, as views of "Playback Mux", the card's pin switches and
  #include <sound/core.h>
  #include <sound/pcm_params.h>
  #include <sound/soc.h>
-@@ -108,7 +110,236 @@
+@@ -108,7 +110,203 @@
  
  static const struct snd_kcontrol_new dac_mux =
  	SOC_DAPM_ENUM("Playback Mux", dac_enum);
 +
 +/*
 + * The vendor driver's controls, which stock-built software sets by name, as a
-+ * view of the mainline ones: "Playback Mux", the card's "Speaker Switch",
-+ * "Headphone Switch" and "Mic Jack Switch", and "Master Playback Volume".
++ * view of the mainline ones: "Playback Mux", the card's "Speaker Switch" and
++ * "Headphone Switch", and "Master Playback Volume".
 + */
 +static const char * const rk817_playback_path_text[] = {
 +	"OFF", "RCV", "SPK", "HP", "HP_NO_MIC", "BT", "SPK_HP", "RING_SPK",
@@ -41,12 +41,7 @@ first, as views of "Playback Mux", the card's pin switches and
 +	PATH_SPK, PATH_HP, PATH_HP, PATH_SPK,
 +};
 +
-+static const char * const rk817_capture_path_text[] = {
-+	"MIC OFF", "Main Mic", "Hands Free Mic", "BT Sco Mic",
-+};
-+
 +static SOC_ENUM_SINGLE_EXT_DECL(rk817_playback_path_enum, rk817_playback_path_text);
-+static SOC_ENUM_SINGLE_EXT_DECL(rk817_capture_path_enum, rk817_capture_path_text);
 +
 +/* 0-100 down from 0 dB on the master volume, so it stops at -37.5 dB. */
 +#define RK817_SPK_VOL_MAX	100
@@ -157,32 +152,6 @@ first, as views of "Playback Mux", the card's pin switches and
 +	return changed | ret;
 +}
 +
-+static int rk817_capture_path_get(struct snd_kcontrol *kcontrol,
-+				  struct snd_ctl_elem_value *ucontrol)
-+{
-+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
-+	struct snd_ctl_elem_value *v = kzalloc(sizeof(*v), GFP_KERNEL);
-+	int ret;
-+
-+	if (!v)
-+		return -ENOMEM;
-+	ret = rk817_ctl_get(component, "Mic Jack Switch", v);
-+	ucontrol->value.enumerated.item[0] = v->value.integer.value[0] ? 1 : 0;
-+	kfree(v);
-+	return ret;
-+}
-+
-+static int rk817_capture_path_put(struct snd_kcontrol *kcontrol,
-+				  struct snd_ctl_elem_value *ucontrol)
-+{
-+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
-+	unsigned int item = ucontrol->value.enumerated.item[0];
-+
-+	if (item >= ARRAY_SIZE(rk817_capture_path_text))
-+		return -EINVAL;
-+	return rk817_ctl_put_one(component, "Mic Jack Switch", false, item != 0);
-+}
-+
 +static int rk817_spk_vol_info(struct snd_kcontrol *kcontrol,
 +			      struct snd_ctl_elem_info *uinfo)
 +{
@@ -238,8 +207,6 @@ first, as views of "Playback Mux", the card's pin switches and
 +static const struct snd_kcontrol_new rk817_stock_controls[] = {
 +	SOC_ENUM_EXT("Playback Path", rk817_playback_path_enum,
 +		     rk817_playback_path_get, rk817_playback_path_put),
-+	SOC_ENUM_EXT("Capture MIC Path", rk817_capture_path_enum,
-+		     rk817_capture_path_get, rk817_capture_path_put),
 +	{
 +		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 +		.name = "SPK Volume",
@@ -255,7 +222,7 @@ first, as views of "Playback Mux", the card's pin switches and
  static const struct snd_soc_dapm_widget rk817_dapm_widgets[] = {
  
  	/* capture/playback common */
-@@ -429,7 +660,8 @@
+@@ -429,7 +627,8 @@
  
  	snd_soc_component_set_pll(component, 0, 0, 0, 0);
  

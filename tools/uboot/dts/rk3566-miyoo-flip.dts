@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
  * Miyoo Flip: U-Boot's control tree on the my355 path. Only what U-Boot uses,
- * with values from the vendor kernel's tree; the kernel still gets that tree.
+ * with values from the vendor kernel's tree. The kernel boots with its own.
  *
  * There is no rk3566-miyoo-flip-u-boot.dtsi: U-Boot falls back to
  * rk3568-u-boot.dtsi (CONFIG_SYS_SOC), whose rk356x-u-boot.dtsi supplies the

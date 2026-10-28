@@ -83,8 +83,9 @@ CHARGE="my355 charge;"
 # The core clock before the card, so the read and the decompression run at it
 # too. If it refuses, the boot carries on at 816 MHz.
 PREP="my355 cpu 1104; my355 mark cpu_set;"
-# The fuel gauge bookkeeping the vendor U-Boot does each boot; the kernel
-# trusts it and would otherwise mistake charging while off for a crash. If it
+# The fuel gauge bookkeeping the vendor U-Boot does each boot: it keeps the
+# saved SOC unless the counter rose while off. Without it the kernel takes the
+# power-on voltage after ~30 min off, which reads wrong mid-curve. If it
 # refuses, the kernel falls back to its own estimate.
 PREP="$PREP my355 fg; my355 mark fg_sync;"
 # Probing the card's block device binds one device per GPT entry slot, and each

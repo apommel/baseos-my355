@@ -167,23 +167,26 @@
 		};
 	};
 
+	/*
+	 * The vendor tree's cell: charged to 4.2 V, finished at 300 mA, and its
+	 * ocv_table. The charge current is what the vendor kernel programmed.
+	 */
 	battery: battery {
 		compatible = "simple-battery";
 		charge-full-design-microamp-hours = <3000000>;
-		charge-term-current-microamp = <150000>;
-		/* RK817 has no 1.8 A step. */
+		charge-term-current-microamp = <300000>;
 		constant-charge-current-max-microamp = <1500000>;
-		constant-charge-voltage-max-microvolt = <4250000>;
+		constant-charge-voltage-max-microvolt = <4200000>;
 		factory-internal-resistance-micro-ohms = <100000>;
-		voltage-max-design-microvolt = <4250000>;
+		voltage-max-design-microvolt = <4200000>;
 		voltage-min-design-microvolt = <3200000>;
 		ocv-capacity-celsius = <20>;
 		ocv-capacity-table-0 =
-			<4250000 100>, <4057000 95>,  <3998000 90>,  <3967000 85>,  <3930000 80>,
+			<4150000 100>, <4057000 95>,  <3998000 90>,  <3967000 85>,  <3930000 80>,
 			<3883000 75>,  <3849000 70>,  <3816000 65>,  <3773000 60>,  <3722000 55>,
 			<3676000 50>,  <3638000 45>,  <3609000 40>,  <3587000 35>,  <3566000 30>,
 			<3547000 25>,  <3525000 20>,  <3500000 15>,  <3469000 10>,  <3426000 5>,
-			<3200000 0>;
+			<3378000 0>;
 	};
 
 	vccsys: vccsys {
@@ -732,7 +735,7 @@
 		rk817_charger: charger {
 			monitored-battery = <&battery>;
 			rockchip,resistor-sense-micro-ohms = <10000>;
-			rockchip,sleep-enter-current-microamp = <150000>;
+			rockchip,sleep-enter-current-microamp = <300000>;
 			rockchip,sleep-filter-current-microamp = <100000>;
 		};
 
@@ -868,6 +871,8 @@
 	sd-uhs-sdr25;
 	sd-uhs-sdr50;
 	sd-uhs-sdr104;
+	/* 10° steps, as the vendor path: fewer reads land on the bad window's edge. */
+	rockchip,desired-num-phases = <36>;
 	vmmc-supply = <&vcc_sd>;
 	vqmmc-supply = <&vccio_sd>;
 	/*

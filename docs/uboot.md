@@ -663,7 +663,8 @@ Kconfig base.
 ## What the kernel relied on the vendor U-Boot for
 
 Written for the vendor kernel. The mainline device tree carries the OP-TEE
-reservation itself, and the boot script still runs `my355 fg`.
+reservation itself, and the boot script still runs `my355 fg`, for the
+mainline driver's reasons (*The fuel gauge*, below).
 
 The vendor U-Boot edits the kernel's world before hand-off, and the vendor
 kernel depends on each edit without saying so. Mainline does none of them, so
@@ -716,12 +717,14 @@ this only makes both connectors usable at once.
 
 **The fuel gauge.** The RK817 keeps its state across power-off in PMIC
 registers: a coulomb counter, and the SOC and capacity the kernel last saved.
-Left alone, the kernel compares the two, and a gap over 10% of FCC — charging
-while off gives one — it takes for a crash, restarting from an `rsoc` it has not
-yet computed: 0. NextUI's battery log on this unit shows it happening, 78 → 54
-→ 0 → creeping up 1% at a time on a battery at 4.19 V. `my355 fg` (patch
-`0001`) writes a SOC, capacity and counter of its own and sets `FG_INIT`, which
-tells the kernel to take them (`rk817-bat: initialized yet..`).
+The vendor kernel, left alone, took a gap over 10% of FCC between the two —
+charging while off gives one — for a crash and restarted from 0 (NextUI's
+battery log: 78 → 54 → 0 on a battery at 4.19 V). The mainline driver
+(`rk817_read_or_set_full_charge_on_boot`) ignores the saved SOC: it takes the
+counter, or, once `OFF_CNT` reaches 3 (~30 min off), `PWRON_VOL` against the
+`ocv_table` — the reading rejected below. `my355 fg` (patch `0001`) writes a
+SOC, capacity and counter of its own and clears `OFF_CNT`, so the kernel takes
+the counter, and with it the SOC decided here.
 
 The rule it applies is the vendor U-Boot's, from
 [`fg_rk817.c`](https://github.com/rockchip-linux/u-boot/blob/next-dev/drivers/power/fuel_gauge/fg_rk817.c)
@@ -785,9 +788,8 @@ my355 fg: soc 74.999 -> 74.999%, cap 2346 -> 2346 mAh of 3000, off 7, cnt 2062 m
 `cnt` is what the counter made of it and is only ever reported unless
 `(charged while off)`, `(counted while up)` or `(charged to full)` appears, in
 which case it is what moved the SOC. `off` is
-`OFF_CNT`, which is reported but not acted on: its step is about ten minutes,
-not the minute the vendor driver reads it as, so the vendor kernel's own
-`pwroff_min >= 30` gate is really about five hours.
+`OFF_CNT` before it is cleared: its step is about ten minutes, as the mainline
+driver reads it, not the minute the vendor driver did.
 
 ## Charging while off
 
@@ -1110,10 +1112,9 @@ decompression and 0.12 s init before the boot script.
 **Upkeep:**
 
 7. **`0004`, `0005` and `0006` upstream.**
-8. The fuel gauge: the resting-voltage recalibration the kernel skips once
-   `FG_INIT` is set, so discharge while off is not seen until the kernel's
-   own low-voltage handling. Its 13.5 ms should drop with multi-byte reads:
-   re-measure.
+8. The fuel gauge: discharge while off is not seen until the kernel's own
+   low-voltage handling, as the power-on voltage is not trusted mid-curve.
+   Its 13.5 ms should drop with multi-byte reads: re-measure.
 9. A U-Boot boot logo (*The boot logo*, above), if 2.00 s is not enough. The
    cheaper levers for it are everything before `start_kernel`, which moves it
    one for one, and the kernel's `rk3x_i2c_driver_init` (146 ms in the last
