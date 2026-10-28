@@ -131,6 +131,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   driver hardware/rockchip-pm-config.c drivers/soc/rockchip ROCKCHIP_PM_CONFIG bool \
     "Rockchip RK3568 BL31 suspend configuration" \
     "ARCH_ROCKCHIP && HAVE_ARM_SMCCC && OF && SUSPEND"
+  driver hardware/rockchip-cpufreq-nvmem.c drivers/cpufreq ARM_ROCKCHIP_CPUFREQ_NVMEM bool \
+    "RK3566 CPU voltage bin from the OTP" "CPUFREQ_DT && NVMEM && OF"
   driver hardware/rk3568-dmc.c drivers/devfreq ARM_RK3568_DMC_DEVFREQ bool \
     "RK3566/RK3568 DDR frequency scaling through BL31" \
     "ARCH_ROCKCHIP && HAVE_ARM_SMCCC && PM_DEVFREQ_EVENT && DEVFREQ_GOV_SIMPLE_ONDEMAND"

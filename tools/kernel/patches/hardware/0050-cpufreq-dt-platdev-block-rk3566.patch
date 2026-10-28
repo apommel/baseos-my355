@@ -1,0 +1,18 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] cpufreq: dt-platdev: block RK3566
+
+rockchip-cpufreq-nvmem starts cpufreq-dt once it has set the chip's
+voltage bin.
+
+---
+--- a/drivers/cpufreq/cpufreq-dt-platdev.c
++++ b/drivers/cpufreq/cpufreq-dt-platdev.c
+@@ -186,6 +186,8 @@
+ 	{ .compatible = "qcom,sm8550", },
+ 	{ .compatible = "qcom,sm8650", },
+ 
++	{ .compatible = "rockchip,rk3566", },
++
+ 	{ .compatible = "st,stih407", },
+ 	{ .compatible = "st,stih410", },
+ 	{ .compatible = "st,stih418", },

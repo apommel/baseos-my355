@@ -163,6 +163,24 @@ Different from stock, found on the first boots:
   from the battery node, which had 4.25 V; the vendor tree charges to 4.2 V
   and ends at 300 mA. The node now has the vendor's values and `ocv_table`
   end points (2026-10-27).
+- **CPU voltages.** Above 816 MHz the CPU clock is the vendor BL31's PVTPLL,
+  which runs as fast as the voltage allows, ~2 MHz per mV: the OPP's rate
+  only picks its ring. Mainline's table is stock's L0, the slowest bin, so
+  this L3 unit ran "1800" at 1979 MHz and 1150 mV. Stock picks a bin per chip
+  from the OTP's PVTM count; `rockchip-cpufreq-nvmem` does the same and
+  selects that bin's `opp-microvolt-L<n>` from stock's table, keeping L0
+  without a count or under an `mbist-vmin` floor above 850 mV. Patch `0050`
+  keeps `cpufreq-dt-platdev` from starting cpufreq-dt first. Measured
+  (2026-10-28), rate: mV, real MHz:
+
+  | | 1104 | 1416 | 1608 | 1800 | 1992 |
+  |---|---|---|---|---|---|
+  | L0 (before) | 900, 1300 | 1025, 1641 | 1100, 1844 | 1150, 1979 | 1150, 1977 |
+  | L3 (now) | 850, 1196 | 925, 1444 | 1000, 1673 | 1050, 1807 | 1100, 1892 |
+
+  Lowering the voltage further only lowers the clock (~1393 MHz at 850 mV on
+  "1800"), so undervolting is underclocking here, as on stock. The PLL steps
+  up to 816 MHz are exact, at 850 mV in every bin.
 - **Restart at 1.8 V.** Shutdown left `vccio_sd` at 1.8 V, and a PSCI restart
   keeps the PMIC's rails: the preloader could not read the card and booted
   stock from NAND. The SD core now returns vqmmc to 3.3 V after the power-off,
@@ -351,14 +369,6 @@ Where the 0.6 W went, in game, 45 s points:
 Still to do:
 
 - optional: Bluetooth audio dropouts, as on stock
-- optional: per-chip voltages. Stock picks its OPP voltages by the chip's
-  leakage bin, and mainline has no bin selection, so this unit runs the
-  common table:
-  - CPU: this unit is bin L3, where stock is lower from 1104 MHz up (1416 MHz:
-    925 against 1025 mV). Both use 850 mV up to 816 MHz, where a Game Boy
-    game spends ~97% of its time, so it matters for heavier cores.
-  - `vdd_logic`: stock's DMC runs it at 875 mV, mainline at 900 mV, worth
-    ~10–20 mW.
-
-  Hardcoding either is unsafe on other units: it needs stock's bin read from
-  the OTP, as the BSP's `rockchip_opp_select` does.
+- optional: `vdd_logic` per chip. Stock's DMC runs it at 875 mV on this
+  unit, mainline at 900 mV, worth ~10–20 mW. Like the CPU's, it needs the
+  bin from the OTP: hardcoding it is unsafe on other units.
