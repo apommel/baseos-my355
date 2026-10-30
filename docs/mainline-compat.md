@@ -243,6 +243,11 @@ Different from stock, found on the first boots:
 
   Both run NextUI, minarch with shaders and N64 (2026-10-27). In game,
   Panfrost drew 2.92 W, as libmali.
+- **HDMI hot-plug after a cable-less boot.** Stock's SDL2 only uses a
+  connector whose CRTC already has a mode, which fbdev sets. Its framebuffer is
+  the panel's 640x480, and HPLL had no rate for 640x480@60's 25.175 MHz, so a
+  TV plugged in later got no mode and stayed black. A PLL rate fixes it: fbdev
+  lights the TV at 640x480, then NextUI sets 1280x720 (2026-10-30).
 - **HDMI sound.** No `rockchiphdmi` card: dw-hdmi only registers its audio
   codec with `DRM_DW_HDMI_I2S_AUDIO` built in, and it was a module. Built in
   now.
