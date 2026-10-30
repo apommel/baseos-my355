@@ -305,9 +305,10 @@ Different from stock, found on the first boots:
   Its `KEY_POWER` comes on every lid move: stock's comes on close with the
   screen on and on open with it off, which needs the vendor fb notifier. The
   same device reports `SW_LID`, as mainline lid switches do.
-- **The gamepad's name stays `MIYOO Player1`.** SDL's controller GUID carries
-  a checksum of the name since SDL 2.26, and RetroArch-style autoconfig
-  matches on it, so a more standard name would lose existing mappings.
+- **The gamepad's name stays `MIYOO Player1`.** RetroArch-style autoconfig
+  matches on the name and USB IDs, so a more standard name would lose existing
+  mappings. SDL's GUID is not a constraint: stock's SDL (2.0.18–2.0.22)
+  predates the name CRC 2.26 added, and newer SDL retries a lookup without it.
 - **Codec controls.** Mainline's codec has `Playback Mux` (`HP`, `SPK`),
   which nothing stock sets, and it starts on `HP`, so the speaker was silent.
   A patch adds the vendor's `Playback Path` (all eleven entries) and

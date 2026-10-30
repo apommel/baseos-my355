@@ -50,7 +50,8 @@ needed by something that was.
 
 Two findings keep it small:
 
-- NextUI ships its own SDL, tinyalsa and sqlite in `.system/my355/lib`.
+- NextUI ships its own tinyalsa and sqlite in `.system/my355/lib`, but uses
+  the rootfs's SDL2 ([what frontends need](rootfs-interface.md)).
 - `miyoo_inputd` does not link `/usr/miyoo/lib`; those three vendor libraries
   (`libgamename`, `libshmvar`, `libtmenu`) are referenced by `LD_LIBRARY_PATH`
   but never loaded.
