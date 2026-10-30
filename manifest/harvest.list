@@ -10,7 +10,7 @@
 # entry below was observed mapped, or is required by a binary that is.
 # See docs/rootfs.md.
 #
-# Smaller than the H700 list: NextUI ships its own SDL/tinyalsa/sqlite in
+# Smaller than the H700 list: NextUI ships its own tinyalsa/sqlite in
 # .system/my355/lib, and miyoo_inputd does not link /usr/miyoo/lib at all.
 # A dlopen is invisible to both a maps reading and the DT_NEEDED check, so
 # entries reached that way are marked below.
