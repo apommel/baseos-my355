@@ -135,7 +135,7 @@ renders, and what `settings.cpp` logs at start-up. That is the garbage in the
 
 ```
 kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init.d/rcS
-                                                         --respawn-->  /sbin/frontend-session
+                                                         --respawn-->  /usr/sbin/wifibtd, /sbin/frontend-session
 ```
 
 `init=/init` is not optional; see [the card](card.md).
@@ -148,9 +148,7 @@ loads (`baseos-gpu`, in the background); WiFi and Bluetooth load with their
 radio ([mainline compatibility](mainline-compat.md)).
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id,
-**loopback**, USB authorization in the background (the kernel holds USB drivers
-back so the WiFi probe cannot delay the root mount — [boot time](boot-time.md)),
-the first-boot card expansion, the frontend card, any pending system
+**loopback**, the first-boot card expansion, the frontend card, any pending system
 update, and the settings, SSH and the USB gadget in the background. Of the two update hooks,
 `baseos-update boot-check` after `/data` only runs when a trial is pending (a
 builtin file test). `apply` after the card mount costs a failed glob
@@ -576,7 +574,7 @@ platform. Useful when reading [upstream](https://github.com/pvaibhav/BaseOS) for
 | curl | static, built in a container | harvested — OpenSSL 1.1 and zlib are already carried for `wpa_supplicant`, so it costs 640 KB |
 | DHCP | BusyBox `udhcpc` + event script | same, behind the `S41dhcpcd` name |
 | NTP entry point | NextUI calls `timedatectl set-ntp`, so BaseOS ships a `timedatectl` shim over a `baseos-ntp` supervisor, with the preference on `/data` | NextUI calls `/etc/init.d/S49ntp` directly, so the init script *is* the shim |
-| clock at boot | `hwclock -u -s` in `rcS` | same, plus `S49ntp` |
+| clock at boot | `hwclock -u -s` in `rcS` | the kernel, from the RTC, plus `S49ntp` |
 | `/etc/localtime` | → `/run/localtime`, restored by `timedatectl apply` | → `/userdata/localtime`, stock's target |
 | zoneinfo | whole tree | whole tree minus `right/` |
 | OS version string | not implemented for this platform in NextUI | `/usr/miyoo/version`, generated from `VERSION` |
@@ -600,12 +598,10 @@ upright). `baseos-splash` wraps it and only ever overlays a status pill.
 
 **The boot logo.** When the bootloader handed none to the kernel (no
 `logo,offset` in the display route: the mainline U-Boot path), `rcS` runs
-`fbsplash 0` in the background as soon as `/run` is mounted, lights the
-backlight, and mounts debugfs, where NextUI's `launch.sh` reads the
-backlight's duty to keep it lit. The logo reaches the panel when the kernel
-brings it up, at 2.00 s ([U-Boot](uboot.md), *The boot logo*). On the vendor
-path, the vendor U-Boot's logo stays untouched until the frontend draws its
-first frame.
+`fbsplash 0` in the background as soon as `/run` is mounted and lights the
+backlight. The logo reaches the panel when the kernel brings it up, at 1.61 s
+([U-Boot](uboot.md), *The boot logo*), and stays untouched until the frontend
+draws its first frame.
 
 `frontend-session` shows `INSERT SD CARD` when the left slot is empty and
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards

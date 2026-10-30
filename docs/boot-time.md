@@ -151,7 +151,11 @@ init, and `rcS` authorizes the devices in the background, which runs the WiFi
 probe beside userspace. A device still enumerating when `rcS` changes the
 default was allocated under the old one, so `rcS` sweeps for a second. In 12
 boots since, root mounted at 2.20–2.22 s (2.07–2.08 s when card init was fast)
-and `wlan0` came up every time. `/run/boot-usb` records the last authorization.
+and `wlan0` came up every time.
+
+Mainline has no such race, and both went on 2026-10-30: the root mounts at
+0.51 s after kernel entry, before the chip enumerates (0.65 s), and its driver
+is a module that `S36load_wifi_modules` loads after the hand-off.
 
 ### The SD bus
 

@@ -270,10 +270,10 @@ Different from stock, found on the first boots:
   `calibration_left`, `calibration_right`, same format) and idles. Turbo
   (`/tmp/miyoo_inputd/turbo_*`) is not carried over, and Joe's Calibrage, which
   reads `/dev/ttyS1`, would need the driver's `raw` attribute instead.
-- **Backlight hand-over.** `launch.sh` reads the duty from
-  `/sys/kernel/debug/pwm` in the vendor format. Mainline's differs, so the
-  panel stays dark until keymon sets the brightness. Left as it is: debugfs
-  is not an interface, and NextUI is to stop unbinding the backlight.
+- **Backlight hand-over.** An older `launch.sh` read the duty from
+  `/sys/kernel/debug/pwm` in the vendor format, which mainline's does not
+  match. The current NextUI reads nothing there, so `rcS` no longer mounts
+  debugfs (2026-10-30).
 - **Backlight table.** Stock's holds levels 1-38 at 7.8-15% duty, so NextUI
   unbinds `pwm-backlight` to reach 2%. Here a level is the duty in 255ths
   from 2% (levels 1-4 stay at 2%, where the panel still lights), the same as

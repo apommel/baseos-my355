@@ -29,28 +29,10 @@ printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
 # The boot logo and backlight. In the background: its pan waits for the panel.
 { /usr/bin/fbsplash 0; mark /run/boot-logo; } &
 echo 0 > /sys/class/backlight/backlight/bl_power 2>/dev/null
-# NextUI's launch.sh reads the backlight's duty here to keep the panel lit.
-/bin/mount -t debugfs -o nodev,noexec,nosuid debugfs /sys/kernel/debug
 
 /bin/mount -t tmpfs -o mode=755,size=64m   tmpfs /var
 /bin/mkdir -p /var/lib /var/log /var/tmp /var/empty /var/lib/dbus /run/dbus
 /bin/ln -s /run /var/run
-
-# USB devices, left unauthorized by the kernel (usbcore.authorized_default=0 in
-# build-image.sh). A device still enumerating took the old default and shows up
-# up to ~0.15 s later, so sweep for a second. Backgrounded: each write runs that
-# device's probe, ~0.3 s for the WiFi chip.
-{
-	for f in /sys/bus/usb/devices/usb*/authorized_default; do echo 1 > "$f"; done
-	i=0
-	while [ $i -lt 20 ]; do
-		for f in /sys/bus/usb/devices/*/authorized; do
-			read -r a < "$f" && [ "$a" = 0 ] && echo 1 > "$f" && mark /run/boot-usb
-		done
-		usleep 50000
-		i=$((i + 1))
-	done
-} 2>/dev/null &
 
 # Loopback. Nothing here needs the network, but adbd binds a TCP listener during
 # start-up and treats the failure as fatal, so without `lo` there is no adb.
@@ -100,7 +82,7 @@ fi
 
 # dbus and BlueZ state. /var is tmpfs, so both are links: stock keeps the
 # pairing store on /userdata, which the frontend shadows with a tmpfs because
-# FAT32 rejects BlueZ's MAC-named directories.
+# FAT and exFAT reject BlueZ's MAC-named directories.
 /bin/ln -sf /run/machine-id /var/lib/dbus/machine-id
 /bin/ln -sf /userdata/bluetooth /var/lib/bluetooth
 mark /run/boot-dbus-start
@@ -110,23 +92,18 @@ mark /run/boot-dbus-start
 # waits for the socket before handing off.
 /usr/bin/dbus-daemon --system 2>/dev/null &
 
-# Bluetooth's side of the WiFi/BT chip's power (wifibt-power). Respawned: without
-# it, a BT start could not power the chip back on.
-{ while :; do /usr/sbin/wifibtd; sleep 1; done; } 2>/dev/null &
-
-# Clock, from the RTC (-u: it holds UTC) then NTP. Backgrounded; TLS validates
+# The kernel set the clock from the RTC; NTP refines it. TLS validates
 # certificates against it, so every HTTPS request depends on this.
-/sbin/hwclock -u -s 2>/dev/null &
 [ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp start &
 
-# First boot only: grow this card's FAT partition to fill the card. Must run
-# before it is mounted, and after /data, which holds the staged contents. The
+# First boot only: grow this card's volume to fill the card. Must run before it
+# is mounted, and after /data, which holds the installer's backup it moves. The
 # test is a builtin, so a normal boot does not even spawn the script.
 [ -e /data/expanded ] || /usr/sbin/expand-storage
 
 # The frontend card. The right slot holds BaseOS (it is the only slot the SPL
 # can boot from), so a NextUI card goes in the LEFT slot and appears as
-# mmcblk2p1. Falling back to this card's own FAT partition keeps a single-card
+# mmcblk2p1. Falling back to this card's own volume keeps a single-card
 # setup working. NextUI itself is slot-agnostic: nothing in its scripts names a
 # block device, only /mnt/SDCARD.
 # Mount point and the /mnt/sdcard alias are baked into the image.

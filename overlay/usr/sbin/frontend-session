@@ -17,8 +17,8 @@ SDCARD=/mnt/SDCARD
 [ -f /data/update/state ] && [ -x /usr/sbin/baseos-update ] && \
 	/usr/sbin/baseos-update confirm 2>/dev/null
 
-# The panel is this device's only output. Ordinary boots never call this — the
-# bootloader logo stays untouched until the frontend draws its first frame.
+# The panel is this device's only output. Ordinary boots never call this — rcS's
+# boot logo stays untouched until the frontend draws its first frame.
 splash() {
 	[ -x /usr/bin/baseos-splash ] && /usr/bin/baseos-splash --important "$@" 2>/dev/null
 }
@@ -26,7 +26,7 @@ splash() {
 # The kernel boots on `performance`; a frontend sets its own governor. Without
 # one, go back to the kernel's default instead of idling at full speed.
 idle_cpu() {
-	echo ondemand > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
+	echo schedutil > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 }
 
 # Sets $PWRKEYD to its pid if it is running. Builtins only: the hand-off asks too.

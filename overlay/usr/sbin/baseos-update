@@ -28,7 +28,7 @@
 FORMAT=baseos-update/2
 REGIONS="uboot boot rootfs"
 DISK=/dev/mmcblk1
-OWN_FAT=/dev/mmcblk1p5
+OWN_DEV=/dev/mmcblk1p5
 OWN_MNT=/tmp/.baseos-own
 OWN_MOUNTED=
 CARD=/mnt/SDCARD
@@ -64,8 +64,8 @@ field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
 # rcS keeps the own volume mounted read-only until the settings are read; cleanup
 # unmounts only what this script mounted.
 own_mount() {
-	grep -q "^$OWN_FAT $OWN_MNT " /proc/mounts && return 0
-	mkdir -p "$OWN_MNT" && mount -t exfat,vfat -o ro "$OWN_FAT" "$OWN_MNT" 2>/dev/null &&
+	grep -q "^$OWN_DEV $OWN_MNT " /proc/mounts && return 0
+	mkdir -p "$OWN_MNT" && mount -t exfat,vfat -o ro "$OWN_DEV" "$OWN_MNT" 2>/dev/null &&
 		OWN_MOUNTED=1
 }
 cleanup() { [ -n "$OWN_MOUNTED" ] && umount "$OWN_MNT" 2>/dev/null; OWN_MOUNTED=; return 0; }
@@ -86,7 +86,7 @@ load_geometry() {
 # volume when that is not already it. Sets $DIRS.
 scan_dirs() {
 	DIRS="$CARD"
-	if ! grep -q "^$OWN_FAT $CARD " /proc/mounts 2>/dev/null && [ -b "$OWN_FAT" ] &&
+	if ! grep -q "^$OWN_DEV $CARD " /proc/mounts 2>/dev/null && [ -b "$OWN_DEV" ] &&
 		own_mount; then
 		DIRS="$DIRS $OWN_MNT"
 	fi
