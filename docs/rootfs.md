@@ -373,10 +373,8 @@ table. Either card works in either slot. A clean card costs one exec, 1.8 ms
 measured on the device; a volume that is neither is not mounted, and one in use
 is left alone: `fatdirty` opens the device `O_EXCL`, which fails while
 any filesystem holds it, including one lazily unmounted but still held. The repair took 5.0 s on a 115 GiB card
-with 5,704 files in the left slot, about 1.5 s of it reading the two FATs. The
-bar follows the partition's own sector counters: the FATs, whose size `fatdirty`
-prints, fill it to half, and the directories, of unknown size, only creep it
-towards 95. Its output goes to the log, and a failed repair still mounts the
+with 5,704 files in the left slot. The pill carries no progress track: fsck
+reports none. Its output goes to the log, and a failed repair still mounts the
 card as it is.
 
 `frontend-session` starts by ending any open update trial — a session starting is
@@ -613,7 +611,7 @@ first frame.
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards
 is the recommended setup, so an empty left slot asks for the card, not for a
 frontend on this one, and logs each step to the one log above.
-`mount-frontend` shows `REPAIRING SD CARD` while `fsck.fat` runs on a card that
+`mount-frontend` shows `REPAIRING SD CARD` while fsck runs on a card that
 was not cleanly unmounted; the frontend's first frame replaces it.
 
 In both states nothing reads the power key, and holding it is the PMIC's hard
