@@ -148,8 +148,9 @@ loads (`baseos-gpu`, in the background); WiFi and Bluetooth load with their
 radio ([mainline compatibility](mainline-compat.md)).
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id,
-**loopback**, the first-boot card expansion, the frontend card, any pending system
-update, and the settings, SSH and the USB gadget in the background. Of the two update hooks,
+**loopback**, zram swap in the background, the first-boot card expansion, the
+frontend card, any pending system update, and the settings, SSH and the USB
+gadget in the background. Of the two update hooks,
 `baseos-update boot-check` after `/data` only runs when a trial is pending (a
 builtin file test). `apply` after the card mount costs a failed glob
 ([the card](card.md)). This card's exFAT partition, where `baseos.conf` and
@@ -203,6 +204,16 @@ boot: `cp /usr/sbin/x /data/x`, edit, `mount --bind /data/x /usr/sbin/x`.
 Anything that tries to write to the root fails with `Read-only file system`,
 which the log shows. `rcK` also leaves `/data/clean-shutdown`, which tells the next `rcS`
 that this boot's crash record is not a crash ([diagnostics](diagnostics.md)).
+
+### Swap is compressed RAM
+
+`/dev/zram0`, half of RAM (~485 MB), at priority 100, so the kernel fills it
+before any swap a pak adds: the N64 pak's file goes to `/mnt/UDISK`, which
+exists only on stock, so without zram that pak runs with none. It holds RAM
+only as pages arrive, so a frontend that fits in memory never touches it; on
+the system's own binaries it stored 177 MB in 109 MB (LZO, 2026-10-30).
+spruceOS runs its own `enable_zram.sh`, which keeps an active `zram0`, and
+resets it when its "Use ZRAM" setting is off.
 
 ### The GPU library is read ahead
 
