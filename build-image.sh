@@ -80,7 +80,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -e DATA_START="$MY355_DATA_START" -e DATA_SECTORS="$MY355_DATA_SECTORS" \
   -e PRIMARY_START="$MY355_PRIMARY_START" -e PRIMARY_SECTORS="$MY355_PRIMARY_SECTORS" \
   alpine:3.20 sh -euc '
-  apk add -q e2fsprogs e2fsprogs-extra dosfstools mtools python3 sgdisk
+  apk add -q e2fsprogs e2fsprogs-extra erofs-utils dosfstools mtools python3 sgdisk
 
   OUT="/work/$OUT_NAME"
   rm -f "$OUT"; : > "$OUT"
@@ -89,17 +89,21 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   dd if="/work/$UBOOT_IMG" of="$OUT" bs=512 seek="$UBOOT_START" conv=notrunc status=none
   dd if="/work/$BOOT_IMG"  of="$OUT" bs=512 seek="$BOOT_START"  conv=notrunc status=none
 
-  # Stock 5.10 has no orphan_file (5.15+), and reading the card from stock in
-  # the left slot is how a failed boot is debugged (docs/diagnostics.md).
-  EXT4_OPTS="^orphan_file"
-
+  # EROFS, lz4hc in 16 KiB clusters: half the bytes off the card, decoded fast
+  # enough to keep up with page faults; larger clusters do not (docs/rootfs.md).
   R=/tmp/r; rm -rf "$R"; mkdir "$R"
   tar -xf /work/rootfs.tar -C "$R"
   cp /work/miyoo355_fw.img "$R/"
-  mke2fs -q -F -t ext4 -O "$EXT4_OPTS" -b 4096 -L rootfs -d "$R" \
-    -E offset=$((ROOTFS_START * 512)) "$OUT" $((SLOT_SECTORS / 8))
+  mkfs.erofs -zlz4hc,12 -C16384 -L rootfs /tmp/rootfs.img "$R" >/dev/null
+  [ "$(wc -c < /tmp/rootfs.img)" -le $((SLOT_SECTORS * 512)) ] || {
+    echo "rootfs image does not fit its slot" >&2; exit 1; }
+  dd if=/tmp/rootfs.img of="$OUT" bs=512 seek="$ROOTFS_START" conv=notrunc status=none
 
   # The reserved half of each region stays zeroed: the first update writes it.
+
+  # Stock 5.10 has no orphan_file (5.15+), and reading the card from stock in
+  # the left slot is how a failed boot is debugged (docs/diagnostics.md).
+  EXT4_OPTS="^orphan_file"
 
   D=/tmp/d; rm -rf "$D"; mkdir "$D"; cp /work/miyoo355_fw.img "$D/"
   mke2fs -q -F -t ext4 -O "$EXT4_OPTS" -b 4096 -L data -d "$D" \
@@ -116,15 +120,15 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   echo "-- verification --"
   sgdisk -v "$OUT" | tail -3
   dd if="$OUT" of=/tmp/rootfs.img bs=512 skip="$ROOTFS_START" count="$SLOT_SECTORS" status=none
-  e2fsck -fn /tmp/rootfs.img >/dev/null && echo "  rootfs ext4 OK"
+  fsck.erofs --extract /tmp/rootfs.img >/dev/null && echo "  rootfs erofs OK"
   dd if="$OUT" of=/tmp/data.img bs=512 skip="$DATA_START" count="$DATA_SECTORS" status=none
   e2fsck -fn /tmp/data.img >/dev/null && echo "  data ext4 OK"
   n=0
-  for off in "$ROOTFS_START" "$DATA_START"; do
-    debugfs -R "stat /miyoo355_fw.img" "$OUT?offset=$((off * 512))" >/dev/null 2>&1 && n=$((n + 1))
-  done
+  dump.erofs --path=/miyoo355_fw.img /tmp/rootfs.img >/dev/null 2>&1 && n=$((n + 1))
+  debugfs -R "stat /miyoo355_fw.img" "$OUT?offset=$((DATA_START * 512))" >/dev/null 2>&1 && n=$((n + 1))
   mdir -i "$OUT@@$((PRIMARY_START * 512))" :: 2>/dev/null | grep -q -i miyoo355 && n=$((n + 1))
-  [ "$n" -eq 3 ] && echo "  preloader installer on all 3 mountable filesystems"
+  # Stock mounts data and primary; expand-storage copies the root copy to primary.
+  [ "$n" -eq 3 ] && echo "  preloader installer on all 3 filesystems"
 '
 python3 "$HERE/tools/mkfit.py" info "$BOOT_IMG"
 echo "image: $OUT ($KREL)"

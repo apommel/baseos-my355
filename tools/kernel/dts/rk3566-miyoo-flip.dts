@@ -34,7 +34,7 @@
 		 * governor holds until the frontend picks one. USB devices wait for
 		 * rcS to authorize them, or the WiFi chip's probe races the root mount.
 		 */
-		bootargs = "root=/dev/mmcblk1p3 rootfstype=ext4 rootwait ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0";
+		bootargs = "root=/dev/mmcblk1p3 rootfstype=erofs rootwait ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0";
 		stdout-path = "serial2:1500000n8";
 	};
 
