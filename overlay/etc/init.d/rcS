@@ -96,6 +96,16 @@ mark /run/boot-dbus-start
 # certificates against it, so every HTTPS request depends on this.
 [ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp start &
 
+# Compressed swap in RAM, half its size; it takes memory only as pages arrive.
+# Priority 100 puts it before any swap a pak adds. spruceOS keeps it, or resets
+# zram0 when its own setting is off. page-cluster 0: no swap readahead.
+{
+	read -r _ _kb _ < /proc/meminfo
+	echo "$((_kb / 2))K" > /sys/block/zram0/disksize &&
+		/sbin/mkswap /dev/zram0 >/dev/null && /sbin/swapon -p 100 /dev/zram0
+	echo 0 > /proc/sys/vm/page-cluster
+} 2>/dev/null &
+
 # First boot only: grow this card's volume to fill the card. Must run before it
 # is mounted, and after /data, which holds the installer's backup it moves. The
 # test is a builtin, so a normal boot does not even spawn the script.
