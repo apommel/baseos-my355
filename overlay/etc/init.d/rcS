@@ -132,17 +132,30 @@ mark /run/boot-dbus-start
 # Mount point and the /mnt/sdcard alias are baked into the image.
 /usr/sbin/mount-frontend
 
+# This card's own volume (FAT32 on cards from older releases), for baseos.conf
+# and payloads. Linked, not copied: it may hold a cleartext password.
+own=
+if grep -q '^/dev/mmcblk1p5 /mnt/SDCARD ' /proc/mounts; then
+	/bin/ln -s /mnt/SDCARD/baseos.conf /run/baseos.conf
+elif /bin/mkdir -p /tmp/.baseos-own &&
+	/bin/mount -t exfat,vfat -o ro /dev/mmcblk1p5 /tmp/.baseos-own 2>/dev/null; then
+	own=/tmp/.baseos-own
+	/bin/ln -s $own/baseos.conf /run/baseos.conf
+fi
+
 # libmali or Mesa, from baseos.conf, before the frontend starts.
 /usr/sbin/baseos-gpu
 
 mark /run/boot-update-start
 # A *.bosupd on either card writes the reserved half of each region, verifies it
-# and flips the GPT. An ordinary boot costs a failed glob, plus one read-only
-# mount of this card's own volume when it is not the one already mounted.
+# and flips the GPT. An ordinary boot costs a failed glob.
 [ -x /usr/sbin/baseos-update ] && /usr/sbin/baseos-update apply
 
 # Settings, SSH and adb over USB, backgrounded so they never serialise boot.
-[ -x /etc/init.d/dev ] && /etc/init.d/dev &
+{
+	[ -x /etc/init.d/dev ] && /etc/init.d/dev
+	[ -n "$own" ] && /bin/umount "$own"
+} &
 
 mark /run/boot-rcS-done
 

@@ -49,7 +49,8 @@ md5sum /dev/mtd5ro          # must equal the image — check BEFORE rebooting
 ```
 
 The file to write is your own backup, or the `mtd5-original-<hash>.img` the card
-installer left on the card's BASEOS volume. Stage it in `/tmp` (tmpfs) and check
+installer left: on the card's BASEOS volume once BaseOS has booted, on its `/data`
+before. Stage it in `/tmp` (tmpfs) and check
 its md5 there first, so a failed write never needs a host transfer to retry.
 While the device is still booted the write can be repeated indefinitely, so the
 only real hazard is power loss between the erase and a verified write.

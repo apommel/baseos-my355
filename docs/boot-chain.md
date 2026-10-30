@@ -164,7 +164,7 @@ Verified end to end on 2026-08-23, from a freshly flashed card, on battery:
 ```
 18:35:55 mtd5 reads as 36d663ef…            stock preloader
 18:35:57 patched image is 620648c2…
-18:35:58 original backed up to /tmp/baseos-fat
+18:35:58 original backed up to /tmp/baseos-fat      the FAT32 volume, then
 18:35:58 flash attempt 1
 18:35:59 readback verified - rebooting into the card
 ```
@@ -249,15 +249,19 @@ SPL can boot from; from the left-hand slot a reboot would just return to stock, 
 logs *move the card to the right-hand slot* instead. Every refusal path finishes
 without rebooting, leaving the device in MainUI exactly as it was.
 
-The backup and log go on the card's FAT volume, the one a desktop can read. Stock may
-not have mounted it, so the installer mounts it itself: it reads the device behind the
-directory it was run from, finds the `TYPE="vfat"` sibling on the same disk with
-`blkid`, and mounts that. **Resolve the directory first** — `/media/sdcard0` is a
-symlink to `/mnt/sdcard`, and `/mnt/sdcard` is the name `/proc/mounts` carries, so a
-literal match finds nothing. That cost one run its reboot and sent the backup to the
-rootfs. `/media/sdcard1` is a real directory, so the left-hand slot never showed it.
+The backup and log go next to the installer, on `/data`: the card's exFAT volume,
+the one a desktop can read, is not one stock can mount. BaseOS moves both there on its
+first boot ([the card](card.md)); after a failure that never reached BaseOS they stay
+on `/data`, readable over stock's adb or from Linux. Until 2026-10-30 the volume was
+FAT32 and the installer mounted it itself, by finding the `TYPE="vfat"` sibling of the
+directory it ran from.
 
-### Where the file goes on the card — every filesystem
+That directory is resolved first, to tell which slot the card is in: `/media/sdcard0`
+is a symlink to `/mnt/sdcard`, the name `/proc/mounts` carries, so a literal match
+finds nothing. That once cost a run its reboot. `/media/sdcard1` is a real directory,
+so the left-hand slot never showed it.
+
+### Where the file goes on the card — the one stock can mount
 
 Stock automounts with usbmount, driven by `/lib/udev/rules.d/usbmount.rules`:
 
@@ -291,12 +295,12 @@ one that settles it: a cold boot in the boot slot, where trials 3 and 4 had sugg
 the rootfs always won — and the rootfs got no mountpoint at all, so the installer
 sitting on it was never seen.
 
-So the image ships on **every mountable filesystem**: rootfs, data and the FAT, 28 KiB
-each. It is a workaround, and the only one available. A single copy would need the card
-to present a single mountable filesystem, which means `rootfs` and `data` would have to
-use a type outside usbmount's list — the one writable candidate this kernel has is
-**xfs** — and changing the root filesystem to dodge an automounter is a worse trade
-than duplicating 28 KiB.
+So the image shipped on **every mountable filesystem**: rootfs, data and the FAT,
+28 KiB each, since a single copy needs the card to present a single mountable
+filesystem. It does now: the root became EROFS and `primary` exFAT, neither of which
+stock's 5.10 kernel can mount (no EROFS, no `CONFIG_EXFAT_FS`, and no FUSE exFAT
+helper in its rootfs). A mount that fails does not take a mountpoint, so `/data` is
+always `sdcard0` (or `sdcard1` from the left slot) and carries the only copy.
 
 Two earlier answers were retracted: giving `primary` GPT entry 3, and shipping only on
 the rootfs. Both were read off too few trials.

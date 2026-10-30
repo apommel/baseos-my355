@@ -11,15 +11,8 @@ for t in rsa ed25519; do
 	[ -f "$k" ] || /usr/sbin/dropbearkey -t "$t" -f "$k" >/dev/null 2>&1
 done
 
-# baseos.conf lives on this card's FAT volume, wherever the frontend is.
-own=/tmp/.baseos-conf conf=
-if grep -q '^/dev/mmcblk1p5 /mnt/SDCARD ' /proc/mounts; then
-	conf=/mnt/SDCARD/baseos.conf
-elif /bin/mkdir -p "$own" && /bin/mount -t vfat -o ro /dev/mmcblk1p5 "$own" 2>/dev/null; then
-	conf=$own/baseos.conf
-fi
-/usr/sbin/baseos-config ${conf:+"$conf"} 2>> "$BASEOS_LOG" || log "baseos-config failed"
-[ "$conf" = "$own/baseos.conf" ] && /bin/umount "$own"
+# Linked by rcS; none means the defaults.
+/usr/sbin/baseos-config /run/baseos.conf 2>> "$BASEOS_LOG" || log "baseos-config failed"
 
 /usr/sbin/dropbear -r /data/dropbear/dropbear_rsa_host_key \
                    -r /data/dropbear/dropbear_ed25519_host_key 2>/dev/null

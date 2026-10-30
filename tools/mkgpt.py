@@ -18,7 +18,7 @@ Layout:
     2 boot    40 MiB                    + 40 MiB reserved
     3 rootfs 512 MiB                    + 512 MiB reserved
     4 data   128 MiB   ext4, persistent state, survives a slot flip
-    5 primary  rest    FAT32, the only desktop-visible volume
+    5 primary  rest    exFAT, the only desktop-visible volume
 
 Each of the three updatable regions reserves twice what it needs and only ever
 has one half as a partition; overlay/usr/sbin/baseos-update writes the other half

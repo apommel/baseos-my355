@@ -1,13 +1,9 @@
 #!/bin/sh
-# First boot: grow the card's FAT partition to fill the card and reformat it.
-#
-# Growing FAT32 in place would need fatresize; a reformat is what BusyBox can do,
-# and it replaces the shipped 512-byte clusters with a normal size (docs/card.md).
-#
-# This partition is not empty — the preloader installer leaves the user's
-# original mtd5 on it — so its contents are staged on /data and restored after. Staging counts only once the directory is renamed into place,
-# and /data/expanded is written last, so a power cut leaves work the next boot
-# redoes rather than files it has lost.
+# First boot: grow the card's exFAT partition to fill the card and reformat it
+# (exFAT cannot grow in place). Its contents, and the preloader installer's
+# backup and log from /data, are staged on /data and restored after. Staging
+# counts only once renamed into place and /data/expanded is written last, so a
+# power cut leaves work the next boot redoes rather than files it has lost.
 
 DISK=/dev/mmcblk1
 PART=/dev/mmcblk1p5             # `primary`, GPT entry 5 (tools/mkgpt.py)
@@ -17,7 +13,7 @@ DONE=/data/expanded
 README=/usr/share/baseos/card-readme.txt
 . /usr/share/baseos/log.sh
 
-mount_part() { /bin/mkdir -p "$MNT" && /bin/mount -t vfat -o rw "$PART" "$MNT" 2>/dev/null; }
+mount_part() { /bin/mkdir -p "$MNT" && /bin/mount -t exfat -o rw "$PART" "$MNT" 2>/dev/null; }
 splash() { [ -x /usr/bin/baseos-splash ] && \
 	/usr/bin/baseos-splash --important "$1" "EXPANDING STORAGE" 2>/dev/null; }
 
@@ -47,15 +43,17 @@ if [ ! -d "$STAGE" ]; then
 	/bin/mv "$STAGE.part" "$STAGE"
 	/bin/sync
 fi
+# Renames within /data: never in neither place.
+for f in /data/mtd5-original-*.img /data/baseos-preloader.log; do
+	[ -f "$f" ] && /bin/mv "$f" "$STAGE"/
+done
 splash 55
 
-# BusyBox mkfs.vfat is FAT32-only and chooses the cluster size itself.
-/sbin/mkfs.vfat -n BASEOS "$PART" >> "$BASEOS_LOG" 2>&1 || { log "mkfs.vfat failed"; exit 1; }
+/usr/sbin/mkfs.exfat -L BASEOS "$PART" >> "$BASEOS_LOG" 2>&1 || { log "mkfs.exfat failed"; exit 1; }
 splash 80
 
 mount_part || { log "cannot mount the new filesystem"; exit 1; }
 /bin/cp -a "$STAGE"/. "$MNT"/ 2>> "$BASEOS_LOG"
-[ -f "$MNT/miyoo355_fw.img" ] || /bin/cp /miyoo355_fw.img "$MNT/" 2>/dev/null
 [ -f "$README" ] && /bin/cp "$README" "$MNT/README.txt"
 [ -f "$MNT/baseos.conf" ] || /bin/cp /usr/share/baseos/baseos.conf "$MNT/" 2>/dev/null
 /bin/sync
