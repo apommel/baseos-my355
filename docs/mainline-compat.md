@@ -255,8 +255,11 @@ Different from stock, found on the first boots:
   1.2 s, mostly the panel's power-up waits. The console is off, as on the
   vendor kernel, and the waits are shortened as on the vendor path. Then
   dbus-daemon blocked 1 s on the crng, ready only at ~3 s: mainline leaves the
-  RK3566 TRNG off, as it fails quality tests. `rcS` now credits the seed saved
-  at shutdown (`seedrng`) before starting dbus.
+  RK3566 TRNG off for its low-quality output. The device tree turns it on, and
+  the crng is ready at 0.12 s. On this unit 1 MB of it is 0.5039 ones, byte
+  χ² 731 and one FIPS 140-2 monobit failure in 419 blocks: biased, but ~0.99
+  bits of min-entropy per bit, which the driver credits as 0.88. The crng mixes
+  it with everything else and needs 256 bits.
 - **The gamepad.** Stock's `miyoo_inputd` builds `MIYOO Player1` through
   uinput, from the vendor `/dev/miyooio` (the `gpio-keys-polled` pins) and the
   stick MCU on `ttyS1`. The `miyoo-player1` driver presents the same device:
@@ -397,6 +400,7 @@ six warm reboots each on `gpu=mali`:
 | the same, idle class | 1.28–1.40 s | 2.10–2.18 s | 2.54–2.63 s |
 | recorded ranges, root only, idle class | 1.30–1.37 s | 2.09–2.15 s | 2.52–2.59 s |
 | **`ionice -c3 cat` of the GPU library** | **1.27–1.30 s** | **2.21–2.27 s** | **2.57–2.67 s** |
+| the same on `gpu=panfrost` (2.48–2.63 s on ext4, none) | 1.31–1.34 s | 1.97–2.04 s | 2.34–2.39 s |
 
 At the default class the prefetch held rcS's own reads behind it. The
 recorded list (46 files, 49 MB; 38 and 47.6 MB on the root) followed the

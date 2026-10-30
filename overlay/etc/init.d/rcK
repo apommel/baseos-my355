@@ -14,8 +14,6 @@ if [ -n "$m" ] && [ -z "$RCK_DETACHED" ]; then
 	RCK_DETACHED=1 exec /etc/init.d/rcK
 fi
 
-/bin/dd if=/dev/urandom of=/data/random-seed bs=512 count=1 2>/dev/null
-
 # init gives this script its own session, which killall5 spares.
 read -r _l < /proc/$$/stat
 set -- ${_l##*) }
