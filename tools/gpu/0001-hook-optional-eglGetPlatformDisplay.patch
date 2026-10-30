@@ -1,0 +1,35 @@
+--- a/hook/hook.c	2026-10-30 21:15:39
++++ b/hook/hook.c	2026-10-30 21:15:39
+@@ -100,7 +100,6 @@
+ #ifdef HAS_EGL
+    MALI_SYMBOL(eglGetCurrentSurface),
+    MALI_SYMBOL(eglGetDisplay),
+-   MALI_SYMBOL(eglGetPlatformDisplay),
+    MALI_SYMBOL(eglGetProcAddress),
+    MALI_SYMBOL(eglChooseConfig),
+    MALI_SYMBOL(eglDestroySurface),
+@@ -139,6 +138,14 @@
+ 
+       *mali_symbols[i].symbol = symbol;
+    }
++
++#ifdef HAS_EGL
++   /* Optional: blobs older than EGL 1.5, such as g2p0, have only the EXT form */
++   _eglGetPlatformDisplay = dlsym(handle, "eglGetPlatformDisplay");
++   if (!_eglGetPlatformDisplay)
++      _eglGetPlatformDisplay = (PFNEGLGETPLATFORMDISPLAYPROC)
++         dlsym(handle, "eglGetPlatformDisplayEXT");
++#endif
+ 
+    dlclose(handle);
+ }
+@@ -289,6 +296,9 @@
+ {
+    EGLDisplay dpy = _eglGetDisplay(display_id);
+ 
++   if (!_eglGetPlatformDisplay)
++      return dpy;
++
+    if (dpy == EGL_NO_DISPLAY)
+       dpy = _eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, display_id, NULL);
+ 

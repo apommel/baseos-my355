@@ -70,6 +70,7 @@ fi
 echo "== building libmali g29p1 and Mesa $MESA_VERSION =="
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$VOLUME":/build -v "$CACHE":/cache -v "$LIBMALI_SRC":/libmali:ro -v "$OUT":/out \
+  -v "$HERE/tools/gpu":/patches:ro \
   -e MESA_VERSION="$MESA_VERSION" -e LIBMALI_BLOB="$LIBMALI_BLOB" \
   debian:trixie-slim sh -euc '
   export DEBIAN_FRONTEND=noninteractive
@@ -85,6 +86,11 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   rm -rf /build/libmali /build/stage
   cp -a /libmali /build/libmali
   cd /build/libmali
+  # The hook exits on a missing symbol, and spruceOS binds g2p0 over libmali.so.1.
+  for p in /patches/*.patch; do
+    echo "  patch: $(basename "$p")"
+    patch -p1 --batch --forward --quiet < "$p"
+  done
   meson setup -Dprefix=/usr -Dlibdir=lib -Dgpu=bifrost-g52 -Dlibrary="$LIBMALI_BLOB" \
     b >/build/libmali.log
   DESTDIR=/build/libmali/dest ninja -C b install >>/build/libmali.log
