@@ -1,0 +1,18 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] clk: rockchip: rk3568: add a 25.175 MHz PLL rate
+
+HPLL feeds the HDMI reference clock, and dw_hdmi-rockchip rejects any mode
+it cannot round to within 0.1%. Without this rate that is 640x480@60, the one
+mode every HDMI sink supports. A sink plugged in after boot then gets no mode
+from fbdev, whose framebuffer is the panel's 640x480, so its CRTC stays off.
+5 x 257 / 49 of 24 MHz is 25.1755 MHz, from a 1233.6 MHz VCO.
+
+---
+--- a/drivers/clk/rockchip/clk-rk3568.c
++++ b/drivers/clk/rockchip/clk-rk3568.c
+@@ -92,4 +92,5 @@
+ 	RK3036_PLL_RATE(74250000, 2, 99, 4, 4, 1, 0),
+ 	RK3036_PLL_RATE(33300000, 4, 111, 5, 4, 1, 0),
++	RK3036_PLL_RATE(25175000, 5, 257, 7, 7, 1, 0),
+ 	{ /* sentinel */ },
+ };
