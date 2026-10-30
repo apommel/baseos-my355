@@ -212,7 +212,14 @@ Different from stock, found on the first boots:
   2 s later.
 - **GPU rail.** `mali_kbase` disables `vdd_gpu` on runtime suspend without
   having enabled it, and the unused-regulator cleanup then cut the rail. It
-  is always-on again, as in zlyme.
+  is always-on again, as in zlyme. Its `0002` takes the rail at runtime init
+  and skips the second power-off a system suspend sends after a runtime
+  suspend, which disabled the clocks twice: no more regulator and clock
+  warnings at boot and on every sleep (2026-10-30). It also names the
+  workqueue kind 7.2 asks for.
+- **Crash record.** Stock's ramoops region (960 KiB at `0x110000`, below
+  System RAM) with `PSTORE_RAM` and `PSTORE_CONSOLE`; neither was in the
+  mainline config at first, so `rcS` had nothing to keep (2026-10-30).
 - **GPU drivers.** `gpu=` in `baseos.conf` picks `mali` (the default) or
   `panfrost`, read by `baseos-gpu` once the frontend card is mounted.
   `build-gpu.sh` builds both: Rockchip's newest G52 libmali (g29p1, from
