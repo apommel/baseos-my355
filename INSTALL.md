@@ -52,7 +52,7 @@ power the device off while it runs. It takes about four seconds.
 
 The Flip will then reboot by itself and come up in BaseOS. On that first boot it
 takes a second to expand the card's BASEOS volume to the full size of the card, and
-shows **EXPANDING STORAGE** while it does. Anything already on the volume is kept.
+shows **EXPANDING STORAGE** while it does.
 
 This only happens once. From then on the Flip boots straight to BaseOS whenever the
 card is in the right-hand slot, and boots stock whenever it is not.
@@ -89,7 +89,7 @@ BaseOS and NextUI can share one card, leaving the left-hand slot free. Two cards
 still the recommended setup: your games and saves stay on a card you can pull out,
 reformat or replace without touching the one that boots the device.
 
-**After** the first boot — the volume is only 64 MB until then — put the card in your
+**After** the first boot — it formats the volume, erasing anything copied before — put the card in your
 computer and unzip a NextUI `base` (or `all`) release onto the BASEOS volume, next to
 `README.txt`. Put the card back in the right-hand slot and power on; NextUI installs
 itself as it would on any other card.
