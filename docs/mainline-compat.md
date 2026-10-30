@@ -230,6 +230,10 @@ Different from stock, found on the first boots:
   - NextUI, minarch and nextval link `libmali.so.1` and `libmali_hook.so.1`,
     not `libEGL`, so Mesa's side has a `libmali.so.1` that pulls in its EGL,
     GLES and GBM, and a hook with only `mali_injected`.
+  - spruceOS binds its own g2p0 over `libmali.so.1`. It has no EGL 1.5
+    `eglGetPlatformDisplay`, which Rockchip's hook required, exiting PyUI
+    before it drew: `tools/gpu` makes it optional, falling back to the EXT
+    form, as stock's hook used.
   - NextUI asks for GLES 3.2, and Panfrost has 3.1 on the G52: its shaders
     are 3.0, so `MESA_GLES_VERSION_OVERRIDE=3.2`. The shader cache is on
     `/data`.
