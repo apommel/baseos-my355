@@ -187,7 +187,7 @@ once it has started `rcK`.
 
 ### The root is read-only
 
-`ro` on the kernel command line, and nothing remounts it. Runtime state lives on
+It is EROFS, lz4hc in 16 KiB clusters, so it cannot be written at all. Runtime state lives on
 `/data`, on tmpfs (`/tmp`, `/run`, `/var`, `/dev/shm`) or on the frontend card
 through the `/userdata` bind; `resolv.conf`, `machine-id` and `localtime` are
 baked symlinks into those. Root's home, `/root`, links to `/data/root`, which
@@ -196,12 +196,24 @@ baked symlinks into those. Root's home, `/root`, links to `/data/root`, which
 `baseos-config` writes them at every boot from the card's `baseos.conf`
 ([below](#settings-come-from-the-card)). `passwd` fails; the password is set there.
 
-To change files on a running device, `mount -o remount,rw /` first; `rcK` makes
-it read-only again at shutdown. To check that nothing writes to it, look for
-`Read-only file system` in the log, or on a root remounted `rw` run a full
-session (WiFi, Bluetooth, adb, SSH) and then
-`find / -xdev -newer /etc/baseos-release`. It also leaves `/data/clean-shutdown`, which tells the next `rcS`
+To change a file on a running device, bind a copy over it until the next
+boot: `cp /usr/sbin/x /data/x`, edit, `mount --bind /data/x /usr/sbin/x`.
+Anything that tries to write to the root fails with `Read-only file system`,
+which the log shows. `rcK` also leaves `/data/clean-shutdown`, which tells the next `rcS`
 that this boot's crash record is not a crash ([diagnostics](diagnostics.md)).
+
+### The GPU library is read ahead
+
+Every NextUI program links libmali, 58 MB, and the first to start faults in
+~19 MB of it one page at a time: 0.53 s at boot, most of the frontend's
+start. `baseos-gpu` reads the selected stack's library (libmali, or Mesa's
+`libgallium`) with `cat` in the background, in the idle I/O class so the
+rest of boot's reads go first. A list of the ranges a boot used, recorded
+and replayed, did ~70 ms better, but followed whichever frontend and `gpu=`
+had recorded it. Measurements are in [mainline compat](mainline-compat.md).
+
+The root is EROFS because the same faults read half the bytes there. Larger
+clusters, zstd or squashfs decode slower than ext4 reads.
 
 ### Settings come from the card
 

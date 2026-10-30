@@ -39,9 +39,15 @@ if [ "$gpu" = panfrost ]; then
 	# The Vulkan loader reads ICDs from here.
 	/bin/mount --bind /usr/lib/mesa/vulkan /usr/share/vulkan
 	module=panfrost
+	set -- /usr/lib/mesa/libgallium-*.so
+	lib=$1
 else
 	module=mali_kbase
+	lib=/usr/lib/libmali.so.1
 fi
+# Every frontend program links it, and the first would fault it in page by page.
+# Read now, behind whatever else boot reads.
+/usr/bin/ionice -c3 /bin/cat "$lib" > /dev/null &
 echo "$gpu" > /run/gpu
 # Backgrounded: nothing in rcS draws with it.
 { /sbin/modprobe "$module" && mark /run/boot-gpu; } &

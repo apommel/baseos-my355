@@ -361,6 +361,49 @@ behind main. `launch.sh`'s first `nextval.elf` takes 0.56 s at boot: it is the
 first to map libmali g29p1 (60 MB, stripped, 100k relocations), while keymon,
 batmon and audiomon map it too. Mesa's `libmali.so.1` is a small shim.
 
+That load is page faults, not bandwidth: it touches 18.8 MB of the 58 in 63
+ranges, and costs the same at any readahead from 16 to 128 KB (more is slower)
+and with four loaders at once. Asking for those ranges up front reads them in
+~0.3 s instead of 0.53, so a prefetch at the start of `rcS` would overlap them
+with the rest of boot. A compressed root was tested against it (2026-10-29),
+libmali alone in an image on `/data`, through a direct-I/O loop device, the CPU
+at `performance` as at boot, cold:
+
+| image | size | cold load | prefetch, then load | read |
+|---|---|---|---|---|
+| ext4, as the root today | 58 MB | 0.46 s | 0.41 s | 19 MB |
+| EROFS, uncompressed | 58 MB | 0.46 s | | 19 MB |
+| EROFS lz4hc, 16 KB clusters | 32 MB | 0.44–0.45 s | 0.32–0.34 s | 11 MB |
+| EROFS lz4hc, 64 KB | 29 MB | 0.53–0.55 s | | 12 MB |
+| EROFS zstd, 64 KB | 22 MB | 0.59–0.62 s | | 11 MB |
+| squashfs lz4hc, 64 KB, per-CPU | 30 MB | 0.58–0.59 s | | 11 MB |
+| squashfs zstd, 128 KB, per-CPU | 22 MB | 0.67–0.69 s | | 9 MB |
+
+Decompression sits on the fault path, so only EROFS lz4hc with small clusters
+keeps up with ext4, and it gains ~0.08 s once prefetched. Squashfs is slower in
+every setting; EROFS lzma took 2 s. The first EROFS lz4hc-16K mount after
+copying the image logged `failed to decompress` and the loader fell back to
+`/usr/lib`; the remounts were clean and matched the checksum.
+
+The root became EROFS lz4hc-16K on 2026-10-29 ([rootfs](rootfs.md)). Alone it
+drew at 3.08 s, as ext4, and mounts the root ~30 ms earlier (0.487 s); no
+`failed to decompress` on the partition. Three prefetches were then tried,
+six warm reboots each on `gpu=mali`:
+
+| prefetch | hand-off | `nextui.elf` | first frame |
+|---|---|---|---|
+| none (ext4) | 1.32–1.36 s | 2.27–2.38 s | 3.01–3.14 s |
+| recorded ranges, root and card, default I/O class | 1.60–1.68 s | 2.20–2.30 s | 2.64–2.75 s |
+| the same, idle class | 1.28–1.40 s | 2.10–2.18 s | 2.54–2.63 s |
+| recorded ranges, root only, idle class | 1.30–1.37 s | 2.09–2.15 s | 2.52–2.59 s |
+| **`ionice -c3 cat` of the GPU library** | **1.27–1.30 s** | **2.21–2.27 s** | **2.57–2.67 s** |
+
+At the default class the prefetch held rcS's own reads behind it. The
+recorded list (46 files, 49 MB; 38 and 47.6 MB on the root) followed the
+frontend and `gpu=` of the boot that recorded it, and needed a tool, so the
+whole library is read instead, from `baseos-gpu`: ~70 ms behind, and the
+same on every boot. Main draws at 2.93–2.98.
+
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
 is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main:
 `launch.sh`'s first `nextval.elf` takes 0.72 s at boot (0.03 s warm, 0.26 s

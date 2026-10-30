@@ -41,7 +41,7 @@ removed once the chain worked. It is a one-line addition to `build-image.sh`'s
 
 The decisive trick. Put the BaseOS card in the **left slot**: it is not in
 the SPL boot order, so the device boots **stock** from NAND instead,
-and stock's kernel auto-mounts the card's ext4 partitions under `/media/`.
+and stock's kernel auto-mounts the card's ext4 `/data` and FAT volume under `/media/`.
 Everything the failed boot wrote is then readable over adb.
 
 ```sh

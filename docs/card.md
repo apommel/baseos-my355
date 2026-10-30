@@ -47,8 +47,10 @@ Linux's vfat driver mounts that anyway, but macOS validates the count and refuse
 a freshly flashed card would read as damaged on a desktop.
 
 All three filesystems carry `miyoo355_fw.img`, the preloader installer stock picks up
-off the card. All three, because which one stock's automounter mounts where is a lock
-race with no reliable winner ([SD boot](boot-chain.md)).
+off the card. Stock mounts `/data` and the FAT volume, which race for the one
+mountpoint it reads, with no reliable winner ([SD boot](boot-chain.md)); the root,
+EROFS, it skips, and `expand-storage` copies the root's onto the FAT volume it
+formats.
 
 Each of the three updatable regions reserves twice what it needs, and only one
 half is ever a partition; the spare is where an update writes (below). Leaving it
@@ -189,9 +191,10 @@ console that does not exist: root mounted, nothing happening, no panic.
 The vendor Android boot image this replaced, and what it took to edit it, is in
 [history](history.md).
 
-## ext4 features
+## Filesystems
 
-`^orphan_file` only: the stock 5.10.160 kernel has no `orphan_file` (5.15+), and
+The root is EROFS (lz4hc, 16 KiB clusters; [rootfs](rootfs.md)), which stock
+does not mount. `/data` is ext4 with `^orphan_file` only: the stock 5.10.160 kernel has no `orphan_file` (5.15+), and
 reading a BaseOS card from stock, in the left slot, is how a failed boot is
 debugged ([diagnostics](diagnostics.md)). `metadata_csum`, `metadata_csum_seed`
 and `64bit` are all fine there.
@@ -208,8 +211,8 @@ and `64bit` are all fine there.
 rerun is incremental), `build-rootfs.sh` (harvest + overlay + BusyBox),
 `build-image.sh` (this page) and `build-update.sh` (the `.bosupd` payload).
 
-The build verifies as it goes: `sgdisk -v` clean, `e2fsck -fn` on both ext4
-filesystems, and the kernel and device tree read back out of the boot FIT.
+The build verifies as it goes: `sgdisk -v` clean, `fsck.erofs` on the root,
+`e2fsck -fn` on `/data`, and the kernel and device tree read back out of the boot FIT.
 
 Flashing, on macOS:
 

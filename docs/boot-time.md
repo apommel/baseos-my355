@@ -67,10 +67,10 @@ printk. Process `starttime` (`/proc/<pid>/stat` field 22, USER_HZ = 100) is on
 the uptime clock, so pin the per-boot offset before reading the two together:
 
 * **Direct.** `u=$(cut -d" " -f1 /proc/uptime); echo "probe $u" > /dev/kmsg`,
-  then read the printk timestamp back; the difference is the offset. Needed on
-  stock, whose squashfs root has no ext4 anchor.
+  then read the printk timestamp back; the difference is the offset.
 * **By anchor.** A `jbd2/mmcblk1p*` thread's `starttime` against its
-  `EXT4-fs … mounted` printk. Two anchors agree to 2 ms.
+  `EXT4-fs … mounted` printk. Two anchors agree to 2 ms. On mainline the two
+  clocks start together at kernel entry, so the offset is zero.
 
 `rcS` drops breadcrumbs in `/run/boot-*` at each stage, and `frontend-session`
 writes `/run/boot-frontend-exec`; both are `mark()` from
@@ -112,6 +112,7 @@ likely does the same.
 | USB probes held back until `rcS` | ~0.3 s on half the boots | the WiFi chip's probe no longer delays the root mount; below |
 | SDR104 tuning in 10° steps | ~0.12 s on half the boots | a tuning read on the edge of the card's bad window waits out a 113 ms timeout in 6 of 22 boots, not 13 of 16; below |
 | Tuning data timeout 15 ms (`0046`) | ~0.1 s on half the boots | the read on the bad window's edge waits 15 ms instead of the controller's 112 ms maximum: card init 80–112 ms instead of 80–214, six boots (2026-10-28) |
+| EROFS root, GPU library read ahead | ~0.45 s | libmali's 19 MB, faulted in one page at a time by the first NextUI program, are already cached: `baseos-gpu` reads the library at idle I/O priority while boot goes on. First frame 2.57–2.67 s instead of 3.01–3.14 on mali, six boots ([rootfs](rootfs.md), 2026-10-30) |
 | `quiet` + `performance` governor | ~0.1 s | full speed from cpufreq's probe until the frontend picks its own |
 | `rcS` trimming + clean shutdown | ~30 ms, plus up to 0.2 s of journal replay | see below |
 
