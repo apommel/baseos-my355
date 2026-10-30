@@ -24,7 +24,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   --tmpfs /data --tmpfs /mnt/SDCARD \
   -e VERSION="$VERSION" \
   alpine:3.20 sh -euc '
-  apk add -q build-base linux-headers python3 e2fsprogs e2fsprogs-extra
+  apk add -q build-base linux-headers python3 e2fsprogs e2fsprogs-extra erofs-utils
   gcc -O2 -o /usr/sbin/gptslot /src/gptslot.c
 
   stub() { rm -f "$1"; printf "#!/bin/sh\n%s\n" "$2" > "$1"; chmod +x "$1"; }
@@ -68,9 +68,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   # The new rootfs is a filesystem, and it is the one we built.
   dd if=/tmp/card.img of=/tmp/new-rootfs.img bs=512 skip="$SLOT_ROOTFS_ACTIVE" \
      count="$SLOT_ROOTFS_SECTORS" status=none
-  e2fsck -fn /tmp/new-rootfs.img > /dev/null 2>&1
-  debugfs -R "cat /etc/baseos-release" /tmp/new-rootfs.img 2>/dev/null \
-    | grep -qx "BASEOS_VERSION=$VERSION"
+  fsck.erofs --extract=/tmp/new-rootfs /tmp/new-rootfs.img > /dev/null 2>&1
+  grep -qx "BASEOS_VERSION=$VERSION" /tmp/new-rootfs/etc/baseos-release
 
   grep -q "^$(sed -n "s/^rootfs-sha256=//p" /tmp/.bosupd-manifest) " /data/update/history
 
