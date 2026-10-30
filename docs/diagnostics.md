@@ -23,7 +23,7 @@ Ordered by how early they fire.
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
 | **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |
-| **crash record** | the previous boot panicked or never reached `rcK` | `rcS` copies `ramoops` to `/data/pstore/<date>/` and logs `pstore:`. It survives a warm reset only, so a long press loses it |
+| **crash record** | the previous boot panicked or never reached `rcK` | `rcS` copies `ramoops` to `/data/pstore/<date>/` and logs `pstore:`. A panic leaves the whole kernel log; any other reset only the console record, which `quiet` limits to warnings and errors. It survives a warm reset, a watchdog reset included, but not a long press |
 
 The crash record depends on a warm reset, which is why `rcS` sets
 `kernel.panic=10`. This kernel has no lockup or hung-task detector, so a hang

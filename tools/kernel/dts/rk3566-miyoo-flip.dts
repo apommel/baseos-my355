@@ -43,6 +43,17 @@
 			reg = <0x0 0x08400000 0x0 0x01000000>;
 			no-map;
 		};
+
+		/*
+		 * Stock's region, below System RAM and left alone by BL31 and U-Boot,
+		 * so it survives a warm reset. No pmsg: its space goes to oops records.
+		 */
+		ramoops@110000 {
+			compatible = "ramoops";
+			reg = <0x0 0x00110000 0x0 0x000f0000>;
+			record-size = <0x20000>;
+			console-size = <0x80000>;
+		};
 	};
 
 	/*
@@ -614,8 +625,9 @@
 			};
 
 			/*
-			 * Always-on: mali_kbase disables it on runtime suspend without
-			 * having enabled it, and the unused-regulator cleanup then cuts it.
+			 * Always-on, as in zlyme. mali_kbase once disabled it without
+			 * having enabled it (fixed by its 0002); switching the rail with
+			 * the GPU's runtime suspend is untested.
 			 */
 			vdd_gpu: DCDC_REG2 {
 				regulator-name = "vdd_gpu";
