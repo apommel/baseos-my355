@@ -86,17 +86,15 @@ exFAT cannot be grown in place (exfatprogs has no resize), so it is reformatted
 with `mkfs.exfat` from Debian's exfatprogs, which picks the cluster size: 32 KiB up
 to 32 GiB, 128 KiB above.
 
-Whatever was copied onto `primary` before the first boot is staged on `/data`
-(95 MiB free against a 62 MiB volume) and restored after the `mkfs`. So are the
-preloader installer's `mtd5-original-<hash>.img`, the user's only copy of their
-original preloader, and `baseos-preloader.log`, which stock left next to the
-installer on `/data`: they are renamed into the staging directory, on the same
-filesystem, so each is always in one place or the other, and land on `primary`
-where a desktop can read them. Staging counts as complete only once the directory
-is renamed into place, and `/data/expanded` is written last, so a power cut
-leaves work the next boot redoes rather than files it has lost. A card that
-already fills the disk with nothing staged is marked done and left alone — it is
-not a card we grew.
+Nothing on `primary` is kept: it ships empty, stock cannot write to it, and files
+go on it only after the first boot ([install](../INSTALL.md)). The format writes
+`README.txt` and `baseos.conf`, and the preloader installer's
+`mtd5-original-<hash>.img`, the user's only copy of their original preloader, and
+`baseos-preloader.log` move to it from `/data`, where stock left them. Each is
+deleted from `/data` only once its copy is written and synced. `/data/expand-grown`
+marks the grown table and `/data/expanded` the end, so a power cut leaves work the
+next boot redoes. A card that already fills the disk without that mark is marked
+done and left alone — it is not a card we grew.
 
 Verified on hardware (64 GB card, 2026-08-25, then FAT32): 64 MiB → 57.0 GiB with
 16 KiB clusters in **1.1 s**, card files intact, nothing done on later boots.

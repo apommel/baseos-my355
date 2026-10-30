@@ -47,20 +47,20 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   alpine:3.20 sh -euc '
   mknod /dev/mmcblk1 b 7 0
   mknod /dev/mmcblk1p5 b 7 1
-  for f in cut cp mkdir mv rm sync touch; do [ -e /bin/$f ] || ln -s "$(which $f)" /bin/$f; done
+  for f in cp mkdir rm sync touch; do [ -e /bin/$f ] || ln -s "$(which $f)" /bin/$f; done
+  mkdir -p /usr/share/baseos
+  echo readme > /usr/share/baseos/card-readme.txt
+  echo conf > /usr/share/baseos/baseos.conf
 
   stub() { rm -f "$1"; printf "%s\n" "#!/bin/sh" "$2" > "$1"; chmod 755 "$1"; }
   stub /usr/bin/baseos-splash "echo \"\$*\" >> /tmp/splash.log"
-  # mount(8) leaves the mount point alone; mkfs wipes it, as the real one does,
-  # so a restored file proves staging worked.
-  stub /bin/mount "for a; do d=\$a; done; mkdir -p \"\$d\""
+  # mkfs empties the mount point, as a format would.
+  stub /bin/mount "mkdir -p /tmp/.primary"
   stub /bin/umount "exit 0"
-  stub /usr/sbin/mkfs.exfat "echo \"\$*\" >> /tmp/mkfs.log; rm -rf /tmp/.primary/*"
+  stub /usr/sbin/mkfs.exfat "echo \"\$*\" >> /tmp/mkfs.log; rm -rf /tmp/.primary"
 
   reset() {
     rm -rf /tmp/splash.log /tmp/mkfs.log /tmp/ran /tmp/.primary /data/*
-    mkdir -p /tmp/.primary
-    echo copied > /tmp/.primary/user-file
     # Where stock leaves the backup and log of the preloader installer.
     echo original > /data/mtd5-original-abc.img
     echo log > /data/baseos-preloader.log
@@ -72,27 +72,26 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   sh /test/expand-storage
   [ ! -e /tmp/ran ] || { echo "gptgrow ran on an expanded card" >&2; exit 1; }
 
-  # Already full with nothing staged: not a card we grew, leave it alone.
+  # Already full and not grown by us: leave it alone.
   reset
   stub /usr/sbin/gptgrow "exit 1"
   sh /test/expand-storage
   [ ! -e /tmp/mkfs.log ] || { echo "reformatted an unknown card" >&2; exit 1; }
   [ ! -e /tmp/splash.log ] || { echo "painted for a card it left alone" >&2; exit 1; }
-  [ -e /data/expanded ]
+  [ -e /data/expanded ] && [ -e /data/mtd5-original-abc.img ]
 
-  # First boot: the track runs 45 -> 100, one mkfs, card contents preserved,
-  # the installer backup and log moved over from /data.
+  # First boot: one mkfs, the volume filled, the installer files moved.
   reset
   stub /usr/sbin/gptgrow "exit 0"
   sh /test/expand-storage
-  [ "$(head -1 /tmp/splash.log)" = "--important 45 EXPANDING STORAGE" ]
   [ "$(tail -1 /tmp/splash.log)" = "--important 100 EXPANDING STORAGE" ]
   grep -qx -- "-L BASEOS /dev/mmcblk1p5" /tmp/mkfs.log
-  grep -qx copied /tmp/.primary/user-file
+  grep -qx readme /tmp/.primary/README.txt
+  grep -qx conf /tmp/.primary/baseos.conf
   grep -qx original /tmp/.primary/mtd5-original-abc.img
   grep -qx log /tmp/.primary/baseos-preloader.log
   [ ! -e /data/mtd5-original-abc.img ] && [ ! -e /data/baseos-preloader.log ]
-  [ -e /data/expanded ] && [ ! -d /data/expand-stage ]
+  [ -e /data/expanded ] && [ ! -e /data/expand-grown ]
 
   # A gptgrow error touches nothing.
   reset
@@ -100,16 +99,19 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   if sh /test/expand-storage; then echo "gptgrow failure must propagate" >&2; exit 1; fi
   [ ! -e /tmp/mkfs.log ] || { echo "formatted after a gptgrow error" >&2; exit 1; }
 
-  # Power cut after staging: the card is already full and the staged contents
-  # are restored on the next boot.
-  reset
-  mkdir -p /data/expand-stage; echo copied > /data/expand-stage/user-file
-  rm -f /tmp/.primary/user-file
+  # Power cut after the grow: the next boot formats although the card is full.
+  reset; touch /data/expand-grown
   stub /usr/sbin/gptgrow "exit 1"
   sh /test/expand-storage
-  grep -qx copied /tmp/.primary/user-file
   grep -qx original /tmp/.primary/mtd5-original-abc.img
   [ -e /data/expanded ]
 
-  echo "  PASS expands once, finishes the track, resumes after a power cut"
+  # A failed copy keeps the backup on /data.
+  reset
+  stub /usr/sbin/gptgrow "exit 0"
+  stub /usr/sbin/mkfs.exfat "rm -rf /tmp/.primary; mkdir -p /tmp/.primary/mtd5-original-abc.img/x"
+  sh /test/expand-storage
+  grep -qx original /data/mtd5-original-abc.img
+
+  echo "  PASS expands once, moves the installer files, resumes after a power cut"
 '

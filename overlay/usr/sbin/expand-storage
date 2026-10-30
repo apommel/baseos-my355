@@ -1,66 +1,49 @@
 #!/bin/sh
-# First boot: grow the card's exFAT partition to fill the card and reformat it
-# (exFAT cannot grow in place). Its contents, and the preloader installer's
-# backup and log from /data, are staged on /data and restored after. Staging
-# counts only once renamed into place and /data/expanded is written last, so a
-# power cut leaves work the next boot redoes rather than files it has lost.
+# First boot: grow the card's exFAT partition to fill the card and format it
+# (exFAT cannot grow in place). It ships empty, and stock cannot write to it, so
+# nothing on it is kept. The preloader installer's backup and log move here
+# from /data, removed there only once the copies are synced.
 
 DISK=/dev/mmcblk1
 PART=/dev/mmcblk1p5             # `primary`, GPT entry 5 (tools/mkgpt.py)
 MNT=/tmp/.primary
-STAGE=/data/expand-stage
+GROWN=/data/expand-grown
 DONE=/data/expanded
 README=/usr/share/baseos/card-readme.txt
 . /usr/share/baseos/log.sh
 
-mount_part() { /bin/mkdir -p "$MNT" && /bin/mount -t exfat -o rw "$PART" "$MNT" 2>/dev/null; }
 splash() { [ -x /usr/bin/baseos-splash ] && \
 	/usr/bin/baseos-splash --important "$1" "EXPANDING STORAGE" 2>/dev/null; }
 
 [ -e "$DONE" ] && exit 0
 [ -b "$PART" ] || exit 0
 
-# 0 = grown, 1 = already fills the card, 2 = error.
-/usr/sbin/gptgrow "$DISK" primary >> "$BASEOS_LOG" 2>&1
-case "$?" in
-	0) log "grown" ;;
-	1) # Already full with nothing staged: not a card we grew, leave it alone.
-	   [ -d "$STAGE" ] || { /bin/touch "$DONE"; exit 0; }
-	   log "resuming" ;;
-	*) log "gptgrow failed; partition untouched"; exit 1 ;;
-esac
-
-splash 45
-
-if [ ! -d "$STAGE" ]; then
-	/bin/rm -rf "$STAGE.part"; /bin/mkdir -p "$STAGE.part"
-	if mount_part; then
-		if ! /bin/cp -a "$MNT"/. "$STAGE.part"/ 2>> "$BASEOS_LOG"; then
-			/bin/umount "$MNT"; log "staging failed; partition untouched"; exit 1
-		fi
-		/bin/umount "$MNT"
-	fi
-	/bin/mv "$STAGE.part" "$STAGE"
-	/bin/sync
+# 0 = grown, 1 = already fills the card, 2 = error. $GROWN covers a power cut
+# before the format below.
+if [ ! -e "$GROWN" ]; then
+	/usr/sbin/gptgrow "$DISK" primary >> "$BASEOS_LOG" 2>&1
+	case "$?" in
+		0) log "grown"; /bin/touch "$GROWN"; /bin/sync ;;
+		1) /bin/touch "$DONE"; exit 0 ;;  # not a card we grew: leave it alone
+		*) log "gptgrow failed; partition untouched"; exit 1 ;;
+	esac
 fi
-# Renames within /data: never in neither place.
-for f in /data/mtd5-original-*.img /data/baseos-preloader.log; do
-	[ -f "$f" ] && /bin/mv "$f" "$STAGE"/
-done
-splash 55
+splash 30
 
 /usr/sbin/mkfs.exfat -L BASEOS "$PART" >> "$BASEOS_LOG" 2>&1 || { log "mkfs.exfat failed"; exit 1; }
-splash 80
+splash 70
 
-mount_part || { log "cannot mount the new filesystem"; exit 1; }
-/bin/cp -a "$STAGE"/. "$MNT"/ 2>> "$BASEOS_LOG"
-[ -f "$README" ] && /bin/cp "$README" "$MNT/README.txt"
-[ -f "$MNT/baseos.conf" ] || /bin/cp /usr/share/baseos/baseos.conf "$MNT/" 2>/dev/null
+/bin/mkdir -p "$MNT" && /bin/mount -t exfat "$PART" "$MNT" ||
+	{ log "cannot mount the new filesystem"; exit 1; }
+/bin/cp "$README" "$MNT/README.txt"
+/bin/cp /usr/share/baseos/baseos.conf "$MNT/"
+moved=
+for f in /data/mtd5-original-*.img /data/baseos-preloader.log; do
+	[ -f "$f" ] && /bin/cp "$f" "$MNT/" 2>> "$BASEOS_LOG" && moved="$moved $f"
+done
 /bin/sync
 /bin/umount "$MNT"
-splash 95
-
-/bin/rm -rf "$STAGE"
+/bin/rm -f $moved "$GROWN"
 /bin/touch "$DONE"
 # Before the sync, not after: this device is powered off with the button, and a
 # line written after the last flush is the one an unclean shutdown loses.

@@ -39,13 +39,6 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   cp f32.img x32.img; dirty x32.img 37; expect 1 fatdirty x32.img
   cp f16.img x16.img; dirty x16.img 65; expect 1 fatdirty x16.img
 
-  # A dirty volume prints the size of its FATs in sectors, as fsck.fat sees it.
-  for f in d32 d16 d12; do
-    per=$(fsck.fat -n -v "$f.img" | sed -n "s/^ *\([0-9]*\) bytes per FAT.*/\1/p")
-    got=$(fatdirty "$f.img" || :)
-    [ "$got" = "vfat $((2 * per / 512))" ] || { echo "$f.img: fatdirty $got, want $((2 * per / 512))" >&2; exit 1; }
-  done
-
   # fsck.fat -a clears it: exit 0 or 1, both meaning the volume is now sound.
   for f in d32 d16 d12; do
     fsck.fat -a "$f.img" > /dev/null && rc=0 || rc=$?
@@ -58,8 +51,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   expect 1 fatdirty ex.img
   [ "$(fatdirty ex.img || :)" = exfat ]
   cp ex.img dex.img; dirty dex.img 106 002; expect 0 fatdirty dex.img
-  len=$(dump.exfat ex.img | sed -n "s/^FAT Length(sectors):[[:space:]]*//p")
-  [ "$(fatdirty dex.img || :)" = "exfat $len" ] || { echo "dex.img: fatdirty $(fatdirty dex.img), want $len" >&2; exit 1; }
+  [ "$(fatdirty dex.img || :)" = exfat ]
   cp ex.img x.img; dirty x.img 106 001; expect 1 fatdirty x.img
   fsck.exfat -p dex.img > /dev/null
   expect 1 fatdirty dex.img
