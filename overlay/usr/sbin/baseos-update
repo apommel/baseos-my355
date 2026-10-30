@@ -30,6 +30,7 @@ REGIONS="uboot boot rootfs"
 DISK=/dev/mmcblk1
 OWN_FAT=/dev/mmcblk1p5
 OWN_MNT=/tmp/.baseos-own
+OWN_MOUNTED=
 CARD=/mnt/SDCARD
 STATE_DIR=/data/update
 STATE="$STATE_DIR/state"
@@ -60,7 +61,14 @@ splash() {
 }
 
 field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
-cleanup() { umount "$OWN_MNT" 2>/dev/null; return 0; }
+# rcS keeps the own volume mounted read-only until the settings are read; cleanup
+# unmounts only what this script mounted.
+own_mount() {
+	grep -q "^$OWN_FAT $OWN_MNT " /proc/mounts && return 0
+	mkdir -p "$OWN_MNT" && mount -t exfat,vfat -o ro "$OWN_FAT" "$OWN_MNT" 2>/dev/null &&
+		OWN_MOUNTED=1
+}
+cleanup() { [ -n "$OWN_MOUNTED" ] && umount "$OWN_MNT" 2>/dev/null; OWN_MOUNTED=; return 0; }
 
 # One geometry variable: slot uboot _INACTIVE -> $SLOT_UBOOT_INACTIVE.
 slot() { eval "printf '%s' \"\${SLOT_$(echo "$1" | tr a-z A-Z)$2}\""; }
@@ -78,9 +86,9 @@ load_geometry() {
 # volume when that is not already it. Sets $DIRS.
 scan_dirs() {
 	DIRS="$CARD"
-	if ! grep -q "^$OWN_FAT $CARD " /proc/mounts 2>/dev/null && [ -b "$OWN_FAT" ]; then
-		mkdir -p "$OWN_MNT"
-		mount -t vfat -o ro "$OWN_FAT" "$OWN_MNT" 2>/dev/null && DIRS="$DIRS $OWN_MNT"
+	if ! grep -q "^$OWN_FAT $CARD " /proc/mounts 2>/dev/null && [ -b "$OWN_FAT" ] &&
+		own_mount; then
+		DIRS="$DIRS $OWN_MNT"
 	fi
 	return 0
 }
@@ -386,14 +394,14 @@ boot_check() {
 }
 
 # Only once confirmed: a payload that rolled back stays for status to explain.
-# The own FAT is scanned read-only, so a payload there needs a rw mount.
+# The own volume is mounted read-only, so a payload there needs it rw briefly.
 remove_payload() {
 	case "$1" in
 		"") return 0 ;;
 		"$OWN_MNT"/*)
-			mkdir -p "$OWN_MNT"
-			mount -t vfat "$OWN_FAT" "$OWN_MNT" 2>/dev/null || return 0
+			own_mount && mount -o remount,rw "$OWN_MNT" 2>/dev/null || { cleanup; return 0; }
 			rm -f "$1" && log "removed $1"
+			mount -o remount,ro "$OWN_MNT"
 			cleanup ;;
 		*) rm -f "$1" && log "removed $1" ;;
 	esac

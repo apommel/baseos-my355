@@ -147,15 +147,19 @@ and the panel and storage are built in. The GPU driver is the one module it
 loads (`baseos-gpu`, in the background); WiFi and Bluetooth load with their
 radio ([mainline compatibility](mainline-compat.md)).
 
-What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id, entropy seed,
+What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id,
 **loopback**, USB authorization in the background (the kernel holds USB drivers
 back so the WiFi probe cannot delay the root mount — [boot time](boot-time.md)),
 the first-boot card expansion, the frontend card, any pending system
 update, and the settings, SSH and the USB gadget in the background. Of the two update hooks,
 `baseos-update boot-check` after `/data` only runs when a trial is pending (a
-builtin file test). `apply` after the card mount costs a failed glob plus a
-read-only mount of this card's FAT partition, about 20–30 ms
-([the card](card.md)).
+builtin file test). `apply` after the card mount costs a failed glob
+([the card](card.md)). This card's exFAT partition, where `baseos.conf` and
+payloads may sit, is mounted read-only once for `baseos-gpu`, `apply` and the
+settings, and unmounted in the background once the settings are read. Each
+mount costs ~10 ms on FAT32 and ~20 on exFAT, which reads its allocation bitmap. `baseos.conf` is reached through `/run/baseos.conf`,
+a symlink to wherever the volume is, rather than a copy that would put a cleartext
+password on tmpfs.
 
 `rcK` does the shutdown work busybox init leaves out. It stops every other
 process (SIGTERM, at most 5 s, SIGKILL), unmounts the frontend's binds, the card
@@ -217,12 +221,12 @@ clusters, zstd or squashfs decode slower than ext4 reads.
 
 ### Settings come from the card
 
-`baseos.conf`, at the root of this card's FAT volume (`mmcblk1p5`), holds the
+`baseos.conf`, at the root of this card's exFAT volume (`mmcblk1p5`), holds the
 settings a user may change: `hostname` (default `miyoo-flip`) and `ssh_password`
 (default `root`). The format and parser are upstream's; its `mdns` and
 `headphone_pop_fix` keys are not carried. `/etc/init.d/dev` runs `baseos-config`
-before it starts `dropbear`: it reads the file where `mount-frontend` mounted that
-volume, or mounts it read-only for the moment it takes. That is off the boot path,
+before it starts `dropbear`: it reads `/run/baseos.conf`, which `rcS` links to the
+file where that volume is mounted. That is off the boot path,
 since `dev` is in the background and nothing before SSH needs either setting. The
 file is card data, parsed and never sourced; the cleartext password goes through
 `mkpasswd -P 0` into `/run/shadow`, built from the baked copy in
@@ -265,7 +269,7 @@ back.
 Two things bypass `log()` and land on `/data` only, never on the card. `adbd`'s
 own output, because it runs for the whole session and the card copy is on
 removable FAT. And the raw stderr of the tools the scripts drive — `dd`,
-`fsck.fat`, `gunzip`, `gptslot`, `mkfs.vfat`, `unzip` — which is redirected straight at
+`fsck.fat`, `fsck.exfat`, `gunzip`, `gptslot`, `mkfs.exfat`, `unzip` — which is redirected straight at
 `$BASEOS_LOG`, so it carries no tag and is only there for the failure it
 describes. The card copy stays tagged throughout, which is the one a user reads.
 
@@ -335,7 +339,7 @@ burden is in reproducing what stock's `runmiyoo.sh` sets up.
 `mount-frontend` mounts the frontend card at `/mnt/SDCARD`, and
 `/mnt/sdcard` is a symlink for the lowercase path stock uses. BaseOS takes the
 right slot because it is the only slot the SPL can boot from, so the frontend card
-normally goes in the **left** slot (`mmcblk2p1`); this card's own FAT partition
+normally goes in the **left** slot (`mmcblk2p1`); this card's own exFAT partition
 (`mmcblk1p5`) is the single-card fallback.
 
 The choice is by content, not by slot: each candidate is mounted in turn, left
@@ -359,11 +363,15 @@ before or after. A card already mounted from the left slot is never disturbed.
 dirty flag at mount and clears it at a clean unmount, but never clears one it
 found set. Only `fsck.fat` does, and macOS's Disk Utility does not, so a card
 once powered off while mounted warned on every mount after, on any computer.
-Before each mount, `fatdirty` (`src/fatdirty.c`) reads the boot sector and
-tests the flag where the kernel reads it (offset 65 on FAT32, 37 on FAT12/16),
-and a set flag runs the stock `fsck.fat -a` under `REPAIRING SD CARD`. A clean
-card costs one exec, 1.8 ms measured on the device; a volume that is not FAT, or
-is in use is left alone: `fatdirty` opens the device `O_EXCL`, which fails while
+Before each mount, `fatdirty` (`src/fatdirty.c`) reads the boot sector, tells
+FAT from exFAT, and tests the flag where the kernel reads it (offset 65 on
+FAT32, 37 on FAT12/16, bit 1 of the VolumeFlags at 106 on exFAT); a set flag
+runs the stock `fsck.fat -a`, or Debian's `fsck.exfat -a`, under `REPAIRING SD
+CARD`. The type it prints also picks the mount, since the two take different
+options: vfat `utf8`, and `iocharset=utf8` for exFAT, whose UTF-8 needs no NLS
+table. Either card works in either slot. A clean card costs one exec, 1.8 ms
+measured on the device; a volume that is neither is not mounted, and one in use
+is left alone: `fatdirty` opens the device `O_EXCL`, which fails while
 any filesystem holds it, including one lazily unmounted but still held. The repair took 5.0 s on a 115 GiB card
 with 5,704 files in the left slot, about 1.5 s of it reading the two FATs. The
 bar follows the partition's own sector counters: the FATs, whose size `fatdirty`

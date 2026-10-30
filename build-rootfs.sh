@@ -100,9 +100,12 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
     U=/tmp/deb; rm -rf "$U"; mkdir -p "$U"
     (cd "$U" && ar x "/userland/${deb##*/}" data.tar.xz && tar -xJf data.tar.xz)
     for l in $libs; do
-      f="$U/usr/lib/aarch64-linux-gnu/$l"
+      case "$l" in
+        */*) f="$U/$l" t="$R/$l" ;;
+        *) f="$U/usr/lib/aarch64-linux-gnu/$l" t="$R/usr/lib/$l" ;;
+      esac
       [ -e "$f" ] || { echo "no $l in ${deb##*/}" >&2; exit 1; }
-      rm -f "$R/usr/lib/$l" && cp -L "$f" "$R/usr/lib/$l"
+      rm -f "$t" && cp -L "$f" "$t"
     done
   done
   # lib/modules/<release>, depmod already run.
@@ -138,7 +141,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # updates (overlay/usr/sbin/expand-storage, overlay/usr/sbin/baseos-update).
   # rebootmode: a reboot argument (charge) for rcK, which busybox cannot pass.
   # pwrkeyd: a clean poweroff on a 2 s hold of the power key, without a frontend.
-  # fatdirty: whether a card needs fsck.fat before it is mounted.
+  # fatdirty: FAT32 or exFAT, and whether a card needs fsck before it is mounted.
   # wifibtd: Bluetooth on/off, for when to power the WiFi/BT chip (wifibt-power).
   for t in gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd; do
     gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c

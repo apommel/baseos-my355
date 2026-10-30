@@ -4,13 +4,8 @@
 
 . /usr/share/baseos/log.sh
 
-# baseos.conf lives on this card's FAT volume, wherever the frontend is.
-own=/tmp/.baseos-gpu conf=
-if grep -q '^/dev/mmcblk1p5 /mnt/SDCARD ' /proc/mounts; then
-	conf=/mnt/SDCARD/baseos.conf
-elif /bin/mkdir -p "$own" && /bin/mount -t vfat -o ro /dev/mmcblk1p5 "$own" 2>/dev/null; then
-	conf=$own/baseos.conf
-fi
+# Linked by rcS; none means the default.
+conf=/run/baseos.conf
 
 gpu=mali
 if [ -r "$conf" ]; then
@@ -27,7 +22,6 @@ if [ -r "$conf" ]; then
 		esac
 	done < "$conf"
 fi
-[ "$conf" = "$own/baseos.conf" ] && /bin/umount "$own"
 
 if [ "$gpu" = panfrost ]; then
 	# Everything finds these by soname in /usr/lib, so Mesa's go over libmali's;

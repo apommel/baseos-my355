@@ -18,19 +18,15 @@ splash() { [ -x /usr/bin/baseos-splash ] && \
 	/usr/bin/baseos-splash --important "$1" "REPAIRING SD CARD" 2>/dev/null; }
 
 # A dirty flag survives any number of clean mounts until fsck clears it.
+# $2: vfat or exfat, $3: the FATs' size in sectors.
 repair() {
-	fats=$(/usr/sbin/fatdirty "$1")
-	case $? in
-		0) ;;
-		3) log "$1 dirty but in use, not repairing"; return 0 ;;
-		*) return 0 ;;
-	esac
+	fsck=fsck.fat; [ "$2" = exfat ] && fsck=fsck.exfat
 	log "$1 was not cleanly unmounted, repairing"
 	splash 0
 	done=/run/fsck.done
 	/bin/rm -f "$done"
-	{ /usr/sbin/fsck.fat -a "$1" >> "$BASEOS_LOG" 2>&1; r=$?; : > "$done"; exit $r; } &
-	# fsck.fat reads the FATs first, half the bar; the directories, of unknown
+	{ /usr/sbin/$fsck -a "$1" >> "$BASEOS_LOG" 2>&1; r=$?; : > "$done"; exit $r; } &
+	# fsck reads the FATs first, half the bar; the directories, of unknown
 	# size, only creep it towards 95.
 	stat=/sys/class/block/${1#/dev/}/stat
 	read -r _ _ r0 _ _ _ w0 _ < "$stat"
@@ -38,23 +34,31 @@ repair() {
 		/bin/sleep 0.25
 		read -r _ _ r _ _ _ w _ < "$stat"
 		io=$((r - r0 + w - w0))
-		if [ "$io" -lt "$fats" ]; then
-			splash $((50 * io / fats))
+		if [ "$io" -lt "$3" ]; then
+			splash $((50 * io / $3))
 		else
-			splash $((50 + 45 * (io - fats) / io))
+			splash $((50 + 45 * (io - $3) / io))
 		fi
 	done
 	wait $!
 	case "$?" in
 		0|1) log "$1 repaired" ;;
-		*) log "fsck.fat failed on $1, mounting as it is" ;;
+		*) log "$fsck failed on $1, mounting as it is" ;;
 	esac
 	splash 100
 }
 
 try() {
-	repair "$1"
-	/bin/mount -t vfat -o rw,noatime,utf8,shortname=mixed "$1" "$SDCARD" 2>/dev/null
+	info=$(/usr/sbin/fatdirty "$1")
+	case $? in
+		0) repair "$1" $info ;;
+		3) log "$1 dirty but in use, not repairing" ;;
+		2) return 1 ;;
+	esac
+	# vfat would need an NLS table for iocharset=utf8, which this kernel lacks.
+	set -- "$1" $info
+	opts=iocharset=utf8; [ "$2" = vfat ] && opts=utf8,shortname=mixed
+	/bin/mount -t "$2" -o rw,noatime,$opts "$1" "$SDCARD" 2>/dev/null
 }
 
 grep -q " $SDCARD " /proc/mounts && exit 0

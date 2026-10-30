@@ -57,8 +57,8 @@ shows **EXPANDING STORAGE** while it does. Anything already on the volume is kep
 This only happens once. From then on the Flip boots straight to BaseOS whenever the
 card is in the right-hand slot, and boots stock whenever it is not.
 
-The installer leaves two files on the card's BASEOS volume, which you can read from
-your computer:
+The installer leaves two files, which BaseOS moves to the card's BASEOS volume on that
+first boot, where you can read them from your computer:
 
 - **baseos-preloader.log**, a record of what was done
 - **mtd5-original-\<hash\>.img**, a copy of your own original preloader
@@ -148,8 +148,9 @@ The cases below are the ones that have actually been seen. This is new software 
 device with more than one firmware version in circulation, so you may hit something
 that is not on this list. If you do, power off, take the card out, and start the Flip
 without it — if stock comes up, nothing is lost and you can try again. Keep
-**baseos-preloader.log** and the **mtd5-original** file from the card; between them
-they say what happened and hold the way back.
+**baseos-preloader.log** and the **mtd5-original** file; between them they say what
+happened and hold the way back. Until BaseOS has booted once they are on the card's
+data partition rather than on BASEOS: Linux reads it, Windows and macOS do not.
 
 ### The Flip boots to stock and no update bar appears
 
@@ -159,7 +160,9 @@ different SD card if you have one.
 
 ### The update ran, but the Flip came back to stock
 
-Read **baseos-preloader.log** on the card's BASEOS volume from your computer.
+Read **baseos-preloader.log**. BaseOS has not booted yet, so it is on the card's data
+partition, which a Linux computer can read. On Windows or macOS, try the cases below in
+turn instead.
 
 - If it says **move the card to the right-hand slot**, the card was in the left-hand
   slot. The patch worked. Move the card over and power on.

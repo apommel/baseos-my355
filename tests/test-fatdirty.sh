@@ -1,7 +1,8 @@
 #!/bin/sh
 # Offline tests for fatdirty against real mkfs images: the flag found at the
-# offset Linux reads for each FAT type, volumes that are not FAT refused, and
-# fsck.fat -a clearing what fatdirty reports. Runs in a container; no device.
+# offset Linux reads for each FAT type and exFAT, other volumes refused, and
+# fsck.fat -a or fsck.exfat -p clearing what fatdirty reports. Runs in a
+# container; no device.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,8 +20,8 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
     "$@" > /dev/null 2>&1 && got=0 || got=$?
     [ "$got" = "$want" ] || { echo "exit $got, want $want: $*" >&2; exit 1; }
   }
-  # Sets bit 0 of the byte at $2, as Linux does at mount.
-  dirty() { printf "\001" | dd of="$1" bs=1 seek="$2" conv=notrunc 2>/dev/null; }
+  # Sets bit 0 of the byte at $2 (or the octal bits in $3), as Linux does at mount.
+  dirty() { printf "\\${3:-001}" | dd of="$1" bs=1 seek="$2" conv=notrunc 2>/dev/null; }
 
   cd /tmp
   truncate -s 64M f32.img; mkfs.fat -F 32 f32.img > /dev/null
@@ -29,6 +30,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   expect 1 fatdirty f32.img
   expect 1 fatdirty f16.img
   expect 1 fatdirty f12.img
+  [ "$(fatdirty f32.img || :)" = vfat ]
 
   # FAT32 keeps the flag at 65, FAT12/16 at 37; the other offset means nothing.
   cp f32.img d32.img; dirty d32.img 65; expect 0 fatdirty d32.img
@@ -41,7 +43,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   for f in d32 d16 d12; do
     per=$(fsck.fat -n -v "$f.img" | sed -n "s/^ *\([0-9]*\) bytes per FAT.*/\1/p")
     got=$(fatdirty "$f.img" || :)
-    [ "$got" = $((2 * per / 512)) ] || { echo "$f.img: fatdirty $got, want $((2 * per / 512))" >&2; exit 1; }
+    [ "$got" = "vfat $((2 * per / 512))" ] || { echo "$f.img: fatdirty $got, want $((2 * per / 512))" >&2; exit 1; }
   done
 
   # fsck.fat -a clears it: exit 0 or 1, both meaning the volume is now sound.
@@ -51,9 +53,18 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
     expect 1 fatdirty "$f.img"
   done
 
-  # Not FAT, even where offset 65 happens to be odd.
+  # exFAT keeps VolumeDirty in bit 1 at 106; fsck.exfat -p clears it.
   truncate -s 64M ex.img; mkfs.exfat ex.img > /dev/null
-  dirty ex.img 65; expect 2 fatdirty ex.img
+  expect 1 fatdirty ex.img
+  [ "$(fatdirty ex.img || :)" = exfat ]
+  cp ex.img dex.img; dirty dex.img 106 002; expect 0 fatdirty dex.img
+  len=$(dump.exfat ex.img | sed -n "s/^FAT Length(sectors):[[:space:]]*//p")
+  [ "$(fatdirty dex.img || :)" = "exfat $len" ] || { echo "dex.img: fatdirty $(fatdirty dex.img), want $len" >&2; exit 1; }
+  cp ex.img x.img; dirty x.img 106 001; expect 1 fatdirty x.img
+  fsck.exfat -p dex.img > /dev/null
+  expect 1 fatdirty dex.img
+
+  # Neither, even where offset 65 happens to be odd.
   head -c 512 /dev/zero > zero.img; dirty zero.img 65; expect 2 fatdirty zero.img
   cp d32.img nosig.img; printf "\000\000" | dd of=nosig.img bs=1 seek=510 conv=notrunc 2>/dev/null
   dirty nosig.img 65; expect 2 fatdirty nosig.img

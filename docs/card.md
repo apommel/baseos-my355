@@ -37,20 +37,19 @@ entry 2  boot      49152 ..  131071    40 MiB   kernel + DTB: a FIT
 entry 3  rootfs   212992 .. 1261567   512 MiB            <- root=/dev/mmcblk1p3
   —      (spare) 1261568 .. 2310143   512 MiB
 entry 4  data    2310144 .. 2572287   128 MiB   ext4, persistent state
-entry 5  primary 2572288 .. 2703359    64 MiB   FAT32, the only visible volume
+entry 5  primary 2572288 .. 2703359    64 MiB   exFAT, the only visible volume
 ```
 
-`primary` ships at 64 MiB and is grown to fill the card on the first boot (below).
-Until then it is made with `-s 1`: at 63 MiB dosfstools would otherwise choose 4 KiB
-clusters and produce 16092 of them, under the **65525 minimum a FAT32 must have** —
-Linux's vfat driver mounts that anyway, but macOS validates the count and refuses, so
-a freshly flashed card would read as damaged on a desktop.
+`primary` ships at 64 MiB, empty, and is grown to fill the card on the first boot
+(below). It is exFAT, which stock's 5.10 kernel cannot mount and has no FUSE helper
+for, and the root is EROFS, which it cannot mount either. So `/data` is the one
+filesystem stock sees on a BaseOS card, and the only one that carries
+`miyoo355_fw.img`, the preloader installer stock picks up off the card. With two
+mountable filesystems they raced for the one mountpoint stock reads, and the
+installer had to be on every one ([SD boot](boot-chain.md)).
 
-All three filesystems carry `miyoo355_fw.img`, the preloader installer stock picks up
-off the card. Stock mounts `/data` and the FAT volume, which race for the one
-mountpoint it reads, with no reliable winner ([SD boot](boot-chain.md)); the root,
-EROFS, it skips, and `expand-storage` copies the root's onto the FAT volume it
-formats.
+A card first booted by an older release keeps its FAT32 `primary`: an update never
+touches it. Every mount of it accepts either.
 
 Each of the three updatable regions reserves twice what it needs, and only one
 half is ever a partition; the spare is where an update writes (below). Leaving it
@@ -83,23 +82,25 @@ partition by **name** and refuses anything that is not MS basic data, so a wrong
 argument cannot land a `mkfs` on `rootfs`. Exit codes: 0 grew, 1 already full,
 2 error.
 
-Growing FAT32 in place would need `fatresize`; reformatting is what BusyBox can do,
-and it fixes the cluster size on the way. BusyBox's `mkfs.vfat` is FAT32-only and
-picks the cluster size itself — `-F`, `-s` and `-S` are accepted and ignored —
-landing on 4 KiB up to a few GiB and 16 KiB from 16 GiB up.
+exFAT cannot be grown in place (exfatprogs has no resize), so it is reformatted
+with `mkfs.exfat` from Debian's exfatprogs, which picks the cluster size: 32 KiB up
+to 32 GiB, 128 KiB above.
 
-This partition is **not empty**: the preloader installer
-leaves `mtd5-original-<hash>.img`, the user's only copy of their original
-preloader, on it. So its contents are staged on `/data` first (95 MiB free against
-a 62 MiB volume) and restored after the `mkfs`. Staging counts as complete only
-once the directory is renamed into place, and `/data/expanded` is written last, so
-a power cut leaves work the next boot redoes rather than files it has lost. A card
-that already fills the disk with nothing staged is marked done and left alone — it
-is not a card we grew.
+Whatever was copied onto `primary` before the first boot is staged on `/data`
+(95 MiB free against a 62 MiB volume) and restored after the `mkfs`. So are the
+preloader installer's `mtd5-original-<hash>.img`, the user's only copy of their
+original preloader, and `baseos-preloader.log`, which stock left next to the
+installer on `/data`: they are renamed into the staging directory, on the same
+filesystem, so each is always in one place or the other, and land on `primary`
+where a desktop can read them. Staging counts as complete only once the directory
+is renamed into place, and `/data/expanded` is written last, so a power cut
+leaves work the next boot redoes rather than files it has lost. A card that
+already fills the disk with nothing staged is marked done and left alone — it is
+not a card we grew.
 
-Verified on hardware (64 GB card, 2026-08-25): 64 MiB → 57.0 GiB with **16 KiB
-clusters** (3 737 821 of them) in **1.1 s**, card files intact, nothing done on
-later boots. macOS mounts the result.
+Verified on hardware (64 GB card, 2026-08-25, then FAT32): 64 MiB → 57.0 GiB with
+16 KiB clusters in **1.1 s**, card files intact, nothing done on later boots.
+macOS mounts the result.
 
 ## Updates
 
@@ -197,7 +198,9 @@ The root is EROFS (lz4hc, 16 KiB clusters; [rootfs](rootfs.md)), which stock
 does not mount. `/data` is ext4 with `^orphan_file` only: the stock 5.10.160 kernel has no `orphan_file` (5.15+), and
 reading a BaseOS card from stock, in the left slot, is how a failed boot is
 debugged ([diagnostics](diagnostics.md)). `metadata_csum`, `metadata_csum_seed`
-and `64bit` are all fine there.
+and `64bit` are all fine there. `primary` is exFAT, which stock does not mount
+either, so `/data` is the one filesystem stock sees (above). exFAT also lifts
+FAT32's 4 GiB file limit.
 
 ## Build and flash
 
