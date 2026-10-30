@@ -31,7 +31,7 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 | NextUI's first frame | 31.50 s | **2.57–2.67 s** |
 
 Stock measured with USB unplugged; BaseOS over warm reboots by adb, on the
-default `gpu=mali`.
+default `gpu=mali`. With `gpu=panfrost` the first frame is at 2.34–2.39 s.
 
 Where the time is saved:
 

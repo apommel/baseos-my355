@@ -140,8 +140,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   # pwrkeyd: a clean poweroff on a 2 s hold of the power key, without a frontend.
   # fatdirty: whether a card needs fsck.fat before it is mounted.
   # wifibtd: Bluetooth on/off, for when to power the WiFi/BT chip (wifibt-power).
-  # seedrng: the saved random seed, credited to the kernel at boot (rcS).
-  for t in gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd seedrng; do
+  for t in gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd; do
     gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c
     strip "$R"/usr/sbin/"$t"
   done

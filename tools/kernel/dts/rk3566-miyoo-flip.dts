@@ -920,6 +920,14 @@
 	status = "okay";
 };
 
+/*
+ * Off upstream on the RK3566 for its low-quality output. The crng mixes it
+ * with everything else, and without it dbus-daemon waits ~3 s for the crng.
+ */
+&rng {
+	status = "okay";
+};
+
 &saradc {
 	status = "okay";
 	vref-supply = <&vcc_1v8>;
