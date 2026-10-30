@@ -1,0 +1,97 @@
+--- a/product/kernel/drivers/gpu/arm/midgard/backend/gpu/mali_kbase_jm_hw.c	2026-10-30 20:11:57
++++ b/product/kernel/drivers/gpu/arm/midgard/backend/gpu/mali_kbase_jm_hw.c	2026-10-30 20:11:57
+@@ -1255,7 +1255,7 @@
+ 
+ int kbase_reset_gpu_init(struct kbase_device *kbdev)
+ {
+-	kbdev->hwaccess.backend.reset_workq = alloc_workqueue("Mali reset workqueue", 0, 1);
++	kbdev->hwaccess.backend.reset_workq = alloc_workqueue("Mali reset workqueue", WQ_PERCPU, 1);
+ 	if (kbdev->hwaccess.backend.reset_workq == NULL)
+ 		return -ENOMEM;
+ 
+--- a/product/kernel/drivers/gpu/arm/midgard/mali_kbase_debug_job_fault.c	2026-10-30 20:11:57
++++ b/product/kernel/drivers/gpu/arm/midgard/mali_kbase_debug_job_fault.c	2026-10-30 20:11:57
+@@ -472,7 +472,7 @@
+ 	spin_lock_init(&kbdev->job_fault_event_lock);
+ 
+ 	kbdev->job_fault_resume_workq =
+-		alloc_workqueue("kbase_job_fault_resume_work_queue", WQ_MEM_RECLAIM, 1);
++		alloc_workqueue("kbase_job_fault_resume_work_queue", WQ_MEM_RECLAIM | WQ_PERCPU, 1);
+ 	if (!kbdev->job_fault_resume_workq)
+ 		return -ENOMEM;
+ 
+--- a/product/kernel/drivers/gpu/arm/midgard/mali_kbase_event.c	2026-10-30 20:11:57
++++ b/product/kernel/drivers/gpu/arm/midgard/mali_kbase_event.c	2026-10-30 20:11:57
+@@ -226,7 +226,7 @@
+ 	INIT_LIST_HEAD(&kctx->event_list);
+ 	INIT_LIST_HEAD(&kctx->event_coalesce_list);
+ 	mutex_init(&kctx->event_mutex);
+-	kctx->event_workq = alloc_workqueue("kbase_event", WQ_MEM_RECLAIM, 1);
++	kctx->event_workq = alloc_workqueue("kbase_event", WQ_MEM_RECLAIM | WQ_PERCPU, 1);
+ 
+ 	if (kctx->event_workq == NULL)
+ 		return -EINVAL;
+--- a/product/kernel/drivers/gpu/arm/midgard/mmu/backend/mali_kbase_mmu_jm.c	2026-10-30 20:11:57
++++ b/product/kernel/drivers/gpu/arm/midgard/mmu/backend/mali_kbase_mmu_jm.c	2026-10-30 20:11:57
+@@ -407,7 +407,7 @@
+ 	kbdev->as[i].bf_data.addr = 0ULL;
+ 	kbdev->as[i].pf_data.addr = 0ULL;
+ 
+-	kbdev->as[i].pf_wq = alloc_workqueue("mali_mmu%u", 0, 0, i);
++	kbdev->as[i].pf_wq = alloc_workqueue("mali_mmu%u", WQ_PERCPU, 0, i);
+ 	if (!kbdev->as[i].pf_wq)
+ 		return -ENOMEM;
+ 
+--- a/product/kernel/drivers/gpu/arm/midgard/platform/devicetree/mali_kbase_runtime_pm.c	2026-10-30 20:11:57
++++ b/product/kernel/drivers/gpu/arm/midgard/platform/devicetree/mali_kbase_runtime_pm.c	2026-10-30 20:12:19
+@@ -41,10 +41,21 @@
+  * (ref-counted) so the count stays balanced regardless of pm_clk
+  * activity.  Same treatment for regulators.
+  */
++/*
++ * Whether these two last powered the GPU on. Probe leaves the clocks on and
++ * runtime init takes the regulators, so it starts on; system suspend follows a
++ * runtime suspend with a second power-off, which this skips.
++ */
++static bool gpu_power_on;
++
+ static void enable_gpu_power_control(struct kbase_device *kbdev)
+ {
+ 	unsigned int i;
+ 
++	if (gpu_power_on)
++		return;
++	gpu_power_on = true;
++
+ #if defined(CONFIG_REGULATOR)
+ 	for (i = 0; i < kbdev->nr_regulators; i++) {
+ 		if (kbdev->regulators[i])
+@@ -62,6 +73,10 @@
+ {
+ 	unsigned int i;
+ 
++	if (!gpu_power_on)
++		return;
++	gpu_power_on = false;
++
+ 	for (i = 0; i < kbdev->nr_clocks; i++) {
+ 		if (kbdev->clocks[i])
+ 			clk_disable_unprepare(kbdev->clocks[i]);
+@@ -205,8 +220,17 @@
+ static int kbase_device_runtime_init(struct kbase_device *kbdev)
+ {
+ 	int ret = 0;
++	unsigned int i;
+ 
+ 	dev_dbg(kbdev->dev, "%s\n", __func__);
++
++#if defined(CONFIG_REGULATOR)
++	for (i = 0; i < kbdev->nr_regulators; i++) {
++		if (kbdev->regulators[i])
++			WARN_ON(regulator_enable(kbdev->regulators[i]));
++	}
++#endif
++	gpu_power_on = true;
+ 
+ 	pm_runtime_set_autosuspend_delay(kbdev->dev, AUTO_SUSPEND_DELAY);
+ 	pm_runtime_use_autosuspend(kbdev->dev);
