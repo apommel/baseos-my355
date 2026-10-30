@@ -1,6 +1,9 @@
 # BusyBox init for the my355 base OS.
 # The kernel runs /init (init=/init), which execs busybox init, which reads this.
 ::sysinit:/etc/init.d/rcS
+# Bluetooth's side of the WiFi/BT chip's power (wifibt-power): without it, a BT
+# start could not power the chip back on. Before the frontend, which starts BT.
+::respawn:/usr/sbin/wifibtd
 ::respawn:/sbin/frontend-session
 # Serial console on the debug UART. ttyS2 at 1.5 Mbaud on this SoC; the pads
 # need the case open, so this is harmless on an assembled unit.

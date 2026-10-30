@@ -8,7 +8,7 @@
 #   gadget   rockchip           idVendor 0x2207  idProduct 0x0006
 #   function ffs.adb            functionfs mounted at /dev/usb-ffs/adb
 #   config   b.1 "adb"
-#   UDC      fcc00000.dwc3      (the only entry in /sys/class/udc)
+#   UDC      the only entry in /sys/class/udc (fcc00000.usb on mainline)
 #
 # This is a convenience and NEVER a boot dependency: no `set -e`, every failure
 # path returns quietly, and /etc/init.d/dev backgrounds it so it cannot
@@ -47,9 +47,9 @@ udc=$(ls /sys/class/udc 2>/dev/null | head -1)
 [ -n "$udc" ] || { log "no UDC in /sys/class/udc"; exit 0; }
 log "udc=$udc"
 
-# androidboot.serialno is what stock advertises; fall back to the machine id so
-# two units are never indistinguishable to a host.
-serial=$(sed 's/ /\n/g' /proc/cmdline 2>/dev/null | sed -n 's/^androidboot.serialno=//p')
+# The SoC's own serial, which U-Boot reads from the OTP; the machine id if not,
+# so two units are never indistinguishable to a host.
+serial=$(tr -d '\000' < /proc/device-tree/serial-number 2>/dev/null)
 [ -n "$serial" ] || serial=$(cat /etc/machine-id 2>/dev/null) || serial=my355
 
 mkdir -p "$G" 2>/dev/null || { log "cannot create gadget $G"; exit 0; }

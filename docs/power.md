@@ -130,7 +130,7 @@ lacks it. Hence the rule: **the chip is only cut once `rtk_btusb` is unloaded**,
 so the next Bluetooth start always loads it, and `wifibtd` (`src/wifibtd.c`)
 turns that module's `add` uevent into power. If the module will not unload in
 2 s, the chip stays on and the log says so. `wifibtd` also reads `/dev/rfkill`
-for the Bluetooth switch, and `rcS` respawns it.
+for the Bluetooth switch, and init respawns it.
 
 A Bluetooth block is only believed if it still holds 2 s later. `hci0`
 registers into the global Bluetooth state, which the last `bt_init.sh stop` left

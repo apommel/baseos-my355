@@ -31,10 +31,9 @@
 		/*
 		 * root= is GPT entry 3 (tools/mkgpt.py; mkfit.py checks it). init=:
 		 * a disk root only tries /sbin/init and friends. The performance
-		 * governor holds until the frontend picks one. USB devices wait for
-		 * rcS to authorize them, or the WiFi chip's probe races the root mount.
+		 * governor holds until the frontend picks one.
 		 */
-		bootargs = "root=/dev/mmcblk1p3 rootfstype=erofs rootwait ro init=/init quiet cpufreq.default_governor=performance usbcore.authorized_default=0";
+		bootargs = "root=/dev/mmcblk1p3 rootfstype=erofs rootwait ro init=/init quiet cpufreq.default_governor=performance";
 		stdout-path = "serial2:1500000n8";
 	};
 
