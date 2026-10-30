@@ -1125,7 +1125,8 @@ decompression and 0.12 s init before the boot script.
 the early boot logo (no VOP2 driver; `rcS` draws one at 2.00 s against ~1.0 s),
 the charge animation's screen (its LED and the low-battery guard are kept,
 *Charging while off*), and `androidboot.serialno`
-(`usb-gadget-adb` falls back to the machine id). The `.hdmi` device tree variant
+(`usb-gadget-adb` reads the SoC's OTP serial from the device tree's
+`serial-number`, which U-Boot fills). The `.hdmi` device tree variant
 is not given up but obsolete: the plane split above runs both displays at once,
 which is what stock used that variant to avoid having to do. It also
 removes `Freeing drm_logo memory`, the first-frame marker in

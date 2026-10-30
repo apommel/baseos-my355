@@ -14,6 +14,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   SCRIPT=/overlay/usr/sbin/baseos-config
   TMP=/tmp/t; mkdir -p "$TMP/run" "$TMP/bin"
   export BASEOS_SHADOW_DEFAULT=/overlay/etc/shadow
+  export BASEOS_SHARE=/overlay/usr/share/baseos
   export BASEOS_RUN_ROOT="$TMP/run"
   export BASEOS_HOSTNAME_BIN="$TMP/bin/hostname"
   export BASEOS_TEST_LOG="$TMP/events"
@@ -78,6 +79,11 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   # An empty later value restores the default.
   printf "ssh_password=first\nssh_password=\n" > "$TMP/config"
   apply "$TMP/config"; default_shadow
+
+  # The shared reader, as baseos-gpu uses it: last value wins, comments go.
+  printf "gpu=mali\ngpu = panfrost # Mesa\r\n" > "$TMP/config"
+  (. "$BASEOS_SHARE/conf.sh"; conf_get gpu "$TMP/config"; [ "$CONF_VALUE" = panfrost ]) || fail "gpu"
+  (. "$BASEOS_SHARE/conf.sh"; conf_get gpu "$TMP/missing"; [ -z "$CONF_VALUE" ]) || fail "gpu missing"
 
   # No stray temporary file, and too many arguments are refused.
   [ ! -e "$TMP/run/shadow.tmp" ] || fail "shadow.tmp left behind"
