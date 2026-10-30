@@ -199,6 +199,9 @@ moved to the background, and the machine-id is copied with shell builtins.
 
 `baseos-update apply` is now the largest item left in `rcS`, at 20–30 ms: it
 mounts this card's own FAT volume read-only on every boot to look for a payload.
+(Later `rcS` mounted it once for `baseos-gpu`, `apply` and the settings, and
+unmounted it in the background: ~15 ms off `rcS`, spent again when the volume
+became exFAT, whose mount reads its allocation bitmap.)
 
 Shutdown mattered for the *next* boot. BusyBox init runs `rcK` before it signals
 anything and unmounts nothing itself, and the old `rcK` tried to unmount `/data`

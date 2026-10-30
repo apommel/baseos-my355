@@ -55,12 +55,15 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   # so a restored file proves staging worked.
   stub /bin/mount "for a; do d=\$a; done; mkdir -p \"\$d\""
   stub /bin/umount "exit 0"
-  stub /sbin/mkfs.vfat "echo \"\$*\" >> /tmp/mkfs.log; rm -rf /tmp/.primary/*"
+  stub /usr/sbin/mkfs.exfat "echo \"\$*\" >> /tmp/mkfs.log; rm -rf /tmp/.primary/*"
 
   reset() {
-    rm -rf /tmp/splash.log /tmp/mkfs.log /tmp/ran /tmp/.primary /data/expanded /data/expand-stage
+    rm -rf /tmp/splash.log /tmp/mkfs.log /tmp/ran /tmp/.primary /data/*
     mkdir -p /tmp/.primary
-    echo original > /tmp/.primary/mtd5-original-abc.img
+    echo copied > /tmp/.primary/user-file
+    # Where stock leaves the backup and log of the preloader installer.
+    echo original > /data/mtd5-original-abc.img
+    echo log > /data/baseos-preloader.log
   }
 
   # An expanded card: nothing runs at all, not even gptgrow.
@@ -77,14 +80,18 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   [ ! -e /tmp/splash.log ] || { echo "painted for a card it left alone" >&2; exit 1; }
   [ -e /data/expanded ]
 
-  # First boot: the track runs 45 -> 100, one mkfs, card contents preserved.
+  # First boot: the track runs 45 -> 100, one mkfs, card contents preserved,
+  # the installer backup and log moved over from /data.
   reset
   stub /usr/sbin/gptgrow "exit 0"
   sh /test/expand-storage
   [ "$(head -1 /tmp/splash.log)" = "--important 45 EXPANDING STORAGE" ]
   [ "$(tail -1 /tmp/splash.log)" = "--important 100 EXPANDING STORAGE" ]
-  grep -qx -- "-n BASEOS /dev/mmcblk1p5" /tmp/mkfs.log
+  grep -qx -- "-L BASEOS /dev/mmcblk1p5" /tmp/mkfs.log
+  grep -qx copied /tmp/.primary/user-file
   grep -qx original /tmp/.primary/mtd5-original-abc.img
+  grep -qx log /tmp/.primary/baseos-preloader.log
+  [ ! -e /data/mtd5-original-abc.img ] && [ ! -e /data/baseos-preloader.log ]
   [ -e /data/expanded ] && [ ! -d /data/expand-stage ]
 
   # A gptgrow error touches nothing.
@@ -96,10 +103,11 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   # Power cut after staging: the card is already full and the staged contents
   # are restored on the next boot.
   reset
-  mkdir -p /data/expand-stage; echo original > /data/expand-stage/mtd5-original-abc.img
-  rm -f /tmp/.primary/mtd5-original-abc.img
+  mkdir -p /data/expand-stage; echo copied > /data/expand-stage/user-file
+  rm -f /tmp/.primary/user-file
   stub /usr/sbin/gptgrow "exit 1"
   sh /test/expand-storage
+  grep -qx copied /tmp/.primary/user-file
   grep -qx original /tmp/.primary/mtd5-original-abc.img
   [ -e /data/expanded ]
 

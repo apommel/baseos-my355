@@ -7,21 +7,9 @@ HERE="$(dirname "$0")"
 CARD="${CARD:-$(pwd)}"
 resolved=$(cd "$CARD" 2>/dev/null && pwd -P) && CARD="$resolved"
 
-# Backup and log go on the card's FAT, which stock may not have mounted.
-FATMNT=/tmp/baseos-fat
-OUTDIR="$CARD"
+# Backup and log go next to this, on /data; BaseOS moves them to its exFAT volume.
 CARDDEV=$(awk -v d="$CARD" '$2 == d { print $1 }' /proc/mounts)
-case "$CARDDEV" in
-    /dev/mmcblk*p*)
-        for part in "${CARDDEV%p*}"p*; do
-            blkid "$part" 2>/dev/null | grep -q 'TYPE="vfat"' || continue
-            mkdir -p "$FATMNT"
-            mount -t vfat "$part" "$FATMNT" 2>/dev/null && OUTDIR="$FATMNT"
-            break
-        done
-        ;;
-esac
-LOG="$OUTDIR/baseos-preloader.log"
+LOG="$CARD/baseos-preloader.log"
 MTD=${MTD:-/dev/mtd5}
 MIN_BATTERY=25
 
@@ -29,7 +17,6 @@ log() { echo "$*"; echo "$(date '+%H:%M:%S') $*" >> "$LOG"; }
 progress() { echo "$1" > /tmp/fwupdate_progress; }
 finish() {
     sync
-    mountpoint -q "$FATMNT" 2>/dev/null && umount "$FATMNT"
     progress 100; echo 1 > /tmp/fwupdate_done
     [ "${BOOT:-0}" = "1" ] && { sleep 2; reboot; }
     exit "${1:-0}"
@@ -66,10 +53,10 @@ log "patched image is $AFTER"
 
 # A way back, on the card, before anything is erased.
 progress 30
-cp /tmp/baseos-orig.img "$OUTDIR/mtd5-original-$BEFORE.img" && sync
-[ "$(sha256sum "$OUTDIR/mtd5-original-$BEFORE.img" | cut -c1-64)" = "$BEFORE" ] \
+cp /tmp/baseos-orig.img "$CARD/mtd5-original-$BEFORE.img" && sync
+[ "$(sha256sum "$CARD/mtd5-original-$BEFORE.img" | cut -c1-64)" = "$BEFORE" ] \
     || { log "backup to the card did not verify; refusing"; finish 1; }
-log "original backed up to $OUTDIR"
+log "original backed up to $CARD"
 
 if [ "${BASEOS_DRY:-0}" = "1" ]; then
     log "dry run - would erase $MTD and write the patched image"

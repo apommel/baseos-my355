@@ -41,9 +41,8 @@ tar -tf "$ROOTFS_TAR" | grep -qE "^(\./)?usr/lib/modules/$KREL/modules\.dep$" ||
 # for which partition root= must name.
 eval "$(python3 "$HERE/tools/mkgpt.py" --shell)"
 
-# The preloader installer stock picks up off the card. It goes on every mountable
-# filesystem because stock's automounter picks which one it mounts by lock race
-# (docs/boot-chain.md).
+# The preloader installer stock picks up off the card, on data: the only
+# filesystem here stock can mount (docs/boot-chain.md).
 FWIMG="$WORK/miyoo355_fw.img"
 python3 "$HERE/tools/preloader-installer/mkfwimg.py" "$FWIMG" >/dev/null
 
@@ -80,7 +79,7 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   -e DATA_START="$MY355_DATA_START" -e DATA_SECTORS="$MY355_DATA_SECTORS" \
   -e PRIMARY_START="$MY355_PRIMARY_START" -e PRIMARY_SECTORS="$MY355_PRIMARY_SECTORS" \
   alpine:3.20 sh -euc '
-  apk add -q e2fsprogs e2fsprogs-extra erofs-utils dosfstools mtools python3 sgdisk
+  apk add -q e2fsprogs e2fsprogs-extra erofs-utils exfatprogs python3 sgdisk
 
   OUT="/work/$OUT_NAME"
   rm -f "$OUT"; : > "$OUT"
@@ -93,7 +92,6 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   # enough to keep up with page faults; larger clusters do not (docs/rootfs.md).
   R=/tmp/r; rm -rf "$R"; mkdir "$R"
   tar -xf /work/rootfs.tar -C "$R"
-  cp /work/miyoo355_fw.img "$R/"
   mkfs.erofs -zlz4hc,12 -C16384 -L rootfs /tmp/rootfs.img "$R" >/dev/null
   [ "$(wc -c < /tmp/rootfs.img)" -le $((SLOT_SECTORS * 512)) ] || {
     echo "rootfs image does not fit its slot" >&2; exit 1; }
@@ -109,13 +107,10 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   mke2fs -q -F -t ext4 -O "$EXT4_OPTS" -b 4096 -L data -d "$D" \
     -E offset=$((DATA_START * 512)) "$OUT" $((DATA_SECTORS / 8))
 
-  # Pre-expansion geometry only: first boot reformats this partition at full
-  # size with a normal cluster size. -s 1 because the default 4 KiB clusters
-  # give 16092 here, under the 65525 a FAT32 needs -- Linux mounts that anyway,
-  # macOS refuses (docs/card.md).
-  mkfs.vfat -F 32 -s 1 -n BASEOS -S 512 --offset "$PRIMARY_START" \
-    "$OUT" $(((PRIMARY_SECTORS - 2048) / 2)) >/dev/null 2>&1
-  mcopy -i "$OUT@@$((PRIMARY_START * 512))" /work/miyoo355_fw.img ::
+  # Empty: first boot reformats it at full size.
+  truncate -s $(((PRIMARY_SECTORS - 2048) * 512)) /tmp/primary.img
+  mkfs.exfat -L BASEOS /tmp/primary.img >/dev/null
+  dd if=/tmp/primary.img of="$OUT" bs=512 seek="$PRIMARY_START" conv=notrunc status=none
 
   echo "-- verification --"
   sgdisk -v "$OUT" | tail -3
@@ -123,12 +118,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
   fsck.erofs --extract /tmp/rootfs.img >/dev/null && echo "  rootfs erofs OK"
   dd if="$OUT" of=/tmp/data.img bs=512 skip="$DATA_START" count="$DATA_SECTORS" status=none
   e2fsck -fn /tmp/data.img >/dev/null && echo "  data ext4 OK"
-  n=0
-  dump.erofs --path=/miyoo355_fw.img /tmp/rootfs.img >/dev/null 2>&1 && n=$((n + 1))
-  debugfs -R "stat /miyoo355_fw.img" "$OUT?offset=$((DATA_START * 512))" >/dev/null 2>&1 && n=$((n + 1))
-  mdir -i "$OUT@@$((PRIMARY_START * 512))" :: 2>/dev/null | grep -q -i miyoo355 && n=$((n + 1))
-  # Stock mounts data and primary; expand-storage copies the root copy to primary.
-  [ "$n" -eq 3 ] && echo "  preloader installer on all 3 filesystems"
+  fsck.exfat -n /tmp/primary.img >/dev/null && echo "  primary exfat OK"
+  debugfs -R "stat /miyoo355_fw.img" "$OUT?offset=$((DATA_START * 512))" >/dev/null 2>&1 &&
+    echo "  preloader installer on data"
 '
 python3 "$HERE/tools/mkfit.py" info "$BOOT_IMG"
 echo "image: $OUT ($KREL)"
