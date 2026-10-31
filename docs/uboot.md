@@ -174,7 +174,7 @@ BSP kernel with no published source, on a device with no console.
 > Done on 2026-09-19, and it took more than drawing: the panel came up at
 > 2.99 s, the backlight stayed off and NextUI erased the logo first (Part 3,
 > *The boot logo*). It showed from 2.00 s on the vendor kernel, and shows
-> from 1.6 s on mainline.
+> from 1.4 s on mainline.
 
 Lean U-Boot + stock DTB + **no video at all**, drawing the splash from the kernel
 side with the `baseos-splash` fbsplash the rootfs already ships. Cost is cosmetic
@@ -1045,7 +1045,7 @@ from diag builds except the `-O2` column.
 warm, release build):
 
 ```
-uboot 0.620  printk 0.620  init 1.100  backlight 1.22  handoff 1.39  logo 1.71  nextui 2.32  frame -  (card 82 ms)
+uboot 0.620  printk 0.620  init 1.113  backlight 1.23  handoff 1.41  logo 1.39  nextui 2.35  frame -  (card 88 ms)
 ```
 
 U-Boot's hand-off, the first printk, `Run /init`, the backlight, the frontend
@@ -1109,7 +1109,7 @@ NextUI's `my355.sh` leaving `/dev/fb0` alone on BaseOS.
 5. The fuel gauge: discharge while off is not seen until the kernel's own
    low-voltage handling, as the power-on voltage is not trusted mid-curve.
    Its 13.5 ms should drop with multi-byte reads: re-measure.
-6. A U-Boot boot logo (*The boot logo*, above), if 1.6 s is not enough. The
+6. A U-Boot boot logo (*The boot logo*, above), if 1.4 s is not enough. The
    cheaper levers for it are everything before `start_kernel`, which moves it
    one for one, and the kernel's `rk3x_i2c_driver_init` (146 ms in the last
    `initcall_debug` profile, [boot time](boot-time.md)): re-profile first.
