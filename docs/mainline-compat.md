@@ -347,6 +347,12 @@ Different from stock, found on the first boots:
   cutting the chip, is left out: BaseOS's `wifibt-power` already decides
   that. Its finding that the cut for suspend has to come in the late phase
   is for the suspend work. `wireless-regdb` is in the rootfs.
+- **External controllers.** Their HID drivers are built in, as nothing loads
+  a hotplugged device's module: `hid-playstation`, `hid-nintendo`,
+  `hid-microsoft` and `xpad`, with force feedback. `BT_LE` and `uhid` let
+  BlueZ create Low Energy pads (HID over GATT), and `hidraw` gives SDL's
+  HIDAPI drivers their mapping, rumble and gyro. Stock had neither LE nor
+  `hidraw`.
 - **event0 IDs.** Bus `0019`, `0001:0001`, where stock has `045e:028e`.
 - **CPU idle.** Mainline's rk356x has no idle states, so an idle core only
   ran WFI. The BSP's PSCI `cpu-sleep` is added (Chris Morgan's patch, via

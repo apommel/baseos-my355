@@ -20,6 +20,7 @@ not deleted, in [history](history.md).
 | [the card](card.md) | Partition layout, image build, boot image surgery, first-boot expansion, A/B updates. |
 | [rootfs](rootfs.md) | The harvest, the overlay, init, adb, and what NextUI needs from the OS. |
 | [what frontends need](rootfs-interface.md) | The libraries, programs and files stock-built frontends use, measured from a card; what a rootfs built from source must keep. |
+| [SDK](sdk.md) | The cross-toolchain and sysroot to build frontends against the rootfs's own libraries. |
 | [boot time](boot-time.md) | Where the time goes, what each change was worth, what is left. |
 | [power](power.md) | What the Flip draws on battery, where it goes, the gauge and charging. |
 

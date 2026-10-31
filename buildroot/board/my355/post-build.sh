@@ -9,6 +9,8 @@ PATCHELF="$HOST_DIR/bin/patchelf"
 
 rm -rf "$T"/usr/share/man "$T"/usr/share/doc "$T"/usr/share/licenses \
        "$T"/usr/share/zoneinfo/right "$T"/usr/share/vulkan/registry
+# HarfBuzz's extras and gdbserver's tracepoints: SDL3_ttf needs only libharfbuzz.
+rm -f "$T"/usr/bin/hb-* "$T"/usr/lib/libharfbuzz-*.so* "$T"/usr/lib/libinproctrace.so
 
 # The kernel's modules (depmod already run) and Mesa, the second GPU stack
 # baseos-gpu picks from. Removed first: the target directory persists.
