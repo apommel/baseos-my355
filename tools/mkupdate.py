@@ -83,7 +83,7 @@ def main() -> int:
     ap.add_argument("image", type=Path)
     ap.add_argument("target")
     ap.add_argument("version")
-    ap.add_argument("build", help="the build id build-rootfs.sh stamped into the rootfs")
+    ap.add_argument("build", help="the build id build.sh stamped into the rootfs")
     ap.add_argument("output", type=Path)
     a = ap.parse_args()
     image, target, version, build, output = (

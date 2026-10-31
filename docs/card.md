@@ -1,6 +1,6 @@
 # The card
 
-How `build-image.sh` composes a bootable card, what is on it, and what first
+How `board/my355/post-image.sh` composes a bootable card, what is on it, and what first
 boot and updates do to it. The rootfs that goes inside is [rootfs](rootfs.md);
 the boot chain that reaches it is [boot chain](boot-chain.md).
 
@@ -102,7 +102,7 @@ macOS mounts the result.
 
 ## Updates
 
-`./build-update.sh` turns a composed image into `baseos-my355-<version>.bosupd`:
+`tools/mkupdate.py` turns the composed image into `baseos-my355-<version>.bosupd`:
 an uncompressed tar of a manifest and one gzipped slot image per region, ~34 MB.
 Users copy it to the root of either card and power on.
 
@@ -203,17 +203,12 @@ FAT32's 4 GiB file limit.
 ## Build and flash
 
 ```sh
-./fetch-prepared.sh                # or ./prepare-stock.sh NAND_DIR
-./build-all.sh                     # U-Boot, kernel, GPU, rootfs, image, .bosupd
+./build.sh                         # U-Boot, kernel, rootfs, image, .bosupd
 ```
 
-`build-all.sh` runs the steps below, each of which also stands alone:
-`build-uboot.sh`, `build-kernel.sh` and `build-gpu.sh` (cached trees, so a
-rerun is incremental), `build-rootfs.sh` (Buildroot),
-`build-image.sh` (this page) and `build-update.sh` (the `.bosupd` payload).
-
-The build verifies as it goes: `sgdisk -v` clean, `fsck.erofs` on the root,
-`e2fsck -fn` on `/data`, and the kernel and device tree read back out of the boot FIT.
+Buildroot builds the parts, then `post-image.sh` (this page) packs the two FITs,
+refusing a bootcmd that disagrees with `mkfit.py`'s DRAM map or an image that
+overflows its slot, and writes the table, the filesystems and the `.bosupd`.
 
 Flashing, on macOS:
 
@@ -222,7 +217,7 @@ Flashing, on macOS:
 ./flash-card.sh diskN
 ```
 
-It writes `work/my355/baseos-my355.img` to the raw node, and refuses before
+It writes `work/images/baseos-my355.img` to the raw node, and refuses before
 writing anything unless the disk is physical **removable** media at least the
 size of the image: every SSD, internal or external, reports itself `Fixed`, and
 a mounted disk image reports `Virtual`. It then asks for the disk name typed

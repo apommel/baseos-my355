@@ -33,6 +33,7 @@ if [ "${1:-}" != --no-pull ]; then
     tr -d '\r' | awk '{print $1, $NF}' | sort -u > "$OUT/maps.txt"
 fi
 
+zstd -dc "$HERE"/work/dl/stock-firmware/*.tar.zst | tar -xOf - prepared/stock-harvest.tar > "$OUT/stock-harvest.tar"
 python3 "$HERE/tools/abi_scan.py" "$CARD" \
-  "$HERE/work/my355/rootfs.tar" "$HERE/work/my355/prepared/stock-harvest.tar" \
+  "$HERE/work/images/rootfs.tar" "$OUT/stock-harvest.tar" \
   --maps "$OUT/maps.txt" --json "$OUT/abi.json" | tee "$OUT/abi.txt"

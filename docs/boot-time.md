@@ -33,10 +33,10 @@ boots on 2026-10-07, after the top USB port's OHCI came back (+0.05 s).
 | **frontend hand-off — `exec updater`** | **1.99 s** | `/run/boot-frontend-exec` |
 | boot logo on the panel | 2.00–2.01 s | `dw_mipi_dsi_bridge_enable` |
 | `nextui.elf` start | **2.40–2.42 s** | `/proc/<pid>/stat` |
-| **first NextUI frame** | **2.93–2.98 s** | `baseos-frameprobe` (`MY355_DIAG=1`) |
+| **first NextUI frame** | **2.93–2.98 s** | `baseos-frameprobe` (`--diag`) |
 
 `baseos-bootinfo timeline` prints these for any boot; the first frame needs a
-`MY355_DIAG=1` rootfs ([U-Boot](uboot.md), *Measuring it*).
+`./build.sh --diag` rootfs ([U-Boot](uboot.md), *Measuring it*).
 
 On the vendor U-Boot (as released in 0.6.0):
 

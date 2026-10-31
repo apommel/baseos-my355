@@ -1,0 +1,5 @@
+# Diag: the console saved to the card, and a bootstage mark per initcall.
+CONFIG_CONSOLE_RECORD=y
+# CONFIG_CONSOLE_RECORD_INIT_F is not set
+CONFIG_CONSOLE_RECORD_OUT_SIZE=0x10000
+CONFIG_BOOTSTAGE_RECORD_COUNT=200

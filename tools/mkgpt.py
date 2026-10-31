@@ -21,7 +21,7 @@ Layout:
     5 primary  rest    exFAT, the only desktop-visible volume
 
 Each of the three updatable regions reserves twice what it needs and only ever
-has one half as a partition; overlay/usr/sbin/baseos-update writes the other half
+has one half as a partition; rootfs-overlay/usr/sbin/baseos-update writes the other half
 and flips the entry. The spare halves are unallocated on purpose: they cost no
 visible partition and no desktop OS offers to format them. Every entry except
 `primary` carries GPT attribute bits 62 and 63, so a desktop assigns exactly one
@@ -122,7 +122,7 @@ def main() -> int:
     ap.add_argument("--print-only", action="store_true")
     ap.add_argument("--shell", action="store_true",
                     help="emit the layout as shell variables; this is the single "
-                         "source of truth for build-image.sh")
+                         "source of truth for post-image.sh")
     a = ap.parse_args()
 
     if not (a.shell or a.print_only or a.image):
