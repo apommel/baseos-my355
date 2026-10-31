@@ -6,8 +6,8 @@ Superseded tables and the measurements that led here are in
 
 Measured on the vendor 5.10 kernel, which BaseOS booted until 1.3.0. The
 mainline kernel's figures, against these, are in
-[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.40 s
-and `nextui.elf` at 2.33 s. The initcall list below has no counterpart there;
+[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.11 s
+and `nextui.elf` at 2.26 s (2026-10-31, warm). The initcall list below has no counterpart there;
 the SD and `rcS` findings carry over.
 
 Figures are cold boots on hardware with **USB unplugged at power-on** — a
@@ -245,8 +245,9 @@ up to the data cache, warm after):
 zstd was first measured 1.60 s *slower* than gzip; the cause was U-Boot's
 `-mstrict-align` and `ZSTD_LIB_MINIFY`, not zstd.
 
-What is left of U-Boot's 0.94 s is the read (0.53 s at 23.8 MB/s),
-decompression (0.20 s) and init before the boot script (0.12 s). The order to
+What is left of U-Boot's 0.62 s, with the kernel cut to the board, is the
+read (0.30 s), decompression (~0.1 s) and init before the boot script
+(0.13 s). The order to
 take them in is [U-Boot](uboot.md), *Next, in order*.
 
 On the vendor U-Boot only:
@@ -296,9 +297,9 @@ block, with the whole cohort blocked behind the same misses. That is why the
 mtimes showed every one of them stalling for the same ~11 s, and why swapping
 which binary goes first would just move the bill.
 
-BaseOS pays the same cost against different storage. The harvested vendor
-libraries are in our ext4 rootfs on the boot card, uncompressed, at SDR104 — so
-the same work takes 0.89 s. Corroboration from within this port: raising that
+BaseOS paid the same cost against different storage. The harvested vendor
+libraries were in an ext4 rootfs on the boot card, uncompressed, at SDR104 — so
+the same work took 0.89 s. Corroboration from within this port: raising that
 card from SDR25 to SDR104 moved `nextui.elf`'s start by 0.48 s and its init by
 0.46 s, for exactly this reason, even though `nextui.elf` itself lives on the
 *other* card ([history](history.md)).
@@ -310,6 +311,6 @@ resident — a warm measurement of the one thing that is only expensive cold.
 
 So of the 25.8 s saved to a first frame, the part BaseOS removes outright is the
 9.9 s of vendor userland; the rest is the same work done against faster storage,
-which is a consequence of where the harvest lives rather than of deleting
+which is a consequence of where the harvest lived rather than of deleting
 anything. The claim that rests on nothing but our own code is the hand-off
 number, **1.99 s against 15.79 s**.

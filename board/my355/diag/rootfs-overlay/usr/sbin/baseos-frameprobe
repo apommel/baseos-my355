@@ -1,5 +1,5 @@
 #!/bin/sh
-# Diagnostics only (MY355_DIAG=1): when the frontend's first frame reached the
+# Diagnostics only (--diag): when the frontend's first frame reached the
 # panel, for `baseos-bootinfo timeline`. /etc/init.d/dev starts it.
 #
 # There is no kernel marker for it, so poll the DRM state for a plane on a

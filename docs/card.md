@@ -26,8 +26,8 @@ The right slot enumerates as `mmcblk1` (left is `mmcblk2`) — fixed by DT alias
 
 ## Layout
 
-`tools/mkgpt.py` is the single source of truth; the build script reads it
-via `--shell` rather than duplicating constants.
+`tools/mkgpt.py` is the single source of truth; `post-image.sh` reads it via
+`--shell` rather than duplicating constants.
 
 ```
 entry 1  uboot     16384 ..   32767     8 MiB   U-Boot FIT: ours + vendor BL31/OP-TEE
@@ -83,7 +83,7 @@ argument cannot land a `mkfs` on `rootfs`. Exit codes: 0 grew, 1 already full,
 2 error.
 
 exFAT cannot be grown in place (exfatprogs has no resize), so it is reformatted
-with `mkfs.exfat` from Debian's exfatprogs, which picks the cluster size: 32 KiB up
+with exfatprogs' `mkfs.exfat`, which picks the cluster size: 32 KiB up
 to 32 GiB, 128 KiB above.
 
 Nothing on `primary` is kept: it ships empty, stock cannot write to it, and files
@@ -103,7 +103,7 @@ macOS mounts the result.
 ## Updates
 
 `tools/mkupdate.py` turns the composed image into `baseos-my355-<version>.bosupd`:
-an uncompressed tar of a manifest and one gzipped slot image per region, ~34 MB.
+an uncompressed tar of a manifest and one gzipped slot image per region, ~73 MB.
 Users copy it to the root of either card and power on.
 
 `baseos-update apply` runs from `rcS` just after the card mount:
@@ -127,7 +127,7 @@ saves and settings that a reflash would destroy.
 Only regions that change are written. Nothing writes to a running slot — the
 rootfs is mounted read-only — so hashing the active half of `uboot` and `boot`
 says whether the payload would change them, and both builds reproduce
-(`SOURCE_DATE_EPOCH=0`, FIT timestamp 0), so most releases leave them alone and
+(`BR2_REPRODUCIBLE`, FIT timestamp 0), so most releases leave them alone and
 skip 48 MiB of writes plus their read-back. A region left alone is not flipped,
 and a rollback flips back only what the update flipped (`regions=` in
 `/data/update/state`). The rootfs is never compared: it carries the build stamp,
@@ -147,7 +147,8 @@ enough to select all three: the SPL finds `uboot` by name, U-Boot finds
 
 **Rollback.** `rcS` runs `baseos-update boot-check`, which counts boots while a
 trial is open and restores the previous halves on the third; `frontend-session` runs
-`baseos-update confirm` as it starts, which ends the trial. Confirming on session
+`baseos-update confirm` as it starts, which ends the trial and deletes the
+payload; one that rolled back stays, for `status` to explain. Confirming on session
 start rather than on frontend hand-off is deliberate — a card with no frontend is
 a healthy OS, and keying the trial later would make that look like a failed update
 and roll back forever. This cannot cover a rootfs so broken that `/init` never

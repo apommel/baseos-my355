@@ -17,9 +17,9 @@ fixes, and the GPU on a g13p0 libmali with no Panfrost or PanVK.
 |---|---|---|
 | kernel / DTB | 5.10.160 from `mtd2`, its DTB rewritten at build | Linux 7.2 from source, our own `rk3566-miyoo-flip.dts` |
 | GPU | kbase g18p0, libmali g13p0 | ROCKNIX's `mali_kbase` (libmali g29p1) or Panfrost and PanVK, picked by `gpu=` |
-| stock interface | native | a thin layer: device tree names, three small drivers, two patches, a `modetest` wrapper ([mainline-compat](mainline-compat.md)) |
-| out of tree | everything | `mali_kbase`, `8733bu`, the panel, gamepad, DMC and suspend-config drivers |
-| boot | `Run /init` 1.83 s, `nextui.elf` 2.40 s | 1.40 s, 2.33 s |
+| stock interface | native | a thin layer: device tree names, three small drivers and eight patches (`board/my355/linux/stock`), a `modetest` wrapper ([mainline-compat](mainline-compat.md)) |
+| not upstream | everything | `mali_kbase` and `8733bu` (packages); the panel, gamepad, CPU-bin, DMC and suspend-config drivers (patches) |
+| boot | `Run /init` 1.83 s, `nextui.elf` 2.40 s | 1.11 s, 2.26 s (2026-10-31) |
 
 The two ran side by side while the mainline one was brought up; once it ran
 NextUI, its emulators, sleep, WiFi, Bluetooth audio and HDMI at stock's power
@@ -72,7 +72,7 @@ Flip's own control tree and the zstd decoder at `-O2` — it reaches `Run /init`
 **1.8 s** ahead of the vendor path.
 
 It costs the early boot logo — mainline U-Boot has no VOP2 driver, so `rcS`
-draws it, on the panel at 2.00 s against ~1.0 s — and the charge screen (the
+draws it, on the panel at 1.6 s against ~1.0 s — and the charge screen (the
 charge LED and the low-battery guard are kept). And it has to do by hand what the vendor
 kernel silently relied on the vendor U-Boot for: the OP-TEE reservation, the
 display plane assignment (without it the panel stays black under NextUI) and the
@@ -137,7 +137,7 @@ against stock symbol by symbol. SDL2 is sdl2-compat over SDL3.
 ## Open
 
 - **spruceOS as a frontend.** Its card would be mounted and its `updater`
-  executed, but whether it finds the userland it expects in the harvest is
+  executed, but whether it finds the userland it expects in this rootfs is
   unchecked.
 - **The stock bundle.** The build takes three files from it: `uboot.img` and
   the Bluetooth firmware, but the published bundle still carries `boot.img`

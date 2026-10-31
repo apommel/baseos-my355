@@ -1,4 +1,4 @@
-Diagnostics only (MY355_DIAG=1): where `mmc dev 1` spends its time.
+Diagnostics only (--diag): where `mmc dev 1` spends its time.
 
 A bootstage mark at each step of SD card init and around the partition scan
 that probing the block device runs, the number of ACMD41 polls the card
@@ -49,7 +49,7 @@ diff --git a/drivers/mmc/mmc.c b/drivers/mmc/mmc.c
  #include <div64.h>
  #include "mmc_private.h"
 +
-+/* Diagnostics only (MY355_DIAG=1): where card init spends its time */
++/* Diagnostics only (--diag): where card init spends its time */
 +#define MY355_MARK(n)	bootstage_mark_name(BOOTSTAGE_ID_ALLOC, "mmc_" n)
  
  #define DEFAULT_CMD6_TIMEOUT_MS  500
