@@ -358,6 +358,13 @@ Different from stock, found on the first boots:
 - **CPU idle.** Mainline's rk356x has no idle states, so an idle core only
   ran WFI. The BSP's PSCI `cpu-sleep` is added (Chris Morgan's patch, via
   zlyme), which he measured at about 0.2 W at idle on an RG353P.
+- **RT tasks and `schedutil`.** Without utilisation clamping, `schedutil`
+  takes the top clock whenever an RT task is runnable. Panfrost completes GPU
+  jobs in an RT IRQ thread (`irq/*-panfrost-job`, FIFO 50), about twice a
+  frame, which kept a GBC game in minarch at a mean 1195 MHz where libmali's
+  kbase, with no RT threads, ran it at 627 MHz. `CONFIG_UCLAMP_TASK` is built
+  in and rcS sets `sched_util_clamp_min_rt_default` to 0, so RT tasks ask for
+  the clock their own load needs; stock's kernel had neither.
 - **Battery readings.** The mainline gauge has `current_avg` and
   `voltage_avg`, not `current_now` and `voltage_now`. Nothing stock reads
   them; [power](power.md)'s method uses the averages here.

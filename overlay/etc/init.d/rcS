@@ -61,6 +61,8 @@ mark /run/boot-data-mounted
 
 # A panic resets warm, which ramoops survives; a long press does not.
 echo 10 > /proc/sys/kernel/panic
+# RT tasks ask schedutil only for the clock their load needs, not the top one.
+echo 0 > /proc/sys/kernel/sched_util_clamp_min_rt_default
 
 # A freshly updated set of slots is on trial until a frontend session starts.
 # Count the boots that never get that far and restore the previous ones if this
