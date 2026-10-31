@@ -1,0 +1,7 @@
+config BR2_PACKAGE_SDL2_COMPAT
+	bool "sdl2-compat"
+	depends on BR2_PACKAGE_BASEOS_SDL3
+	help
+	  SDL2's ABI, libSDL2-2.0.so.0, implemented over SDL3.
+
+	  https://github.com/libsdl-org/sdl2-compat

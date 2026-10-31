@@ -8,7 +8,7 @@
 /bin/mkdir -p /data/dropbear /data/root
 for t in rsa ed25519; do
 	k=/data/dropbear/dropbear_${t}_host_key
-	[ -f "$k" ] || /usr/sbin/dropbearkey -t "$t" -f "$k" >/dev/null 2>&1
+	[ -f "$k" ] || /usr/bin/dropbearkey -t "$t" -f "$k" >/dev/null 2>&1
 done
 
 /usr/sbin/baseos-config /run/baseos.conf 2>> "$BASEOS_LOG" || log "baseos-config failed"

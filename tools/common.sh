@@ -7,9 +7,6 @@
 
 BASEOS_DOCKER_PLATFORM_AARCH64=linux/arm64
 
-# snapshot.debian.org timestamp for manifest/debian.list's packages.
-BASEOS_DEBIAN_SNAPSHOT=20261027T000000Z
-
 if [ -z "${BASEOS_DOCKER_PLATFORM_HOST:-}" ]; then
   case "$(uname -m)" in
     arm64|aarch64) BASEOS_DOCKER_PLATFORM_HOST=linux/arm64 ;;

@@ -130,6 +130,69 @@ built from source still needs.
 `rtk_btusb.ko` is in the harvest but no longer used: `build-rootfs.sh` puts the
 mainline `btusb` stand-in at that path.
 
+## How the rootfs provides it
+
+Buildroot builds everything above but the firmware (`build-userland.sh`,
+configuration and BaseOS's own packages in `buildroot/`). One toolchain and
+one glibc for all of it, current releases, and each package configured for
+this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.1:
+
+| | stock | now |
+|---|---|---|
+| glibc, GCC runtime | 2.36, GCC 11 | 2.44, GCC 15.3 |
+| SDL2 | 2.0.18–2.0.22 | sdl2-compat 2.32.74 over SDL3 3.4.12 |
+| SDL2_image, SDL2_ttf | harvested | 2.8.12, 2.24.0 |
+| alsa-lib, alsa-utils | harvested | 1.2.16 |
+| libdrm | harvested | 2.4.134 |
+| libudev | 137 KB, `LIBUDEV_183` | libudev-zero 1.0.5, `LIBUDEV_183` |
+| D-Bus | 1.12.20 | 1.16.2 |
+| BlueZ, bluez-alsa | 5.62, 4.0.0 | 5.86, 4.3.1 |
+| wpa_supplicant | 2.9 | 2.12 |
+| curl, OpenSSL | 7.79.1, 1.1.1l | 8.22.0, 3.6.5 |
+| libmali | g13p0, then g29p1 from `build-gpu.sh` | g29p1, a Buildroot package |
+| adbd | Android 4.2 `core/adbd` | the same, `android-tools` |
+| dropbear | harvested | 2026.94 |
+| CA certificates | harvested | Mozilla's, 2026-08-16 |
+| tzdata | harvested | 2026e |
+
+Three choices behind it:
+
+- **sdl2-compat over SDL3**, not SDL2: SDL2 is in maintenance, and
+  sdl2-compat is how SDL2 programs run on SDL3. It implements the whole SDL2
+  ABI, including `SDL_GetWindowWMInfo` on KMS/DRM, and loads `libSDL3.so.0` at
+  run time. Buildroot's `sdl3` package turns off HIDAPI, D-Bus and Vulkan, all
+  of which stock's SDL2 had, so BaseOS builds its own (`baseos-sdl3`), and its
+  own SDL2_image and SDL2_ttf, since Buildroot's need its `sdl2`.
+- **libudev-zero**, not eudev: stock ran no udev daemon either, and
+  libudev-zero reads kernel events directly. A patch applies its symbol map,
+  which its Makefile leaves out, so imports at `LIBUDEV_183` resolve.
+- **libmali in Buildroot**, so SDL3's KMS/DRM backend builds against the GL
+  provider it runs on. Mesa stays in `build-gpu.sh` for now, building on
+  Debian trixie, whose glibc and libstdc++ are older than Buildroot's.
+
+NextUI's `LD_LIBRARY_PATH` puts `.system/my355/lib` first for everything it
+starts, rootfs programs included. That directory has its own OpenSSL 3
+`libcrypto.so.3`, older than Buildroot's 3.6, which `libssl` needs, so
+`wpa_supplicant` and `wpa_cli` failed to load and WiFi never came up. Stock's
+OpenSSL 1.1 used other names. `build-rootfs.sh` gives every Buildroot ELF a
+`DT_RPATH` of `/usr/lib`, which glibc searches before `LD_LIBRARY_PATH` (a
+`DT_RUNPATH` comes after it). Mesa's bind mounts over `/usr/lib` still apply.
+
+`tools/abi_scan.py CARD rootfs.tar --baseline stock-harvest.tar` fails if any
+import of a card program that resolves on stock does not resolve on the build,
+symbol by symbol and at the version it needs. It also fails if a library in
+`.system/my355/lib` would shadow a rootfs one without defining what rootfs
+libraries import from it. Behaviour is the device's to show: SDL2's checks are
+listed under tier 1.
+
+### CA certificates
+
+Shipped, and from Mozilla's current list rather than stock's 2021 copy:
+`curl` (NextUI's HTTP), Dolphin, RA Explorer and ScrapeGoat's git read
+`/etc/ssl/certs/ca-certificates.crt`, and Go programs (Grout, Pak Store) scan
+`/etc/ssl/certs`. A bundle that ages out breaks HTTPS for all of them, so it
+moves with each Buildroot update.
+
 ## Not seen by this scan
 
 A `dlopen` with a computed name, a command assembled at run time, and anything

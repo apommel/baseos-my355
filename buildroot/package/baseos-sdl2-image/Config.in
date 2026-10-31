@@ -1,0 +1,8 @@
+config BR2_PACKAGE_BASEOS_SDL2_IMAGE
+	bool "baseos-sdl2-image"
+	depends on BR2_PACKAGE_SDL2_COMPAT
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_JPEG
+	help
+	  SDL2_image against sdl2-compat; Buildroot's needs sdl2.
+	  PNG through libpng, as stock, and JPEG through libjpeg-turbo.

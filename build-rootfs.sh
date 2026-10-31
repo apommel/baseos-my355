@@ -2,16 +2,18 @@
 # Build the my355 (Miyoo Flip) rootfs tarball.
 #
 # Four sources, assembled in this order so each can override the last:
-#   1. the merged-/usr skeleton the harvest assumes
-#   2. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links
-#   3. the stock harvest (work/my355/prepared/stock-harvest.tar) — SDL2,
-#      adbd, wpa_supplicant; a verified closure, see prepare-stock.sh — with
-#      over it manifest/debian.list's libraries (Debian trixie's glibc and GCC
-#      runtime, and the Vulkan loader), ./build-kernel.sh's modules and
-#      ./build-gpu.sh's libmali and Mesa
+#   1. ./build-userland.sh's Buildroot target — merged /usr, glibc, SDL3 under
+#      sdl2-compat, libmali, BlueZ, wpa_supplicant, curl, adbd, ...
+#      (docs/rootfs-interface.md)
+#   2. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links,
+#      where Buildroot left a name free
+#   3. ./build-kernel.sh's modules, ./build-gpu.sh's Mesa, and the two files
+#      still taken from stock: the Bluetooth firmware
 #   4. overlay/ — init, rcS, the frontend session, and the stand-ins for the
 #      stock files mainline drivers replace; with MY355_DIAG=1 overlay-diag/ on
 #      top: boot-timing probes, not for release
+#
+# Every library a program in the result links must be in it, or the build fails.
 #
 # fbsplash is built from src/fbsplash.c: this device has no console, so a status
 # message on the panel is the only way to say "insert a card" or "installing
@@ -40,28 +42,15 @@ DIAG="${MY355_DIAG:-0}"
 case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 [ "$DIAG" = 1 ] && echo "== MY355_DIAG=1: adding overlay-diag/ (not for release) =="
 
+[ -f "$WORK/userland.tar" ] || {
+  echo "missing $WORK/userland.tar (run ./build-userland.sh)" >&2; exit 1; }
 [ -f "$WORK/kernel/modules.tar" ] || {
   echo "missing $WORK/kernel/modules.tar (run ./build-kernel.sh)" >&2; exit 1; }
 [ -f "$WORK/gpu/mesa.tar" ] || {
   echo "missing $WORK/gpu/mesa.tar (run ./build-gpu.sh)" >&2; exit 1; }
 
-# manifest/debian.list's packages, from snapshot.debian.org.
-USERLAND="$HERE/work/userland"
-mkdir -p "$USERLAND"
-grep -v -e '^#' -e '^$' "$HERE/manifest/debian.list" | while read -r deb sum _; do
-  f="$USERLAND/${deb##*/}"
-  [ -f "$f" ] && [ "$(baseos_sha256 "$f")" = "$sum" ] && continue
-  echo "== fetching ${deb##*/} =="
-  curl -fSL --retry 3 -o "$f.part" \
-    "https://snapshot.debian.org/archive/debian/$BASEOS_DEBIAN_SNAPSHOT/pool/main/$deb"
-  got="$(baseos_sha256 "$f.part")"
-  [ "$got" = "$sum" ] || { echo "${deb##*/} sha256 is $got, expected $sum" >&2; rm -f "$f.part"; exit 1; }
-  mv "$f.part" "$f"
-done
-
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
-  -v "$WORK":/work -v "$HERE/overlay":/overlay:ro -v "$USERLAND":/userland:ro \
-  -v "$HERE/manifest/debian.list":/debian.list:ro \
+  -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
   -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" \
   -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
@@ -69,12 +58,17 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   apk add -q busybox-static
   R=/tmp/rootfs; rm -rf "$R"; mkdir -p "$R"
 
-  # 1. Merged /usr, matching the stock rootfs the harvest came from.
-  mkdir -p "$R"/usr/bin "$R"/usr/sbin "$R"/usr/lib "$R"/usr/share
-  ln -sf usr/bin  "$R"/bin
-  ln -sf usr/sbin "$R"/sbin
-  ln -sf usr/lib  "$R"/lib
-  ln -sf lib      "$R"/lib64
+  # 1. Buildroot: merged /usr (bin, sbin, lib and lib64 link into it), as stock.
+  tar -xf /work/userland.tar -C "$R"
+  # Replaced below by links or generated files; /root becomes a link.
+  rm -rf "$R"/root "$R"/etc/os-release "$R"/etc/localtime "$R"/etc/timezone \
+         "$R"/etc/resolv.conf "$R"/etc/hostname "$R"/etc/hosts "$R"/etc/shadow
+  # Frontends export LD_LIBRARY_PATH with their own libcrypto, libzstd, ...
+  # first; DT_RPATH, unlike DT_RUNPATH, is searched before it.
+  apk add -q pax-utils patchelf
+  scanelf -RBF "%n;%F" "$R"/usr 2>/dev/null | while IFS=";" read -r needed f; do
+    if [ -n "$needed" ]; then patchelf --force-rpath --set-rpath /usr/lib "$f"; fi
+  done
 
   mkdir -p "$R"/proc "$R"/sys "$R"/dev "$R"/tmp "$R"/run "$R"/var \
            "$R"/data "$R"/mnt/SDCARD "$R"/etc \
@@ -84,47 +78,25 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   ln -sfn /mnt/SDCARD "$R"/mnt/sdcard
 
   # 2. BusyBox and its applet links (mount, sh, init, getty, ... — rcS calls
-  #    them by path, so the links must exist).
+  #    them by path, so the links must exist). --install leaves a name
+  #    Buildroot already filled, so its programs win.
   cp /bin/busybox.static "$R"/usr/bin/busybox
   chroot "$R" /usr/bin/busybox --install -s
   # -L, not -e: the links --install writes are absolute, so they resolve only
   # on the device.
   [ -L "$R"/sbin/init ] || { echo "busybox --install left no /sbin/init" >&2; exit 1; }
 
-  # 3. The stock harvest. Applied after BusyBox so vendor binaries win where
-  #    both provide a name.
-  tar -xf /work/prepared/stock-harvest.tar -C "$R"
-  # manifest/debian.list over it.
-  apk add -q binutils
-  grep -v -e "^#" -e "^\$" /debian.list | while read -r deb _ libs; do
-    U=/tmp/deb; rm -rf "$U"; mkdir -p "$U"
-    (cd "$U" && ar x "/userland/${deb##*/}" data.tar.xz && tar -xJf data.tar.xz)
-    for l in $libs; do
-      case "$l" in
-        */*) f="$U/$l" t="$R/$l" ;;
-        *) f="$U/usr/lib/aarch64-linux-gnu/$l" t="$R/usr/lib/$l" ;;
-      esac
-      [ -e "$f" ] || { echo "no $l in ${deb##*/}" >&2; exit 1; }
-      rm -f "$t" && cp -L "$f" "$t"
-    done
-  done
+  # 3. The Bluetooth firmware, the only stock files left: no source exists.
+  tar -xf /work/prepared/stock-harvest.tar -C "$R" \
+    usr/lib/firmware/rtl8733bu_fw usr/lib/firmware/rtl8733bu_config
   # lib/modules/<release>, depmod already run.
   tar -xf /work/kernel/modules.tar -C "$R"/usr
   # bt_init.sh insmods this path: the stand-in that loads mainline btusb.
   cp "$R"/usr/lib/modules/*/kernel/drivers/bluetooth/rtk_btusb.ko "$R"/usr/lib/modules/
-  # The GPU stacks baseos-gpu picks from: libmali g29p1 over the harvest g13p0,
-  # whose hook it replaces, and Mesa in usr/lib/mesa.
-  rm "$R"/usr/lib/libmali_hook.so.1
-  tar -xf /work/gpu/libmali.tar -C "$R"
+  # The second GPU stack baseos-gpu picks from, beside libmali: Mesa in usr/lib/mesa.
   tar -xf /work/gpu/mesa.tar -C "$R"
-  # The stock modetest moves aside for the wrapper in overlay/ that maps its object ids.
+  # modetest moves aside for the wrapper in overlay/ that maps its object ids.
   mv "$R"/usr/bin/modetest "$R"/usr/libexec/modetest
-
-  # dropbear is multicall (dispatches on argv[0]); sftp-server is the path it
-  # was compiled to exec.
-  ln -sf dropbear         "$R"/usr/sbin/dropbearkey
-  ln -sf ../sbin/dropbear "$R"/usr/bin/scp
-  ln -sf gesftpserver     "$R"/usr/libexec/sftp-server
 
   # fbsplash: the panel is the only output device this hardware has.
   apk add -q build-base linux-headers pkgconf \
@@ -196,6 +168,19 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   mv "$R"/etc/shadow "$R"/usr/share/baseos/shadow
   chmod 600 "$R"/usr/share/baseos/shadow
   for f in shadow hostname hosts; do ln -sf /run/"$f" "$R"/etc/"$f"; done
+
+  # Every DT_NEEDED resolves in /usr/lib or the run path of whoever needs it.
+  scanelf -RBqF "%F;%n;%r" "$R"/usr 2>/dev/null | while IFS=";" read -r f needed rpath; do
+    for n in $(echo "$needed" | tr , " "); do
+      found=0
+      for d in /usr/lib $(echo "$rpath" | tr : " "); do
+        case "$d" in "\$ORIGIN"*) d="${f#"$R"}"; d="${d%/*}" ;; esac
+        [ -e "$R$d/$n" ] && { found=1; break; }
+      done
+      [ "$found" = 1 ] || echo "${f#"$R"} needs $n"
+    done
+  done > /tmp/unresolved
+  [ ! -s /tmp/unresolved ] || { echo "unresolved libraries:" >&2; cat /tmp/unresolved >&2; exit 1; }
 
   tar -cf /work/rootfs.tar -C "$R" .
   echo "  rootfs: $(tar -tf /work/rootfs.tar | wc -l) entries, $(stat -c %s /work/rootfs.tar) bytes"

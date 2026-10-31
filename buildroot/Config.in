@@ -1,0 +1,5 @@
+source "$BR2_EXTERNAL_BASEOS_PATH/package/libmali/Config.in"
+source "$BR2_EXTERNAL_BASEOS_PATH/package/baseos-sdl3/Config.in"
+source "$BR2_EXTERNAL_BASEOS_PATH/package/sdl2-compat/Config.in"
+source "$BR2_EXTERNAL_BASEOS_PATH/package/baseos-sdl2-image/Config.in"
+source "$BR2_EXTERNAL_BASEOS_PATH/package/baseos-sdl2-ttf/Config.in"

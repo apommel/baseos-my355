@@ -5,7 +5,7 @@
 # Produces work/my355/baseos-my355-<version>.img.zip, for a new card, and
 # .bosupd, which updates one that is already running. Inputs come from
 # fetch-prepared.sh or prepare-stock.sh; each step below runs standalone, and
-# the U-Boot, kernel and GPU trees are cached, so a rerun is incremental.
+# the U-Boot, kernel, GPU and Buildroot trees are cached, so a rerun is incremental.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -21,6 +21,7 @@ baseos_require_prepared "$WORK/prepared"
 "$HERE/build-uboot.sh"
 "$HERE/build-kernel.sh"
 "$HERE/build-gpu.sh"
+"$HERE/build-userland.sh"
 "$HERE/build-rootfs.sh"
 "$HERE/build-image.sh"
 "$HERE/build-update.sh"

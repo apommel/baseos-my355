@@ -1,0 +1,14 @@
+Apply libudev.sym, as the meson build does: stock-built programs need
+their imports at LIBUDEV_183.
+
+--- a/Makefile
++++ b/Makefile
+@@ -11,7 +11,7 @@
+ 		  -DUSB_IDS_PATH=\"${USB_IDS_PATH}\" \
+ 		  -Wall -Wextra -Wpedantic -Wmissing-prototypes -Wstrict-prototypes \
+ 		  -Wno-unused-parameter
+-XLDFLAGS = ${LDFLAGS} -shared -Wl,-soname,libudev.so.1
++XLDFLAGS = ${LDFLAGS} -shared -Wl,-soname,libudev.so.1 -Wl,--version-script=libudev.sym
+ XARFLAGS = -rc
+ AR = ar
+ 

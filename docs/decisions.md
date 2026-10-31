@@ -125,20 +125,17 @@ image ([rootfs](rootfs.md)).
 - **spruceOS as a frontend.** Its card would be mounted and its `updater`
   executed, but whether it finds the userland it expects in the harvest is
   unchecked.
-- **The harvest after the kernel change.** The published bundle still carries
-  `boot.img` and harvest entries the mainline build overwrites or no longer
-  needs (glibc 2.36, the GCC 11 runtime, libmali g13p0, `rtk_btusb.ko`,
-  `miyoo_inputd`). Pruning them is a `harvest.list` edit plus a new bundle.
-- **Debian trixie's glibc and GCC runtime under the harvest.** glibc 2.41 and
-  libstdc++ from GCC 14 replace the harvest's 2.36 and GCC 11, with the Vulkan
-  loader added, all from one pinned list (`manifest/debian.list`, from
-  snapshot.debian.org). Newer is backwards compatible for the stock binaries,
-  none of which use glibc's private symbols, and `build-gpu.sh` builds in the
-  same release, so its LLVM, SPIR-V tools and meson come from packages.
-  Debian over Buildroot: prebuilt and signed, a pin per package, minutes
-  instead of hours, and no toolchain of our own to keep up. The stock programs
-  stay: Debian's SDL2 links X11, Wayland and PulseAudio, its adbd protobuf and
-  systemd, its dbus-daemon AppArmor, SELinux and systemd, and its curl a dozen
-  protocol libraries, each against the harvest's lean, tested closure. Debian
-  supplies libraries the harvest has an older ABI-compatible copy of, or
-  lacks.
+- **The harvest after Buildroot.** The build takes two files from it, the
+  Bluetooth firmware, but the published bundle still carries `boot.img` and
+  every other entry. Pruning them is a `harvest.list` edit plus a new bundle.
+- **Buildroot for the userland.** Every library and program a frontend uses
+  is built from source (`build-userland.sh`), with one toolchain, current
+  releases and this device's options; the harvest supplies only the Bluetooth
+  firmware. It replaced stock binaries over Debian's glibc: Debian's builds
+  were prebuilt and quick, but configured for desktops (its SDL2 links X11,
+  Wayland and PulseAudio, its dbus-daemon systemd), so the stock programs, on
+  OpenSSL 1.1 and BlueZ 5.62, had to stay. What made source builds safe is
+  knowing the interface: [what frontends need](rootfs-interface.md) measures
+  it from a card, and `tools/abi_scan.py --baseline` checks a build against
+  stock symbol by symbol. SDL2 is sdl2-compat over SDL3. Mesa still builds in
+  `build-gpu.sh`, where Debian's LLVM saves building one.

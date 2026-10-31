@@ -10,9 +10,10 @@ behaves exactly as it does on stock.
 ./prepare-stock.sh   NAND backup      → the same three files:
                              uboot.img, stock-harvest.tar, source.json
 ./build-kernel.sh    Linux, its device tree and modules
-./build-gpu.sh       libmali g29p1's wrappers, Mesa
-./build-rootfs.sh    harvest + Debian libraries + modules + GPU + overlay
-                     + static BusyBox → rootfs.tar
+./build-gpu.sh       Mesa
+./build-userland.sh  Buildroot: glibc, SDL, libmali, BlueZ, ... → userland.tar
+./build-rootfs.sh    userland + static BusyBox + modules + Mesa + Bluetooth
+                     firmware + overlay → rootfs.tar
 ./build-image.sh     U-Boot + kernel + rootfs → baseos-my355.img
 ```
 
@@ -26,16 +27,19 @@ never re-prepared fails the build instead of shipping without the new path.
 
 Four, applied in order so each can override the last:
 
-1. **The merged-`/usr` skeleton** the harvest assumes: `bin`, `sbin`, `lib`,
-   `lib64` are symlinks and real content lives under `/usr`, exactly as the
-   vendor rootfs is laid out.
+1. **Buildroot's target** (`build-userland.sh`, configuration in `buildroot/`):
+   a merged `/usr` as the vendor rootfs has, with every library and program a
+   frontend uses ([what frontends need](rootfs-interface.md)).
 2. **Static BusyBox** (Alpine `busybox-static`) plus its applet symlinks — `rcS`
-   calls `/bin/mount` and friends by path. `build-rootfs.sh` prints the applet
-   count at the end of a build.
-3. **The stock harvest** — the allowlisted paths from `mtd3` named in
-   `manifest/harvest.list`; `source.json` records how many and how large.
+   calls `/bin/mount` and friends by path. A name Buildroot already filled
+   keeps its program. `build-rootfs.sh` prints the applet count at the end of
+   a build.
+3. **The kernel's modules, Mesa, and the two stock files left**: the Bluetooth
+   firmware, taken from the harvest.
 4. **`overlay/`** — `init`, `inittab`, `rcS`, `rcK`, the frontend session,
    the USB gadget. Committed executable, so `cp -a` is all the build does.
+
+The build fails if any program in the result links a library it lacks.
 
 `mtd3` is **squashfs**, so preparation uses `unsquashfs`. It is unpacked to a
 container-local scratch directory, never a bind mount: the stock rootfs contains
@@ -46,7 +50,9 @@ filesystem such as macOS.
 
 `manifest/harvest.list` was derived by reading `/proc/<pid>/maps` across the
 whole running NextUI stack on hardware — every entry was observed mapped, or is
-needed by something that was.
+needed by something that was. Buildroot now builds all of it but the Bluetooth
+firmware, from the interface [what frontends need](rootfs-interface.md)
+measured; the list still defines what preparation extracts and checks.
 
 Two findings keep it small:
 
@@ -308,7 +314,7 @@ env       ADB_TCP_PORT unset  (see below — adb is USB-only)
 **No network adb.** `adbd` binds `0.0.0.0:$ADB_TCP_PORT` as an unauthenticated
 root shell whenever that parses as a positive int — stock exposes 5555 once WiFi
 is up. The compiled default is the empty string, so leaving it unset is enough.
-(Upstream patches `adb.c` for the same result; the harvested adbd needs only the
+(Upstream patches `adb.c` for the same result; this adbd needs only the
 unset variable.)
 
 **Ordering is load-bearing**: `adbd` must be running and have written its
@@ -376,7 +382,7 @@ once powered off while mounted warned on every mount after, on any computer.
 Before each mount, `fatdirty` (`src/fatdirty.c`) reads the boot sector, tells
 FAT from exFAT, and tests the flag where the kernel reads it (offset 65 on
 FAT32, 37 on FAT12/16, bit 1 of the VolumeFlags at 106 on exFAT); a set flag
-runs the stock `fsck.fat -a`, or Debian's `fsck.exfat -a`, under `REPAIRING SD
+runs dosfstools' `fsck.fat -a`, or exfatprogs' `fsck.exfat -a`, under `REPAIRING SD
 CARD`. The type it prints also picks the mount, since the two take different
 options: vfat `utf8`, and `iocharset=utf8` for exFAT, whose UTF-8 needs no NLS
 table. Either card works in either slot. A clean card costs one exec, 1.8 ms
@@ -434,7 +440,7 @@ card that had never booted on stock had no `updater` to hand off to.
 the card in the state a stock install leaves it. Everything downstream is
 NextUI's, unmodified: `updater` re-derives the platform and runs
 `.tmp_update/my355.sh`, whose `show2.elf` splash works here because it needs only
-SDL2/`_image`/`_ttf` — harvested — and embeds its font.
+SDL2/`_image`/`_ttf` — in the rootfs — and embeds its font.
 
 Two departures from the vendor script. `miyoo355/` is removed only after the
 staged `updater` is confirmed present, so a failed copy leaves the card still
@@ -508,10 +514,10 @@ parts that script expects to find in the OS:
 | | |
 |---|---|
 | `rtk_btusb.ko` | the transport. 2.3 MB, and it requests `rtl8733bu_fw` / `rtl8733bu_config` by name — both at `/lib/firmware`, both harvested. The empty `rtlbt/` directory beside them is unused |
-| `bluetoothd`, `bluetoothctl`, `bluealsa`, `hciconfig`, `hcitool` | plus `libbluetooth`, `libsbc`, `libmpg123` and the glib stack. `hcitool` is not optional: `PLAT_bluetoothConnected()` greps `hcitool con` for an `ACL` line, and its `popen` fallback only fires when `popen` itself fails — a missing binary just reads as "not connected", so the status-bar icon never appears |
+| `bluetoothd`, `bluetoothctl`, `bluealsa`, `hciconfig`, `hcitool` | plus `libbluetooth`, `libsbc` and the glib stack. `hcitool` is not optional: `PLAT_bluetoothConnected()` greps `hcitool con` for an `ACL` line, and its `popen` fallback only fires when `popen` itself fails — a missing binary just reads as "not connected", so the status-bar icon never appears |
 | `S40bluetooth` | ours. Stock's wraps `bluetoothd` in `start-stop-daemon`, absent from Alpine's `busybox-static`. It keeps a `pidof dbus-daemon` guard so it still works if the bus is somehow down, though `rcS` starts it. **BlueZ 5 never forks**: run it in the foreground and the script blocks, `bt_init.sh` blocks behind it and Settings hangs on "Enabling Bluetooth…" — so `setsid … -n &`, which is what `start-stop-daemon -b` was doing |
-| `/etc/bluetooth`, `/etc/dbus-1/system.d/blue*.conf` | already covered by the harvested `/etc/dbus-1` |
-| the `dbus` user | the harvested `system.conf` drops privileges to it, so `passwd`, `group` and `shadow` must all name it `dbus`; an Ubuntu-style `messagebus` makes `dbus-daemon --system` refuse to start |
+| `/etc/bluetooth`, `/etc/dbus-1/system.d/*.conf` | installed by BlueZ and bluez-alsa |
+| the `dbus` user | D-Bus's `system.conf` drops privileges to it, so `passwd`, `group` and `shadow` must all name it `dbus`; an Ubuntu-style `messagebus` makes `dbus-daemon --system` refuse to start |
 | `libasound_module_{pcm,ctl}_bluealsa.so` | the rest of `alsa-lib/` is unreferenced — nothing sets `defaults.pcm.rate_converter`, so `type plug` uses the built-in linear one |
 
 `rcS` starts the system bus, as stock's `S30dbus` does. This is not for BlueZ's
@@ -556,7 +562,7 @@ debug_info`, and `strip --strip-debug` takes it to 131 KB. `build-rootfs.sh`
 does that: insmod reads the whole file, so it shortens Bluetooth power-on. Boot
 is unaffected, since nothing loads it until Bluetooth is turned on.
 
-`hciattach` is not harvested. `bt_init.sh` only reaches it if `hci0` never
+`hciattach` is not installed. `bt_init.sh` only reaches it if `hci0` never
 appears, and the call it makes there (`hciattach -n ttyS1 xradio`) is for a
 different Miyoo platform, so it cannot succeed on this hardware either way.
 
@@ -583,7 +589,7 @@ platform. Useful when reading [upstream](https://github.com/pvaibhav/BaseOS) for
 
 | | H700 | my355 |
 |---|---|---|
-| curl | static, built in a container | harvested — OpenSSL 1.1 and zlib are already carried for `wpa_supplicant`, so it costs 640 KB |
+| curl | static, built in a container | Buildroot's, over the OpenSSL 3 `wpa_supplicant` uses too |
 | DHCP | BusyBox `udhcpc` + event script | same, behind the `S41dhcpcd` name |
 | NTP entry point | NextUI calls `timedatectl set-ntp`, so BaseOS ships a `timedatectl` shim over a `baseos-ntp` supervisor, with the preference on `/data` | NextUI calls `/etc/init.d/S49ntp` directly, so the init script *is* the shim |
 | clock at boot | `hwclock -u -s` in `rcS` | the kernel, from the RTC, plus `S49ntp` |

@@ -30,14 +30,16 @@ recovery.
 ./build-uboot.sh                              # → work/my355/uboot-mainline.itb
 ./build-kernel.sh                             # → work/my355/kernel/
 ./build-gpu.sh                                # → work/my355/gpu/
+./build-userland.sh                           # → work/my355/userland.tar
 ./build-rootfs.sh                             # → work/my355/rootfs.tar
 ./build-image.sh                              # → work/my355/baseos-my355.img
 ./build-update.sh                             # → the .bosupd payload
 ./flash-card.sh diskN                         # macOS: the image → an SD card
 ```
 
-`./build-all.sh` runs them all and packages the release. U-Boot, the kernel and
-Mesa keep their source trees cached, so a rerun is incremental. The kernel's
+`./build-all.sh` runs them all and packages the release. U-Boot, the kernel,
+Mesa and Buildroot keep their trees cached, so a rerun is incremental; the first
+`build-userland.sh` builds Buildroot's toolchain and takes about an hour. The kernel's
 command line is in its device tree, `tools/kernel/dts/rk3566-miyoo-flip.dts`.
 
 To derive the inputs instead — needed to move onto a new vendor release — replace
