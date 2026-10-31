@@ -24,13 +24,12 @@ assembles it, with the kernel and U-Boot:
 The two stock files left, the Bluetooth firmware, come from
 `package/stock-firmware`.
 
-## The harvest is measured, not guessed
+## What it holds is measured, not guessed
 
-The harvest list was derived by reading `/proc/<pid>/maps` across the
-whole running NextUI stack on hardware — every entry was observed mapped, or is
-needed by something that was. Buildroot now builds all of it but the Bluetooth
-firmware, from the interface [what frontends need](rootfs-interface.md)
-measured.
+Until 1.3.0 the userland was a harvest of the stock rootfs, its list read off
+`/proc/<pid>/maps` across the running NextUI stack on hardware. Buildroot now
+builds all of it but the Bluetooth firmware, from the interface
+[what frontends need](rootfs-interface.md) measured from a card.
 
 Two findings keep it small:
 
@@ -40,11 +39,9 @@ Two findings keep it small:
   (`libgamename`, `libshmvar`, `libtmenu`) are referenced by `LD_LIBRARY_PATH`
   but never loaded.
 
-**Preparation verifies the closure.** Every `DT_NEEDED` of every harvested ELF
-must resolve inside the harvest or the build fails — which is what turns an
-allowlist into a proven closed set. Runtime-confirmed on hardware:
-`wpa_supplicant v2.9` and `dbus-daemon 1.12.20` both execute. What it cannot
-verify is below.
+**The build verifies the closure.** `post-build.sh` fails if any `DT_NEEDED`
+of any ELF in the rootfs does not resolve inside it. What it cannot verify is
+below.
 
 ### What a maps reading cannot see
 
@@ -293,7 +290,9 @@ env       ADB_TCP_PORT unset  (see below — adb is USB-only)
 root shell whenever that parses as a positive int — stock exposes 5555 once WiFi
 is up. The compiled default is the empty string, so leaving it unset is enough.
 (Upstream patches `adb.c` for the same result; this adbd needs only the
-unset variable.)
+unset variable.) Debian's port, which Buildroot's `android-tools` is, fills
+the connection banner with a Nexus 4's names; `patches/android-tools` makes
+`adb devices -l` show the Flip.
 
 **Ordering is load-bearing**: `adbd` must be running and have written its
 descriptors before the UDC is bound, or the host sees a gadget with no endpoints.
@@ -395,7 +394,7 @@ before the hand-off that touches `/userdata` sees the empty root directory —
 `S36load_wifi_modules` refuses to seed it for that reason.
 
 Starting is not running: a spruceOS card would be mounted and its `updater`
-executed, but whether spruceOS finds the stock userland it expects in the harvest
+executed, but whether spruceOS finds the userland it expects in this rootfs
 has not been checked.
 
 ### Installing onto a fresh card
@@ -441,7 +440,7 @@ BaseOS has to answer to the names; the contents are ours. Stock's `rcS` runs
 
 | script | BaseOS | at boot? |
 |---|---|---|
-| `S36load_wifi_modules` | seeds `/userdata/cfg/wpa_supplicant.conf`; no modules, the driver is built into this kernel (`lsmod` is empty, yet `wlan0` exists and `RTW_CMD_THREAD` runs). Also WiFi's side of the WiFi/BT chip's power ([power](power.md)) | no — the frontend calls it when WiFi goes on or off |
+| `S36load_wifi_modules` | loads `8733bu` and seeds `/userdata/cfg/wpa_supplicant.conf`. Also WiFi's side of the WiFi/BT chip's power ([power](power.md)) | no — the frontend calls it when WiFi goes on or off |
 | `S41dhcpcd` | BusyBox `udhcpc`, not the vendor `dhcpcd` | no — the frontend calls it when WiFi goes on |
 | `S49ntp` | BusyBox `ntpd`, not stock's 757 KB one | yes — TLS depends on the clock |
 | `S40bluetooth` | `bluetoothd`, after bringing the system bus up | no — the frontend calls it when Bluetooth goes on |
@@ -474,8 +473,8 @@ after a whole round of DISCOVERs fails (3 × 5 s), then pauses 20 s, so turning
 WiFi on blocked for 17.8 s and the address came at 37.5 s. `S41` now runs
 `udhcpc -f` in the background itself and retries every second (`-T 1 -A 2`):
 2.5 s and 9.4 s, of which association is 7.5 s.
-And stock's `S41dhcpcd` wraps the daemon in `start-stop-daemon`, which Alpine's
-`busybox-static` lacked, so the script invokes `udhcpc` directly.
+And stock's `S41dhcpcd` wraps the daemon in `start-stop-daemon`; ours invokes
+`udhcpc` directly.
 
 Without any of this `wpa_supplicant` still associates and the frontend still
 reports "connected" — it reads carrier, not a lease — while `wlan0` holds only a
@@ -491,9 +490,9 @@ parts that script expects to find in the OS:
 
 | | |
 |---|---|
-| `rtk_btusb.ko` | the transport. 2.3 MB, and it requests `rtl8733bu_fw` / `rtl8733bu_config` by name — both at `/lib/firmware`, both harvested. The empty `rtlbt/` directory beside them is unused |
+| `rtk_btusb.ko` | the transport: `stock/0102`, a stand-in that loads `8733bu` and mainline `btusb` ([mainline compatibility](mainline-compat.md)). `btrtl` loads stock's `rtl8733bu_fw` and `rtl8733bu_config` through the `rtl_bt/rtl8723fu_*` links |
 | `bluetoothd`, `bluetoothctl`, `bluealsa`, `hciconfig`, `hcitool` | plus `libbluetooth`, `libsbc` and the glib stack. `hcitool` is not optional: `PLAT_bluetoothConnected()` greps `hcitool con` for an `ACL` line, and its `popen` fallback only fires when `popen` itself fails — a missing binary just reads as "not connected", so the status-bar icon never appears |
-| `S40bluetooth` | ours. Stock's wraps `bluetoothd` in `start-stop-daemon`, which Alpine's `busybox-static` lacked. It keeps a `pidof dbus-daemon` guard so it still works if the bus is somehow down, though `rcS` starts it. **BlueZ 5 never forks**: run it in the foreground and the script blocks, `bt_init.sh` blocks behind it and Settings hangs on "Enabling Bluetooth…" — so `setsid … -n &`, which is what `start-stop-daemon -b` was doing |
+| `S40bluetooth` | ours. Stock's wraps `bluetoothd` in `start-stop-daemon`. It keeps a `pidof dbus-daemon` guard so it still works if the bus is somehow down, though `rcS` starts it. **BlueZ 5 never forks**: run it in the foreground and the script blocks, `bt_init.sh` blocks behind it and Settings hangs on "Enabling Bluetooth…" — so `setsid … -n &`, which is what `start-stop-daemon -b` was doing |
 | `/etc/bluetooth`, `/etc/dbus-1/system.d/*.conf` | installed by BlueZ and bluez-alsa |
 | the `dbus` user | D-Bus's `system.conf` drops privileges to it, so `passwd`, `group` and `shadow` must all name it `dbus`; an Ubuntu-style `messagebus` makes `dbus-daemon --system` refuse to start |
 | `libasound_module_{pcm,ctl}_bluealsa.so` | the rest of `alsa-lib/` is unreferenced — nothing sets `defaults.pcm.rate_converter`, so `type plug` uses the built-in linear one |
@@ -515,8 +514,8 @@ BaseOS also cuts the WiFi/BT chip's power while both radios are off, which
 `bt_init.sh` cannot see: `wifibtd` turns its `insmod` and its rfkill switching
 into the Bluetooth half of that decision ([power](power.md)).
 
-Exercised on BaseOS: `bt_init.sh` loads `rtk_btusb` from the harvested
-`/lib/modules`, `hci0` comes up with the same BD address as stock (so the
+Exercised on BaseOS, on the vendor kernel and the harvest: `bt_init.sh` loads
+`rtk_btusb` from `/lib/modules`, `hci0` comes up with the same BD address as stock (so the
 firmware harvest is right), `S40bluetooth start` returns in 0.05 s,
 `bluetoothctl show` reports a powered BlueZ 5.62 adapter, `bluealsa` stays up,
 and the ctl plugin attaches. With AirPods Pro paired and connected, `bluealsa`
@@ -535,8 +534,9 @@ widest set (gio, gobject, gmodule, mount, blkid, ffi, mpg123, sbc, bluetooth),
 needed; BlueZ creates its adapter directory under the `/var/lib/bluetooth` link
 on first power-on.
 
-`rtk_btusb.ko` is now the stand-in that loads mainline `btusb`, a few KB, so
-insmod no longer reads stock's 2.3 MB module on Bluetooth power-on.
+On mainline the stand-in is a few KB, where stock's module was 2.3 MB read on
+every Bluetooth power-on; `hci0`, `btrtl`'s firmware load and both radios were
+checked on this build (2026-10-31).
 
 `hciattach` is not installed. `bt_init.sh` only reaches it if `hci0` never
 appears, and the call it makes there (`hciattach -n ttyS1 xradio`) is for a

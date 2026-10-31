@@ -4,10 +4,10 @@ How to debug a boot on a device that cannot tell you anything.
 
 ## The problem
 
-This unit has **no UART attached** (the pads need the case open) and the vendor
-kernel has **`# CONFIG_FRAMEBUFFER_CONSOLE is not set`**, so `console=tty0`
-renders nothing. A successful boot and a dead one look identical: the U-Boot
-logo, then stillness.
+This unit has **no UART attached** (the pads need the case open) and the
+kernel has **`# CONFIG_FRAMEBUFFER_CONSOLE is not set`**, as the vendor's had,
+so `console=tty0` renders nothing. A successful boot and a dead one can look
+identical: a dark panel, or the logo, then stillness.
 
 Getting this wrong wastes hardware round-trips. Four separate bring-up failures
 below were each invisible, and two tests were designed that could not have
@@ -19,7 +19,7 @@ Ordered by how early they fire.
 
 | signal | proves | how |
 |---|---|---|
-| **boot logo** | `rcS` is running | `fbsplash`, from 2.00 s |
+| **boot logo** | `rcS` is running | `fbsplash`, from ~1.6 s |
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
 | **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |
@@ -48,12 +48,12 @@ Everything the failed boot wrote is then readable over adb.
 ```sh
 adb shell "grep mmcblk2 /proc/mounts"                    # find the mounts
 adb shell "cat /media/sdcardN/baseos.log"                # how far init got
-adb shell "dumpe2fs -h /dev/mmcblk2p3 | grep -E 'Last mounted on|Mount count'"
+adb shell "dumpe2fs -h /dev/mmcblk2p4 | grep -E 'Last mount time|Mount count'"
 ```
 
-`Last mounted on: /` is conclusive proof the kernel mounted that partition as
-root — which is how the final bug was found after the LED had already shown the
-kernel was alive.
+`/data` is mounted by `rcS`, so its last mount time says whether the failed boot
+reached userspace. On the ext4 root of the first bring-ups, `Last mounted on: /`
+was how the final bug was found after the LED had shown the kernel was alive.
 
 Stock also lets you test binaries against the *exact* kernel before trusting
 them: `adb shell /media/sdcardN/bin/busybox` confirmed our static aarch64
@@ -62,7 +62,7 @@ busybox runs, ruling out the rootfs while the real bug was elsewhere.
 ## U-Boot
 
 U-Boot ([U-Boot](uboot.md) Part 3) draws nothing: the panel stays dark until the kernel lights it and `rcS` draws
-the logo at ~2.0 s, so a dark panel before then says nothing about whether the
+the logo at ~1.6 s, so a dark panel before then says nothing about whether the
 boot worked. A diag build (`./build.sh --diag`) makes up for it two ways.
 The release build has neither: a failed boot is dark, then off.
 Rebuild with `--diag` and flash it to see why.
@@ -97,9 +97,9 @@ adb shell 'n=$(cat /sys/class/block/mmcblk2p2/size); dd if=/dev/mmcblk2p2 bs=512
 That log belongs to the last boot that **reached the boot script**, which is not
 necessarily the one that failed: a U-Boot that hangs in its own init saves
 nothing, and the previous boot's log is what reads back. Tell them apart from
-the same stock session: `dumpe2fs -h /dev/mmcblk2p3` gives root's `Last mount
-time`, and a failed boot that never reached the kernel leaves it older than the
-failure. A log identical to the last one read is stale too. Of the two LEDs
+the same stock session: `dumpe2fs -h /dev/mmcblk2p4` gives `/data`'s `Last
+mount time`, and a failed boot that never reached userspace leaves it older
+than the failure. A log identical to the last one read is stale too. Of the two LEDs
 only the charge LED is ours to read; the `work` LED is lit during U-Boot too,
 so it proves nothing about the kernel (2026-09-19).
 
@@ -119,7 +119,10 @@ got ([U-Boot](uboot.md)). `my355 fg:` records the battery state it found and
 handed on. `baseos-bootinfo` alone prints U-Boot's bootstage timings on any
 mainline boot that reached userspace.
 
-## Failure signatures
+## Failure signatures, on the vendor U-Boot
+
+The boot path to 0.6.0, which drew its logo from the boot image's resource
+image; the mainline path's are the LED table above.
 
 | symptom | means |
 |---|---|
@@ -132,7 +135,8 @@ mainline boot that reached userspace.
 
 ## Gotchas, in the order they bit
 
-Each cost a hardware round-trip. All are fixed in the build scripts.
+Each cost a hardware round-trip, and each is fixed. 1, 6, 7 and 9 were on
+the vendor U-Boot path.
 
 1. **Stale boot image `id`.** Editing the resource image without refreshing the
    header SHA1 makes U-Boot refuse the image — *after* it has already drawn the

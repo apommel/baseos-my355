@@ -1,9 +1,7 @@
 # What frontends need from the rootfs
 
-The interface a rootfs built from source has to keep, so that stock-built
-frontends run unmodified, and how each piece of the stock harvest relates
-to it. Everything else in the harvest can be
-replaced by a current build.
+The interface the rootfs, built from source, has to keep so that stock-built
+frontends run unmodified, and what stock provided for each piece of it.
 
 ## How it was measured
 
@@ -36,7 +34,7 @@ JSON report lists every symbol.
   GCC runtime, SDL2, libdrm, zlib, alsa-lib, libdbus, libudev and the GPU
   stack. None is a vendor fork except the GPU stack, which BaseOS already
   builds ([mainline compatibility](mainline-compat.md)).
-- **The rest of the harvest is programs frontends run by name, and the
+- **The rest of stock's userland is programs frontends run by name, and the
   libraries those programs need.** For them, only the command line and
   behaviour matter.
 
@@ -48,9 +46,9 @@ check.
 
 | library | linked by | dlopened by | what it carries | stock |
 |---|---|---|---|---|
-| glibc: `libc`, `libm`, `libdl`, `libpthread`, `librt`, `libresolv`, `ld-linux` | 91 | — | up to `GLIBC_2.36` | already Debian 2.41 |
-| `libnss_files`, `libnss_dns` | — | glibc (NSS), `7zzs` | `/etc/nsswitch.conf` | already Debian |
-| `libstdc++`, `libgcc_s`, `libatomic` | 26, 26, 1 | — | `GLIBCXX_3.4.22`, `CXXABI_1.3.9`, `GCC_4.5.0` | already Debian GCC 14 |
+| glibc: `libc`, `libm`, `libdl`, `libpthread`, `librt`, `libresolv`, `ld-linux` | 91 | — | up to `GLIBC_2.36` | 2.36 |
+| `libnss_files`, `libnss_dns` | — | glibc (NSS), `7zzs` | `/etc/nsswitch.conf` | glibc 2.36 |
+| `libstdc++`, `libgcc_s`, `libatomic` | 26, 26, 1 | — | `GLIBCXX_3.4.22`, `CXXABI_1.3.9`, `GCC_4.5.0` | GCC 11 |
 | `libSDL2-2.0.so.0` | 36 | — | 536 symbols | 2.0.18–2.0.22 |
 | `libSDL2_image-2.0.so.0`, `libSDL2_ttf-2.0.so.0` | 26, 28 | — | 40 and 36 symbols | harvested |
 | `libdrm.so.2` | 17 | SDL2 | 25 symbols | harvested |
@@ -60,7 +58,7 @@ check.
 | `libdbus-1.so.3` | `audiomon.elf` | SDL2 | 19 symbols, `LIBDBUS_1_3` | dbus 1.12.20 |
 | `libudev.so.1` | `audiomon.elf`, Dolphin | SDL2 | 28 symbols, `LIBUDEV_183` | harvested, 137 KB |
 | `libmali.so.1`, `libmali_hook.so.1`, `libEGL`, `libGLESv2`, `libgbm` | 16, 15, 4 | SDL2, GLideN64 | stock's names | `libmali`, or `mesa-panfrost`'s stand-ins |
-| `libvulkan.so.1` | — | SDL2 | the loader | already Debian |
+| `libvulkan.so.1` | — | SDL2 | the loader | none |
 
 Behind SDL2's two add-ons, and nowhere else on the card: `libfreetype.so.6`,
 `libpng16.so.16` (1.6.37) and `libiconv.so.2`. They are free to change with the
@@ -127,8 +125,8 @@ chip. Mainline `btusb` loads them as `rtl_bt/rtl8723fu_*`, links in
 and OP-TEE in `uboot.img`, these two files are all the stock firmware a rootfs
 built from source still needs.
 
-`rtk_btusb.ko` is in the harvest but no longer used: the build puts the
-mainline `btusb` stand-in at that path.
+Stock's `rtk_btusb.ko` is not used: the build puts the mainline `btusb`
+stand-in at that path.
 
 ## How the rootfs provides it
 

@@ -19,7 +19,7 @@ be32() { printf '%d' "0x$(od -An -tx1 "$1" | tr -d ' \n')"; }
 
 # Seconds from power-on, the clock the figures in docs/boot-time.md use. The
 # printk and uptime clocks both start at kernel entry, so U-Boot's hand-off is
-# added to each. The first frame needs a MY355_DIAG=1 rootfs
+# added to each. The first frame needs a --diag rootfs
 # (baseos-frameprobe). `panel` is when the DSI link starts streaming: the boot
 # logo's first moment on the glass.
 timeline() {

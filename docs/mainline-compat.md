@@ -85,8 +85,8 @@ constrains the design.
 | `/sys/class/udc/*/state` | NextUI, tools | `fcc00000.dwc3` | `fcc00000.usb` on mainline; read by listing the directory | Probably fine; check a literal use |
 | cpufreq `policy0`: governors `schedutil`/`performance`/`conservative`, `scaling_{min,max}_freq`, `scaling_setspeed`, `scaling_available_frequencies`; `cpu1`–`cpu3/online` | `governor.sh`, Settings | — | Standard interfaces, but different frequency steps; `second_max` and `mid` are picked by position | Stock's list, 1992 MHz included and not marked turbo, so `second_max` is 1800 MHz as on stock. Mainline stops at 1800, which made it 1608 |
 | `/sys/class/devfreq/fde60000.gpu/{governor,min_freq}`, `/sys/class/devfreq/dmc/governor` | `GC.pak`, tools | present | kbase on mainline keeps `fde60000.gpu`; the DMC is `dmc`, named after its node | Node named `dmc`; the `performance` and `powersave` devfreq governors are built in |
-| `/sys/devices/platform/fde60000.gpu/utilisation`: busy percentage over 100 ms, blocking | minarch's debug overlay (`PLAT_cpu_monitor`) | Rockchip's addition to kbase | Not in ROCKNIX's kbase or Panfrost: reads as 0% | Done: `mali_kbase/0003` adds it from kbase's DVFS counters, and `stock/0066` from Panfrost's devfreq ones |
-| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `drivers/hardware/rockchip-pm-config.c` (after zlyme) sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since BaseOS runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
+| `/sys/devices/platform/fde60000.gpu/utilisation`: busy percentage over 100 ms, blocking | minarch's debug overlay (`PLAT_cpu_monitor`) | Rockchip's addition to kbase | Not in ROCKNIX's kbase or Panfrost: reads as 0% | Done: `mali-kbase`'s `0003` adds it from kbase's DVFS counters, and `stock/0066` from Panfrost's devfreq ones |
+| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `hardware/0102`, a driver after zlyme's, sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since BaseOS runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
 | HDMI: polls `/sys/class/drm/card0-HDMI-A-1/status`. On connect, sound moves to the `rockchiphdmi` card, the panel goes to brightness 0, and rumble is skipped | NextUI, keymon, libmsettings | — | The connector name holds if rockchip-drm is `card0`; the card name needs the DT | as above |
 | `insmod /system/lib/modules/RTL8189FU.ko`, `insmod /lib/modules/rtk_btusb.ko` | `wifi_init.sh`, `bt_init.sh` | vendor modules | Fail harmlessly on mainline | Load our own modules first |
 | `wlan0`, nl80211, `/dev/rfkill` (`rfkill.elf`), `iw`, `wpa_cli`, `bluetoothctl`, `hciconfig`, `hcitool`, `bluealsa` | NextUI, radio scripts | — | Standard interfaces; the 8733bu driver names its interface `wlan0` | Keep `wlan0` |
@@ -173,7 +173,7 @@ Different from stock, found on the first boots:
   this L3 unit ran "1800" at 1979 MHz and 1150 mV. Stock picks a bin per chip
   from the OTP's PVTM count; `rockchip-cpufreq-nvmem` does the same and
   selects that bin's `opp-microvolt-L<n>` from stock's table, keeping L0
-  without a count or under an `mbist-vmin` floor above 850 mV. Patch `0050`
+  without a count or under an `mbist-vmin` floor above 850 mV. Patch `hardware/0050`
   keeps `cpufreq-dt-platdev` from starting cpufreq-dt first. Measured
   (2026-10-28), rate: mV, real MHz:
 
@@ -338,7 +338,7 @@ Different from stock, found on the first boots:
   (patch 0010), with stock's firmware linked under the names `btrtl` asks
   for. The chip's power is a `vcc_wifi` regulator on GPIO0_A0. Stock's
   layer:
-  - `/sys/class/rkwifi/wifi_power`, from `drivers/stock/rkwifi.c`, matched on
+  - `/sys/class/rkwifi/wifi_power`, from `stock/0101`, matched on
     stock's `wlan-platdata` node and switching that regulator;
   - `/lib/modules/rtk_btusb.ko`, the module `bt_init.sh` insmods: a
     stand-in that loads `8733bu` then `btusb`, since `btusb` first resets
@@ -474,7 +474,7 @@ Where the 0.6 W went, in game, 45 s points:
   occasional dropout stock has too.
 - **DDR, ~100 mW.** With no DMC driver it stayed at 1056 MHz; main's
   load-based rate sits at 324 MHz in this game, measured there at 153 mW.
-  zlyme's DMC driver is now built in (`drivers/hardware/rk3568-dmc.c`, stock's
+  zlyme's DMC driver is now built in (`hardware/0104`, stock's
   40/20 thresholds), with its DFI suspend patch (`0035`): 324 MHz throughout
   the game, 2924 mW against ~3015. It returns to 1056 MHz before suspend; after
   a lid sleep it was back at 324 and still rose under load. Unlike stock, it

@@ -173,7 +173,8 @@ BSP kernel with no published source, on a device with no console.
 
 > Done on 2026-09-19, and it took more than drawing: the panel came up at
 > 2.99 s, the backlight stayed off and NextUI erased the logo first (Part 3,
-> *The boot logo*). The logo now shows from 2.00 s.
+> *The boot logo*). It showed from 2.00 s on the vendor kernel, and shows
+> from 1.6 s on mainline.
 
 Lean U-Boot + stock DTB + **no video at all**, drawing the splash from the kernel
 side with the `baseos-splash` fbsplash the rootfs already ships. Cost is cosmetic
@@ -562,7 +563,7 @@ at 100 MHz on a fixed, untuned sample phase, which may not hold across cards.
 ## Card init: the partition scan
 
 `mmc dev 1` took 202 ms, against ~77 ms for the kernel on the same card. The
-card was not the cause. With `patches-diag/9002` (2026-09-19), init proper
+card was not the cause. With the diag patch `9002` (2026-09-19), init proper
 took 40 ms and the card was ready at the first ACMD41 poll. The other 184 ms
 came after it: probing the block device runs `part_init`, then
 `part_create_block_devices` looks up each of the 128 GPT entry slots, and each
@@ -1040,7 +1041,8 @@ saved, `mmc info` and the SD phase registers included. The default release
 build saves none; the debug build costs 7 ms, and the timings on this page are
 from diag builds except the `-O2` column.
 
-`baseos-bootinfo timeline` prints one line per boot, on the printk clock:
+`baseos-bootinfo timeline` prints one line per boot, on the printk clock (here a
+diag build on the vendor kernel):
 
 ```
 uboot 1.275  printk 1.322  init 2.121  logo 2.48  handoff 2.28  nextui 2.98  panel 2.433  frame 3.56  (card 87 ms)
@@ -1049,9 +1051,9 @@ uboot 1.275  printk 1.322  init 2.121  logo 2.48  handoff 2.28  nextui 2.98  pan
 U-Boot's hand-off, the first printk, `Run /init`, `rcS`'s logo (when `fbsplash`
 returned: its pan waits for the panel), the frontend hand-off, `nextui.elf`'s
 start, the panel first showing an image, NextUI's first frame, and SD card
-detection, with a note when root needed a journal replay: the two known sources of kernel-phase variance.
-Userspace stamps are on the uptime clock and are moved onto printk's through
-the root's `jbd2` thread and its mount message, to 10 ms.
+detection, with a note when `/data` needed a journal replay: the two known
+sources of kernel-phase variance. On mainline the printk and uptime clocks both
+start at kernel entry, so U-Boot's hand-off is added to each.
 
 **`./build.sh --diag`** adds what these measurements needed and a release
 does not, besides the console record:
@@ -1081,43 +1083,36 @@ A diag build adds the console record and the charge LED; how to read them is in
 
 ## Next, in order
 
-**Before 0.7.0 ships:**
+What 0.7.0 waited on is done: cold boots of the release build, charge mode's
+power key, a paused charge, the low-battery guard, the update from 0.6.0 and
+NextUI's `my355.sh` leaving `/dev/fb0` alone on BaseOS.
 
-1. **Cold boots of the release build.** Its timings above are warm reboots;
-   the debug builds before it matched cold boots to 0.1 ms.
-2. **The untested paths:** charge mode's 2 s power key, a charge left paused,
-   and the low-battery guard with and without a charger (*Charging while
-   off*), and an update from 0.6.0, which swaps the vendor
-   `uboot` and `boot` slots for these in one step.
-3. **NextUI's `my355.sh` change**, which stops it clearing `/dev/fb0` on
-   BaseOS, in the NextUI release users will run. Without it the `rcS` logo is
-   erased before the panel shows it.
+**Speed.** U-Boot now takes 0.62 s, with the kernel cut to the board, of which
+0.30 s is the read, ~0.1 s decompression and 0.13 s init before the boot script
+(2026-10-31).
 
-**Speed.** U-Boot now takes 0.94 s, of which 0.53 s is the read, 0.20 s
-decompression and 0.12 s init before the boot script.
-
-4. **The read**, 534 ms: SDR50 would halve it, but was dropped (above), and
+1. **The read**, 298 ms: SDR50 would halve it, but was dropped (above), and
    50 MHz is the limit at 3.3 V. Fewer bytes are not on offer either: every
    format was re-measured at today's read speed and clock, and zstd stays
    (*Kernel compression, revisited*).
-5. **Decompression**, 194 ms at 1800 MHz (*The CPU clock*). Overlapping it with
-   the read would need a second core started through BL31: up to ~200 ms, but
+2. **Decompression**, ~100 ms at 1800 MHz (*The CPU clock*). Overlapping it with
+   the read would need a second core started through BL31: up to ~100 ms, but
    its own MMU and cache setup, and a hang there would be invisible.
-6. **Card init**, 53 ms: `mmc_go_idle` 11 ms and `sd_select_mode_and_width`
+3. **Card init**, 53 ms: `mmc_go_idle` 11 ms and `sd_select_mode_and_width`
    16 ms are the largest steps left, and the partition scan's 128 cached
    lookups 13 ms.
 
 **Upkeep:**
 
-7. **`0004`, `0005` and `0006` upstream.**
-8. The fuel gauge: discharge while off is not seen until the kernel's own
+4. **`0004`, `0005` and `0006` upstream.**
+5. The fuel gauge: discharge while off is not seen until the kernel's own
    low-voltage handling, as the power-on voltage is not trusted mid-curve.
    Its 13.5 ms should drop with multi-byte reads: re-measure.
-9. A U-Boot boot logo (*The boot logo*, above), if 2.00 s is not enough. The
+6. A U-Boot boot logo (*The boot logo*, above), if 1.6 s is not enough. The
    cheaper levers for it are everything before `start_kernel`, which moves it
    one for one, and the kernel's `rk3x_i2c_driver_init` (146 ms in the last
    `initcall_debug` profile, [boot time](boot-time.md)): re-profile first.
-10. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
+7. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
 the early boot logo (no VOP2 driver; `rcS` draws one at 2.00 s against ~1.0 s),
