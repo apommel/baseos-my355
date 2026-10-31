@@ -1,0 +1,123 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] drm/panfrost: add the vendor kbase's utilisation file
+
+NextUI's debug overlay reads the GPU's busy percentage from
+/sys/devices/platform/fde60000.gpu/utilisation, which Rockchip's kbase
+provides: it blocks for 100 ms and prints the percentage of it the GPU was
+busy. Provide the same file from the busy and idle time devfreq already
+tracks, kept as totals since devfreq resets its own at every poll.
+
+---
+--- a/drivers/gpu/drm/panfrost/panfrost_devfreq.h
++++ b/drivers/gpu/drm/panfrost/panfrost_devfreq.h
+@@ -26,8 +26,11 @@
+ 	ktime_t idle_time;
+ 	ktime_t time_last_update;
+ 	int busy_count;
++	/* Never reset, unlike the two above: utilisation's window spans polls. */
++	ktime_t busy_total;
++	ktime_t idle_total;
+ 	/*
+-	 * Protect busy_time, idle_time, time_last_update and busy_count
++	 * Protect busy_time, idle_time, the totals, time_last_update and busy_count
+ 	 * because these can be updated concurrently between multiple jobs.
+ 	 */
+ 	spinlock_t lock;
+@@ -42,4 +45,6 @@
+ void panfrost_devfreq_record_busy(struct panfrost_devfreq *devfreq);
+ void panfrost_devfreq_record_idle(struct panfrost_devfreq *devfreq);
+ 
++unsigned int panfrost_devfreq_utilisation(struct panfrost_devfreq *pfdevfreq);
++
+ #endif /* __PANFROST_DEVFREQ_H__ */
+--- a/drivers/gpu/drm/panfrost/panfrost_devfreq.c
++++ b/drivers/gpu/drm/panfrost/panfrost_devfreq.c
+@@ -2,6 +2,7 @@
+ /* Copyright 2019 Collabora ltd. */
+ 
+ #include <linux/clk.h>
++#include <linux/delay.h>
+ #include <linux/devfreq.h>
+ #include <linux/devfreq_cooling.h>
+ #include <linux/nvmem-consumer.h>
+@@ -15,15 +16,19 @@
+ 
+ static void panfrost_devfreq_update_utilization(struct panfrost_devfreq *pfdevfreq)
+ {
+-	ktime_t now, last;
++	ktime_t now, last, delta;
+ 
+ 	now = ktime_get();
+ 	last = pfdevfreq->time_last_update;
++	delta = ktime_sub(now, last);
+ 
+-	if (pfdevfreq->busy_count > 0)
+-		pfdevfreq->busy_time += ktime_sub(now, last);
+-	else
+-		pfdevfreq->idle_time += ktime_sub(now, last);
++	if (pfdevfreq->busy_count > 0) {
++		pfdevfreq->busy_time += delta;
++		pfdevfreq->busy_total += delta;
++	} else {
++		pfdevfreq->idle_time += delta;
++		pfdevfreq->idle_total += delta;
++	}
+ 
+ 	pfdevfreq->time_last_update = now;
+ }
+@@ -45,6 +50,29 @@
+ 		pfdev->pfdevfreq.current_frequency = *freq;
+ 
+ 	return err;
++}
++
++/* The percentage of the next 100 ms the GPU is busy. */
++unsigned int panfrost_devfreq_utilisation(struct panfrost_devfreq *pfdevfreq)
++{
++	unsigned long irqflags;
++	ktime_t busy, total;
++
++	spin_lock_irqsave(&pfdevfreq->lock, irqflags);
++	panfrost_devfreq_update_utilization(pfdevfreq);
++	busy = pfdevfreq->busy_total;
++	total = ktime_add(busy, pfdevfreq->idle_total);
++	spin_unlock_irqrestore(&pfdevfreq->lock, irqflags);
++
++	msleep(100);
++
++	spin_lock_irqsave(&pfdevfreq->lock, irqflags);
++	panfrost_devfreq_update_utilization(pfdevfreq);
++	busy = ktime_sub(pfdevfreq->busy_total, busy);
++	total = ktime_sub(ktime_add(pfdevfreq->busy_total, pfdevfreq->idle_total), total);
++	spin_unlock_irqrestore(&pfdevfreq->lock, irqflags);
++
++	return total > 0 ? div64_u64(100 * ktime_to_ns(busy), ktime_to_ns(total)) : 0;
+ }
+ 
+ static void panfrost_devfreq_reset(struct panfrost_devfreq *pfdevfreq)
+--- a/drivers/gpu/drm/panfrost/panfrost_drv.c
++++ b/drivers/gpu/drm/panfrost/panfrost_drv.c
+@@ -1058,8 +1058,23 @@
+ 
+ static DEVICE_ATTR_RW(profiling);
+ 
++/* The vendor kbase's file, which frontends' debug overlays read. */
++static ssize_t utilisation_show(struct device *dev,
++				struct device_attribute *attr, char *buf)
++{
++	struct panfrost_device *pfdev = dev_get_drvdata(dev);
++
++	if (!pfdev->pfdevfreq.devfreq)
++		return -ENODEV;
++
++	return sysfs_emit(buf, "%u\n", panfrost_devfreq_utilisation(&pfdev->pfdevfreq));
++}
++
++static DEVICE_ATTR_RO(utilisation);
++
+ static struct attribute *panfrost_attrs[] = {
+ 	&dev_attr_profiling.attr,
++	&dev_attr_utilisation.attr,
+ 	NULL,
+ };
+ 
