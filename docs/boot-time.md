@@ -7,7 +7,7 @@ Superseded tables and the measurements that led here are in
 Measured on the vendor 5.10 kernel, which BaseOS booted until 1.3.0. The
 mainline kernel's figures, against these, are in
 [mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.10 s,
-hands off at 1.38–1.39 s, shows the logo at 1.71–1.72 s and starts `nextui.elf`
+hands off at 1.38–1.39 s, shows the logo at 1.36–1.42 s and starts `nextui.elf`
 at 2.31–2.36 s (2026-10-31, warm). The initcall list below has no counterpart there;
 the SD and `rcS` findings carry over.
 
@@ -85,7 +85,7 @@ Once the logo is up and the frontend has its hand-off, `rcS` logs one line per
 boot to `baseos.log`, on `/data` and the card:
 
 ```
-Startup: 0.70 s before Linux, 0.69 s Linux to frontend, 1.39 s total; logo on screen at 1.71 s
+Startup: 0.70 s before Linux, 0.69 s Linux to frontend, 1.40 s total; logo on screen at 1.39 s
 ```
 
 The first three are upstream BaseOS's, computed the same way, so they compare
@@ -93,7 +93,7 @@ directly with its H700 figures. It calls the hand-off "menu", although it is
 not. `baseos-bootinfo timeline` has the rest:
 
 ```
-uboot 0.620  printk 0.620  init 1.100  backlight 1.22  handoff 1.39  logo 1.71  nextui 2.32  frame -  (card 82 ms)
+uboot 0.620  printk 0.620  init 1.113  backlight 1.23  handoff 1.41  logo 1.39  nextui 2.35  frame -  (card 88 ms)
 ```
 
 Compare boots on the same unit, card and cable state, at least three of each,
@@ -104,18 +104,26 @@ cold and warm apart.
 | marker | what it is | at (warm) |
 |---|---|---|
 | `backlight` | `rcS` lights the backlight; the panel shows nothing yet | 1.21–1.23 s |
-| `logo` | `fbsplash` returns: its pan is a blocking commit, so the first modeset and the panel's power-up are behind it, and the logo is on the glass | 1.71–1.72 s |
+| `logo` | `fbsplash` returns: its pan is a blocking commit, so the first modeset and the panel's power-up are behind it, and the logo is on the glass | 1.36–1.42 s |
 | `nextui` | `nextui.elf` starts | 2.31–2.36 s |
 | `frame` | NextUI's first framebuffer on the panel (`--diag`, `baseos-frameprobe`) | — |
 
 Nothing marks the menu. NextUI's first frame precedes a working menu, so
 `frame` is a lower bound for it, not the moment the user can use it.
 
-Filmed on a cold boot (2026-10-31), from the work LED lighting at power-on:
-backlight at 1.73 s, logo at 2.16 s, NextUI's menu at 3.97 s. The first two
-are 0.45–0.51 s after their markers, so the LED leads the counter by about half
-a second. On the counter, the menu is at ~3.45 s, ~1.1 s after `nextui.elf`
-starts, and the logo takes 0.5 s to reach the panel once the backlight is on.
+Filmed on a cold boot (2026-10-31, logo then at 1.71 s), from the work LED
+lighting at power-on: backlight at 1.73 s, logo at 2.16 s, NextUI's menu at
+3.97 s. The first two are 0.45–0.51 s after their markers, so the LED leads the
+counter by about half a second. On the counter, the menu is at ~3.45 s, ~1.1 s
+after `nextui.elf` starts.
+
+From `fbsplash`'s start to the logo on the panel is ~0.14 s: the panel's own
+waits, a 1 ms reset pulse, 20 ms before the first command and 120 ms after
+sleep-out, and ~20 ms of drawing. The logo moves with `Run /init`, so a boot
+that hits the SD tuning edge shows it ~30 ms later. Until 2026-10-31 the waits
+were 10, 120, 288 and 50 ms, and the logo came at 1.71 s: the init sequence's
+`wait=` is hex to the driver, so the tree's `wait=120` and `wait=32` slept 288
+and 50 ms.
 
 ## Where the pre-kernel time goes, on the vendor U-Boot
 
