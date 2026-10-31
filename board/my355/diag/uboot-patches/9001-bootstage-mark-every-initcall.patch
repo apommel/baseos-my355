@@ -1,4 +1,4 @@
-Diagnostics only (MY355_DIAG=1): a bootstage mark after every initcall.
+Diagnostics only (--diag): a bootstage mark after every initcall.
 
 The marks land in the kernel's /proc/device-tree/bootstage like the boot
 script's, and baseos-bootinfo prints them in time order with each step's

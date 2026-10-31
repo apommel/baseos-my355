@@ -1,7 +1,6 @@
 #!/bin/sh
 # BlueZ. Called by NextUI's etc/bluetooth/bt_init.sh, which loads rtk_btusb.ko
-# and starts bluealsa itself. Stock wraps bluetoothd in start-stop-daemon, which
-# Alpine's busybox-static does not build.
+# and starts bluealsa itself.
 
 DAEMON=/usr/libexec/bluetooth/bluetoothd
 
