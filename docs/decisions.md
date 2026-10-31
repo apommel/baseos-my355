@@ -128,6 +128,10 @@ image ([rootfs](rootfs.md)).
 - **The harvest after Buildroot.** The build takes two files from it, the
   Bluetooth firmware, but the published bundle still carries `boot.img` and
   every other entry. Pruning them is a `harvest.list` edit plus a new bundle.
+  The two cannot come from elsewhere yet: linux-firmware has no 8723F or
+  8733BU Bluetooth firmware (its `rtl_bt` stops at `rtl8723d`, checked
+  2026-10-31), and Realtek ships `rtl8733bu_fw` and `rtl8733bu_config` only
+  in vendor SDKs, with no licence published for them.
 - **Buildroot for the userland.** Every library and program a frontend uses
   is built from source (`build-rootfs.sh`), with one toolchain, current
   releases and this device's options; the harvest supplies only the Bluetooth

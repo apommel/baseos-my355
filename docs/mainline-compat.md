@@ -66,7 +66,7 @@ constrains the design.
 | `/dev/mali0`: kbase ioctls, dma-buf | NextUI, every SDL/GLES program | kbase g18p0 | ROCKNIX `mali_kbase` gives `/dev/mali0` | Done: libmali g29p1 on it, or Mesa with `gpu=panfrost` |
 | `/dev/dri/card0`: legacy KMS (`SETCRTC`, `PAGE_FLIP`, dumb buffers, PRIME), `SET_MASTER` | NextUI, minarch, tools | rockchip-drm is `card0` | Panfrost also registers a `card` node, so `card0` must stay rockchip-drm | Done: Panfrost is a module, loaded after rockchip-drm |
 | `/sys/class/drm/card0-HDMI-A-1/status` | libmsettings, keymon, NextUI | present | Same name as long as rockchip-drm is `card0` | as above |
-| `modetest -M rockchip -w 179:contrast:N`, `179:saturation:N` | libmsettings `SetRawContrast`, `SetRawSaturation` | vendor VOP2 properties on connector 179, `DSI-1` (`HDMI-A-1` is 164) | zlyme `1013` (our `0040`) adds the TV properties with the same names and range, under other object IDs (`DSI-1` is 59). Setting them needs DRM master, which NextUI holds; the vendor kernel skips the check (`DRM_IGNORE_IOTCL_PERMIT`) | Done: a `modetest` wrapper maps 179 and 164 by `connector_id`, and `stock/0065` lets root set properties without master |
+| `modetest -M rockchip -w 179:contrast:N`, `179:saturation:N` | libmsettings `SetRawContrast`, `SetRawSaturation` | vendor VOP2 properties on connector 179, `DSI-1` (`HDMI-A-1` is 164) | zlyme `1013` (our `0040`) adds the TV properties with the same names and range, under other object IDs (`DSI-1` is 59). Setting them needs DRM master, which NextUI holds; the vendor kernel skips the check (`DRM_IGNORE_IOTCL_PERMIT`) | Done: a `modetest` wrapper maps 179 and 164 by `connector_id`, and writes contrast and saturation to the connector's sysfs attributes (`stock/0065`), which commit them as the kernel |
 | `/dev/i2c-0`, `I2C_SLAVE_FORCE 0x20`, writes to `RK817_DDAC_VOLL`/`VOLR` (`0x31`/`0x32`) | libmsettings `SetVolume`, speaker path | Goes past the driver because `SPK Volume` stops at -37.5 dB. Written on every volume change after `Playback Path`, so the bottom levels reach -57 dB | Needs `CONFIG_I2C_CHARDEV` and `i2c0` as bus 0. If it fails, only the lowest volume levels get louder, down to the -37.5 dB floor | Keep the bus alias. Better: a mainline volume control with the codec's full range, then the write is harmless |
 | ALSA cards found by substring in `/proc/asound/cards`: `rockchiprk817` (codec), `rockchiphdmi` (HDMI), `USB-Audio` | libmsettings | `rockchip-rk817`, `rockchip,hdmi` | zlyme names the codec `rk817_ext`; the mainline HDMI card name differs too | Card names that give these IDs: `simple-audio-card,name = "rockchip-rk817"`, and the same for HDMI |
 | Mixer controls by name through tinyalsa: `Playback Path` (enum `OFF`, `HP`, `SPK`), `Speaker Switch`, `Headphone Switch`, `SPK Volume` (0–100); plus `tinymix set 1 SPK` in `launch.sh` | libmsettings `SetVolume`, `launch.sh` | vendor rk817 codec | `Playback Path` and `SPK Volume` are vendor-only. A missing control is skipped silently, so the symptom is no sound or no volume control, not a crash | Codec patch adding the stock controls on top of mainline routing |
@@ -264,7 +264,11 @@ Different from stock, found on the first boots:
 - **Contrast and saturation.** NextUI's `modetest` writes reached the wrong
   object (mainline numbers `DSI-1` 59, not 179), then needed DRM master,
   which NextUI holds and the vendor kernel never checks. A `modetest` wrapper
-  maps the ids and `stock/0065` lets root set properties. Any value off 50
+  maps the ids, and sends contrast and saturation to
+  `/sys/class/drm/card0-DSI-1`: `stock/0065` gives each connector an
+  attribute per property (brightness, contrast, saturation and hue for now),
+  committed as the kernel, so the DRM core's master check stays upstream's.
+  Any value off 50
   then blacked the panel, as zlyme found: its BCSH port (our `0040`) set the
   output mode to 0, the BSP's black. It is 3 now, with the BSP's BT.709 CSC.
   Both sliders work from Settings (2026-10-27).
