@@ -1,0 +1,43 @@
+--- a/product/kernel/drivers/gpu/arm/midgard/mali_kbase_core_linux.c
++++ b/product/kernel/drivers/gpu/arm/midgard/mali_kbase_core_linux.c
+@@ -3393,6 +3393,32 @@
+ 
+ static DEVICE_ATTR_RW(dvfs_period);
+ 
++/* Stock's Rockchip kbase file, which frontends' debug overlays read: the
++ * percentage of the next 100 ms the GPU is busy.
++ */
++static ssize_t utilisation_show(struct device *dev, struct device_attribute *attr, char *const buf)
++{
++	struct kbase_device *kbdev = to_kbase_device(dev);
++	struct kbasep_pm_metrics last = {}, diff;
++	u64 total;
++
++	CSTD_UNUSED(attr);
++
++	if (!kbdev)
++		return -ENODEV;
++
++	/* Each call brings the counters up to now and copies them into last. */
++	kbase_pm_get_dvfs_metrics(kbdev, &last, &diff);
++	msleep(100);
++	kbase_pm_get_dvfs_metrics(kbdev, &last, &diff);
++	total = (u64)diff.time_busy + diff.time_idle;
++
++	return scnprintf(buf, PAGE_SIZE, "%u\n",
++			 total ? (unsigned int)div64_u64(100ULL * diff.time_busy, total) : 0);
++}
++
++static DEVICE_ATTR_RO(utilisation);
++
+ int kbase_pm_gpu_freq_init(struct kbase_device *kbdev)
+ {
+ 	int err;
+@@ -5754,6 +5780,7 @@
+ #endif /* !MALI_USE_CSF */
+ 	&dev_attr_gpuinfo.attr,
+ 	&dev_attr_dvfs_period.attr,
++	&dev_attr_utilisation.attr,
+ 	&dev_attr_pm_poweroff.attr,
+ 	&dev_attr_reset_timeout.attr,
+ #if !MALI_USE_CSF
