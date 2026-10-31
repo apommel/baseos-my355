@@ -94,8 +94,7 @@ build-all.sh        build everything: the release .img.zip, .bosupd and SHA256SU
 build-uboot.sh      build U-Boot
 build-kernel.sh     build Linux, its device tree and modules
 build-gpu.sh        build Mesa
-build-userland.sh   build the libraries and programs with Buildroot
-build-rootfs.sh     build the root filesystem
+build-rootfs.sh     build the root filesystem with Buildroot
 build-image.sh      build the SD card image
 build-update.sh     build the update file (.bosupd)
 flash-card.sh       write the image to an SD card (macOS)

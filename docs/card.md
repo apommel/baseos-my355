@@ -209,7 +209,7 @@ FAT32's 4 GiB file limit.
 
 `build-all.sh` runs the steps below, each of which also stands alone:
 `build-uboot.sh`, `build-kernel.sh` and `build-gpu.sh` (cached trees, so a
-rerun is incremental), `build-rootfs.sh` (harvest + overlay + BusyBox),
+rerun is incremental), `build-rootfs.sh` (Buildroot),
 `build-image.sh` (this page) and `build-update.sh` (the `.bosupd` payload).
 
 The build verifies as it goes: `sgdisk -v` clean, `fsck.erofs` on the root,

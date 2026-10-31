@@ -5,7 +5,7 @@
 #   mesa.tar      Mesa's Panfrost and PanVK, in usr/lib/mesa
 #   gpu.json      what it was built from
 #
-# The first, Rockchip's libmali, is a Buildroot package (./build-userland.sh).
+# The first, Rockchip's libmali, is a Buildroot package (./build-rootfs.sh).
 # ./build-rootfs.sh installs both; baseos.conf's gpu= picks one at boot
 # (overlay/usr/sbin/baseos-gpu).
 #
