@@ -449,7 +449,9 @@ whole library is read instead, from `baseos-gpu`: ~70 ms behind, and the
 same on every boot. Main draws at 2.93–2.98.
 
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off
-is added. The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main:
+is added. The uptime clock starts ~75 ms after kernel entry, which these
+figures did not count: the hand-off, `nextui.elf` and first-frame figures on
+this page read ~75 ms early ([boot time](boot-time.md), *How to measure it*). The hand-off to `nextui.elf` takes 0.87 s, against 0.42 s on main:
 `launch.sh`'s first `nextval.elf` takes 0.72 s at boot (0.03 s warm, 0.26 s
 cold alone), mapping `libmali` (18 MB) and SDL from the card while keymon,
 batmon and audiomon load theirs. The card reads 22.5 MB/s at high speed,
