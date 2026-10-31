@@ -1,7 +1,20 @@
 #!/bin/sh
 # Stock's modetest, with stock's object ids mapped: NextUI writes to 179, the
 # vendor kernel's DSI-1, and 164 is its HDMI-A-1. This kernel numbers them its way.
+# Properties the kernel has in sysfs (stock/0065) go there: NextUI sets them
+# while it holds DRM master.
 id() { cat "/sys/class/drm/card0-$1/connector_id" 2>/dev/null || echo "$2"; }
+
+# Writes $3 to property $2 of the connector whose id is $1; 2 if it has no file.
+sysfs() {
+	for d in /sys/class/drm/card0-*; do
+		[ "$(cat "$d/connector_id" 2>/dev/null)" = "$1" ] && [ -w "$d/$2" ] &&
+			{ echo "$3" > "$d/$2"; return; }
+	done
+	return 2
+}
+
+rc=0 w= done= left=
 n=$#
 while [ "$n" -gt 0 ]; do
 	a=$1
@@ -11,6 +24,23 @@ while [ "$n" -gt 0 ]; do
 	179:*) a=$(id DSI-1 179):${a#179:} ;;
 	164:*) a=$(id HDMI-A-1 164):${a#164:} ;;
 	esac
-	set -- "$@" "$a"
+	if [ -n "$w" ]; then
+		w=
+		p=${a#*:}
+		case ${p%%:*} in
+		brightness|contrast|saturation|hue)
+			sysfs "${a%%:*}" "${p%%:*}" "${p#*:}"
+			r=$?
+			[ "$r" = 2 ] || { [ "$r" = 0 ] || rc=1; done=1; continue; } ;;
+		esac
+		set -- "$@" -w "$a"
+		left=1
+	elif [ "$a" = -w ]; then
+		w=1
+	else
+		set -- "$@" "$a"
+	fi
 done
+# Only sysfs writes were asked for: modetest would just list every object.
+[ -n "$done" ] && [ -z "$left" ] && exit "$rc"
 exec /usr/libexec/modetest "$@"

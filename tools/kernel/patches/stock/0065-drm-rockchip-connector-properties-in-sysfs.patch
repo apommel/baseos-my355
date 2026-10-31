@@ -1,0 +1,154 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] drm/rockchip: connector properties in sysfs
+
+NextUI runs modetest to set the panel's contrast and saturation while it
+holds DRM master itself. The vendor kernel lets that through
+(CONFIG_DRM_IGNORE_IOTCL_PERMIT skips every ioctl permission check); mainline
+refuses it with -EACCES. Rather than relax the ioctls for every client, give
+each connector a sysfs attribute per property, named after it, that commits
+it as the kernel. BaseOS's modetest writes those. These are the TV properties
+0040 adds; another connector property is one more attribute.
+
+---
+--- a/drivers/gpu/drm/rockchip/rockchip_drm_drv.c	2026-10-31 19:34:18
++++ b/drivers/gpu/drm/rockchip/rockchip_drm_drv.c	2026-10-31 19:48:32
+@@ -16,14 +16,18 @@
+ #include <linux/component.h>
+ #include <linux/console.h>
+ #include <linux/iommu.h>
++#include <linux/sysfs.h>
+ 
+ #include <drm/clients/drm_client_setup.h>
++#include <drm/drm_atomic.h>
+ #include <drm/drm_connector.h>
+ #include <drm/drm_drv.h>
+ #include <drm/drm_fbdev_dma.h>
+ #include <drm/drm_gem_dma_helper.h>
++#include <drm/drm_modeset_lock.h>
+ #include <drm/drm_of.h>
+ #include <drm/drm_print.h>
++#include <drm/drm_property.h>
+ #include <drm/drm_probe_helper.h>
+ #include <drm/drm_vblank.h>
+ 
+@@ -35,6 +39,7 @@
+ #define to_dma_iommu_mapping(dev) NULL
+ #endif
+ 
++#include "../drm_crtc_internal.h"
+ #include "rockchip_drm_drv.h"
+ #include "rockchip_drm_fb.h"
+ #include "rockchip_drm_gem.h"
+@@ -174,6 +179,103 @@
+ 	drm_connector_list_iter_begin(drm, &conn_iter);
+ 	drm_for_each_connector_iter(connector, &conn_iter)
+ 		drm_atomic_helper_connector_tv_reset(connector);
++	drm_connector_list_iter_end(&conn_iter);
++}
++
++/*
++ * Connector properties in sysfs, named after the property and committed as the
++ * kernel: stock's libmsettings sets them while the frontend holds DRM master.
++ */
++static struct drm_property *rockchip_drm_sysfs_prop(struct drm_connector *connector,
++						    const char *name)
++{
++	struct drm_object_properties *props = connector->base.properties;
++	int i;
++
++	for (i = 0; i < props->count; i++)
++		if (!strcmp(props->properties[i]->name, name))
++			return props->properties[i];
++	return NULL;
++}
++
++static ssize_t rockchip_drm_sysfs_show(struct device *kdev,
++				       struct device_attribute *attr, char *buf)
++{
++	struct drm_connector *connector = dev_get_drvdata(kdev);
++	struct drm_property *prop = rockchip_drm_sysfs_prop(connector, attr->attr.name);
++	struct drm_modeset_lock *lock = &connector->dev->mode_config.connection_mutex;
++	u64 val;
++	int ret;
++
++	if (!prop)
++		return -ENOENT;
++	drm_modeset_lock(lock, NULL);
++	ret = drm_atomic_get_property(&connector->base, prop, &val);
++	drm_modeset_unlock(lock);
++	return ret ? ret : sysfs_emit(buf, "%llu\n", val);
++}
++
++static ssize_t rockchip_drm_sysfs_store(struct device *kdev,
++					struct device_attribute *attr,
++					const char *buf, size_t len)
++{
++	struct drm_connector *connector = dev_get_drvdata(kdev);
++	struct drm_property *prop = rockchip_drm_sysfs_prop(connector, attr->attr.name);
++	struct drm_device *drm = connector->dev;
++	struct drm_modeset_acquire_ctx ctx;
++	struct drm_atomic_commit *state;
++	u64 val;
++	int ret;
++
++	if (!prop)
++		return -ENOENT;
++	ret = kstrtou64(buf, 0, &val);
++	if (ret)
++		return ret;
++
++	DRM_MODESET_LOCK_ALL_BEGIN(drm, ctx, 0, ret);
++	state = drm_atomic_commit_alloc(drm);
++	if (!state) {
++		ret = -ENOMEM;
++		goto unlock;
++	}
++	state->acquire_ctx = &ctx;
++	ret = drm_atomic_set_property(state, NULL, &connector->base, prop, val, false);
++	if (!ret)
++		ret = drm_atomic_commit(state);
++	drm_atomic_commit_put(state);
++unlock:
++	DRM_MODESET_LOCK_ALL_END(drm, ctx, ret);
++	return ret ? ret : len;
++}
++
++/* One line per property; 0040 adds these four. */
++static DEVICE_ATTR(brightness, 0644, rockchip_drm_sysfs_show, rockchip_drm_sysfs_store);
++static DEVICE_ATTR(contrast, 0644, rockchip_drm_sysfs_show, rockchip_drm_sysfs_store);
++static DEVICE_ATTR(saturation, 0644, rockchip_drm_sysfs_show, rockchip_drm_sysfs_store);
++static DEVICE_ATTR(hue, 0644, rockchip_drm_sysfs_show, rockchip_drm_sysfs_store);
++
++static struct attribute *rockchip_drm_sysfs_attrs[] = {
++	&dev_attr_brightness.attr,
++	&dev_attr_contrast.attr,
++	&dev_attr_saturation.attr,
++	&dev_attr_hue.attr,
++	NULL
++};
++
++static const struct attribute_group rockchip_drm_sysfs_group = {
++	.attrs = rockchip_drm_sysfs_attrs,
++};
++
++static void rockchip_drm_sysfs_add(struct drm_device *drm)
++{
++	struct drm_connector_list_iter conn_iter;
++	struct drm_connector *connector;
++
++	drm_connector_list_iter_begin(drm, &conn_iter);
++	drm_for_each_connector_iter(connector, &conn_iter)
++		if (sysfs_create_group(&connector->kdev->kobj, &rockchip_drm_sysfs_group))
++			drm_warn(drm, "%s: no properties in sysfs\n", connector->name);
+ 	drm_connector_list_iter_end(&conn_iter);
+ }
+ 
+@@ -237,6 +339,8 @@
+ 	if (ret)
+ 		goto err_kms_helper_poll_fini;
+ 
++	/* After drm_dev_register(), which creates the connectors' devices. */
++	rockchip_drm_sysfs_add(drm_dev);
+ 	drm_client_setup(drm_dev, NULL);
+ 
+ 	return 0;
