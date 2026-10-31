@@ -454,16 +454,17 @@
 	/*
 	 * FT8006M, 640x480, 2 lanes; init sequence from the vendor DTB. Waits
 	 * shortened as on the vendor path (docs/uboot.md): 120 ms after sleep-out,
-	 * none after display-on.
+	 * none after display-on, 20 ms from reset to the first command. The driver
+	 * reads wait= in hex, delays= in decimal.
 	 */
 	panel: panel@0 {
 		compatible = "rocknix,generic-dsi";
 		reg = <0>;
 		panel_description =
-			"G size=68,121 delays=0,10,120,0,20 format=rgb888 lanes=2 flags=0xa03",
+			"G size=68,121 delays=0,1,20,0,20 format=rgb888 lanes=2 flags=0xa03",
 			"M clock=32000 horizontal=640,150,120,120 vertical=480,20,6,12 default=1",
-			"I seq=11 wait=120",
-			"I seq=29 wait=32",
+			"I seq=11 wait=78",
+			"I seq=29",
 			"I seq=b9f11287",
 			"I seq=b2780470",
 			"I seq=b31010282803ff00000000",

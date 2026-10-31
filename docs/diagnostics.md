@@ -19,7 +19,7 @@ Ordered by how early they fire.
 
 | signal | proves | how |
 |---|---|---|
-| **boot logo** | `rcS` is running | `fbsplash`, from ~1.6 s |
+| **boot logo** | `rcS` is running | `fbsplash`, from ~1.4 s |
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
 | **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |
@@ -62,7 +62,7 @@ busybox runs, ruling out the rootfs while the real bug was elsewhere.
 ## U-Boot
 
 U-Boot ([U-Boot](uboot.md) Part 3) draws nothing: the panel stays dark until the kernel lights it and `rcS` draws
-the logo at ~1.6 s, so a dark panel before then says nothing about whether the
+the logo at ~1.4 s, so a dark panel before then says nothing about whether the
 boot worked. A diag build (`./build.sh --diag`) makes up for it two ways.
 The release build has neither: a failed boot is dark, then off.
 Rebuild with `--diag` and flash it to see why.
