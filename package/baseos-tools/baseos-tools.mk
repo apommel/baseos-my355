@@ -10,7 +10,7 @@ BASEOS_TOOLS_SITE_METHOD = local
 BASEOS_TOOLS_LICENSE = MIT
 BASEOS_TOOLS_DEPENDENCIES = freetype host-pkgconf
 
-BASEOS_TOOLS_SBIN = gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd
+BASEOS_TOOLS_SBIN = gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd bootclock
 
 define BASEOS_TOOLS_BUILD_CMDS
 	$(foreach t,$(BASEOS_TOOLS_SBIN),\

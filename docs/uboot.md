@@ -1041,19 +1041,20 @@ saved, `mmc info` and the SD phase registers included. The default release
 build saves none; the debug build costs 7 ms, and the timings on this page are
 from diag builds except the `-O2` column.
 
-`baseos-bootinfo timeline` prints one line per boot, on the printk clock (here a
-diag build on the vendor kernel):
+`baseos-bootinfo timeline` prints one line per boot, from power-on (mainline,
+warm, release build):
 
 ```
-uboot 1.275  printk 1.322  init 2.121  logo 2.48  handoff 2.28  nextui 2.98  panel 2.433  frame 3.56  (card 87 ms)
+uboot 0.620  printk 0.620  init 1.100  backlight 1.22  handoff 1.39  logo 1.71  nextui 2.32  frame -  (card 82 ms)
 ```
 
-U-Boot's hand-off, the first printk, `Run /init`, `rcS`'s logo (when `fbsplash`
-returned: its pan waits for the panel), the frontend hand-off, `nextui.elf`'s
-start, the panel first showing an image, NextUI's first frame, and SD card
-detection, with a note when `/data` needed a journal replay: the two known
-sources of kernel-phase variance. On mainline the printk and uptime clocks both
-start at kernel entry, so U-Boot's hand-off is added to each.
+U-Boot's hand-off, the first printk, `Run /init`, the backlight, the frontend
+hand-off, the logo on the panel, `nextui.elf`'s start, NextUI's first frame
+(diag only), and SD card detection, with a note when `/data` needed a journal
+replay: the two known sources of kernel-phase variance. U-Boot's hand-off is
+added to printk times and `bootclock`'s offset to uptime ones ([boot
+time](boot-time.md), *How to measure it*). On the vendor kernel it also had
+`panel`, the DSI bridge's enable printk, which mainline does not print.
 
 **`./build.sh --diag`** adds what these measurements needed and a release
 does not, besides the console record:

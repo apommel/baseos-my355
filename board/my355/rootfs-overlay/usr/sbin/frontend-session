@@ -141,6 +141,7 @@ export PAN_I_WANT_A_BROKEN_VULKAN_DRIVER=1
 # MinUI.zip/*.pakz payloads before starting the frontend. Keeping that entry
 # point is what makes updates behave identically, and NextUI can draw its own
 # installer because libSDL2/_image/_ttf are in the harvest.
-mark /run/boot-frontend-exec
+# The first session's, kept across respawns: it is the boot's.
+[ -e /run/boot-frontend-exec ] || mark /run/boot-frontend-exec
 log "exec $UPDATER"
 exec "$UPDATER"
