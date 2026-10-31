@@ -27,8 +27,19 @@ printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
 	/usr/bin/amixer -q -c 0 -s &
 
 # The boot logo and backlight. In the background: its pan waits for the panel.
-{ /usr/bin/fbsplash 0; mark /run/boot-logo; } &
+# Once the frontend has its hand-off too, the boot's timings go in the log.
+{
+	/usr/bin/fbsplash 0
+	mark /run/boot-logo
+	n=0
+	while [ ! -e /run/boot-frontend-exec ] && [ "$n" -lt 300 ]; do
+		/bin/usleep 10000
+		n=$((n + 1))
+	done
+	log "$(/usr/sbin/baseos-bootinfo startup)"
+} &
 echo 0 > /sys/class/backlight/backlight/bl_power 2>/dev/null
+mark /run/boot-backlight
 
 /bin/mount -t tmpfs -o mode=755,size=64m   tmpfs /var
 /bin/mkdir -p /var/lib /var/log /var/tmp /var/empty /var/lib/dbus /run/dbus

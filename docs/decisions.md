@@ -19,7 +19,7 @@ fixes, and the GPU on a g13p0 libmali with no Panfrost or PanVK.
 | GPU | kbase g18p0, libmali g13p0 | ROCKNIX's `mali_kbase` (libmali g29p1) or Panfrost and PanVK, picked by `gpu=` |
 | stock interface | native | a thin layer: device tree names, three small drivers and eight patches (`board/my355/linux/stock`), a `modetest` wrapper ([mainline-compat](mainline-compat.md)) |
 | not upstream | everything | `mali_kbase` and `8733bu` (packages); the panel, gamepad, CPU-bin, DMC and suspend-config drivers (patches) |
-| boot | `Run /init` 1.83 s, `nextui.elf` 2.40 s | 1.11 s, 2.26 s (2026-10-31) |
+| boot | `Run /init` 1.83 s, `nextui.elf` 2.40 s | 1.10 s, 2.31–2.36 s (2026-10-31) |
 
 The two ran side by side while the mainline one was brought up; once it ran
 NextUI, its emulators, sleep, WiFi, Bluetooth audio and HDMI at stock's power

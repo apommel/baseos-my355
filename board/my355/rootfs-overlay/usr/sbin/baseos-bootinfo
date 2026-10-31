@@ -4,6 +4,7 @@
 #   baseos-bootinfo          which U-Boot booted, and its bootstage timings
 #   baseos-bootinfo log      the console output a debug build saved to the card
 #   baseos-bootinfo timeline this boot's milestones, power-on to first frame
+#   baseos-bootinfo startup  the line rcS logs once per boot
 #
 # Timings come from /proc/device-tree/bootstage, which U-Boot writes at hand-off
 # in arch-counter microseconds — power-on-relative, like the kernel's printk.
@@ -17,11 +18,11 @@ BS=/proc/device-tree/bootstage
 # A big-endian cell as a decimal.
 be32() { printf '%d' "0x$(od -An -tx1 "$1" | tr -d ' \n')"; }
 
-# Seconds from power-on, the clock the figures in docs/boot-time.md use. The
-# printk and uptime clocks both start at kernel entry, so U-Boot's hand-off is
-# added to each. The first frame needs a --diag rootfs
-# (baseos-frameprobe). `panel` is when the DSI link starts streaming: the boot
-# logo's first moment on the glass.
+# Seconds from power-on, the clock the figures in docs/boot-time.md use. printk
+# starts at kernel entry, so U-Boot's hand-off is added to it; uptime ~75 ms
+# later, so bootclock's offset is added to it. The first frame needs a --diag
+# rootfs (baseos-frameprobe).
+
 timeline() {
 	pk() { dmesg | awk -F'[][]' -v re="$1" -v b="$base" '$0 ~ re {printf "%.3f", $2 + b; exit}'; }
 	started() { cut -d')' -f2 "/proc/$1/stat" | awk '{printf "%.2f", $20 / 100}'; }
@@ -33,6 +34,7 @@ timeline() {
 	done
 	base=0
 	[ "$uboot" != - ] && base=$uboot
+	up=$(/usr/sbin/bootclock 2>/dev/null) || up=$base
 	probe=$(pk 'fe2b0000.mmc: Version')
 	card=$(pk 'mmc1: new')
 	for p in /proc/[0-9]*; do
@@ -40,13 +42,12 @@ timeline() {
 		nextui.elf) nui=$(started "${p#/proc/}") ;;
 		esac
 	done
-	at() { if [ -n "$1" ]; then awk -v u="$1" -v o="$base" 'BEGIN {printf "%.2f", u + o}'; else echo -; fi; }
+	at() { if [ -n "$1" ]; then awk -v u="$1" -v o="$up" 'BEGIN {printf "%.2f", u + o}'; else echo -; fi; }
+	mk() { at "$(cat "/run/boot-$1" 2>/dev/null)"; }
 
-	printf 'uboot %s  printk %s  init %s  logo %s  handoff %s  nextui %s  panel %s  frame %s' \
-		"$uboot" "$(pk 'Booting Linux')" "$(pk 'Run /init')" \
-		"$(at "$(cat /run/boot-logo 2>/dev/null)")" \
-		"$(at "$(cat /run/boot-frontend-exec 2>/dev/null)")" "$(at "$nui")" \
-		"$(pk 'dw_mipi_dsi_bridge_enable')" "$(at "$(cat /run/boot-first-frame 2>/dev/null)")"
+	printf 'uboot %s  printk %s  init %s  backlight %s  handoff %s  logo %s  nextui %s  frame %s' \
+		"$uboot" "$(pk 'Booting Linux')" "$(pk 'Run /init')" "$(mk backlight)" \
+		"$(mk frontend-exec)" "$(mk logo)" "$(at "$nui")" "$(mk first-frame)"
 	printf '  (card %s ms' "$(awk -v a="$probe" -v b="$card" \
 		'BEGIN {if (a && b) printf "%.0f", (b - a) * 1000; else printf "-"}')"
 	dmesg | grep -q 'mmcblk1p4): recovery complete' && printf ', journal replayed'
@@ -63,8 +64,17 @@ log)
 timeline)
 	timeline
 	exit 0 ;;
+startup)
+	# The first three as upstream BaseOS logs them, which calls the hand-off "menu".
+	awk -v k="$(/usr/sbin/bootclock 2>/dev/null)" -v h="$(cat /run/boot-frontend-exec 2>/dev/null)" \
+		-v l="$(cat /run/boot-logo 2>/dev/null)" 'BEGIN {
+		if (k == "" || h == "") { print "Startup: no timings"; exit }
+		printf "Startup: %.2f s before Linux, %.2f s Linux to frontend, %.2f s total", k, h, k + h
+		if (l != "") printf "; logo on screen at %.2f s", k + l
+		print "" }'
+	exit 0 ;;
 "") ;;
-*) echo "usage: baseos-bootinfo [log|timeline]" >&2; exit 2 ;;
+*) echo "usage: baseos-bootinfo [log|timeline|startup]" >&2; exit 2 ;;
 esac
 
 [ -r /proc/device-tree/chosen/u-boot,version ] &&

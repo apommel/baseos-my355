@@ -6,8 +6,9 @@ Superseded tables and the measurements that led here are in
 
 Measured on the vendor 5.10 kernel, which BaseOS booted until 1.3.0. The
 mainline kernel's figures, against these, are in
-[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.11 s
-and `nextui.elf` at 2.26 s (2026-10-31, warm). The initcall list below has no counterpart there;
+[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.10 s,
+hands off at 1.38–1.39 s, shows the logo at 1.71–1.72 s and starts `nextui.elf`
+at 2.31–2.36 s (2026-10-31, warm). The initcall list below has no counterpart there;
 the SD and `rcS` findings carry over.
 
 Figures are cold boots on hardware with **USB unplugged at power-on** — a
@@ -60,22 +61,61 @@ in the background; `adbd`, `ntpd` and WiFi all come up after the hand-off.
 
 ## How to measure it
 
-Two clocks, and they disagree. Rockchip's arch counter runs from SoC reset and
-U-Boot does not reset it, so **kernel printk timestamps are power-on-relative**.
-`/proc/uptime` is not: it starts at timekeeping init, 0.16–0.19 s after the first
-printk. Process `starttime` (`/proc/<pid>/stat` field 22, USER_HZ = 100) is on
-the uptime clock, so pin the per-boot offset before reading the two together:
+Every figure is seconds from power-on: Rockchip's arch counter, which runs from
+SoC reset and which U-Boot's bootstage records use. The kernel's clocks start
+later, each at its own point:
 
-* **Direct.** `u=$(cut -d" " -f1 /proc/uptime); echo "probe $u" > /dev/kmsg`,
-  then read the printk timestamp back; the difference is the offset.
-* **By anchor.** A `jbd2/mmcblk1p*` thread's `starttime` against its
-  `EXT4-fs … mounted` printk. Two anchors agree to 2 ms. On mainline the two
-  clocks start together at kernel entry, so the offset is zero.
+* **Mainline.** printk starts at kernel entry, U-Boot's `start_kernel` mark
+  (0.62 s), and `/proc/uptime` ~75 ms after it (0.69–0.70 s). `bootclock`
+  prints that second offset, read off the counter against
+  `CLOCK_MONOTONIC_RAW`. Mainline figures from before 2026-10-31 that came off
+  the uptime clock added U-Boot's hand-off instead, so they read ~75 ms early.
+* **Vendor kernel.** printk was power-on-relative and uptime started 0.16–0.19 s
+  after the first printk. The offset was pinned per boot by writing an uptime
+  reading to `/dev/kmsg` and reading its printk timestamp back, or by a
+  `jbd2/mmcblk1p*` thread's `starttime` against its `EXT4-fs … mounted` printk.
 
 `rcS` drops breadcrumbs in `/run/boot-*` at each stage, and `frontend-session`
-writes `/run/boot-frontend-exec`; both are `mark()` from
+writes `/run/boot-frontend-exec` on its first start; both are `mark()` from
 `/usr/share/baseos/log.sh`, uptime readings taken with shell builtins, so they
-cost no fork.
+cost no fork. Process `starttime` (`/proc/<pid>/stat` field 22, USER_HZ = 100)
+is on the uptime clock too.
+
+Once the logo is up and the frontend has its hand-off, `rcS` logs one line per
+boot to `baseos.log`, on `/data` and the card:
+
+```
+Startup: 0.70 s before Linux, 0.69 s Linux to frontend, 1.39 s total; logo on screen at 1.71 s
+```
+
+The first three are upstream BaseOS's, computed the same way, so they compare
+directly with its H700 figures. It calls the hand-off "menu", although it is
+not. `baseos-bootinfo timeline` has the rest:
+
+```
+uboot 0.620  printk 0.620  init 1.100  backlight 1.22  handoff 1.39  logo 1.71  nextui 2.32  frame -  (card 82 ms)
+```
+
+Compare boots on the same unit, card and cable state, at least three of each,
+cold and warm apart.
+
+### What the screen shows
+
+| marker | what it is | at (warm) |
+|---|---|---|
+| `backlight` | `rcS` lights the backlight; the panel shows nothing yet | 1.21–1.23 s |
+| `logo` | `fbsplash` returns: its pan is a blocking commit, so the first modeset and the panel's power-up are behind it, and the logo is on the glass | 1.71–1.72 s |
+| `nextui` | `nextui.elf` starts | 2.31–2.36 s |
+| `frame` | NextUI's first framebuffer on the panel (`--diag`, `baseos-frameprobe`) | — |
+
+Nothing marks the menu. NextUI's first frame precedes a working menu, so
+`frame` is a lower bound for it, not the moment the user can use it.
+
+Filmed on a cold boot (2026-10-31), from the work LED lighting at power-on:
+backlight at 1.73 s, logo at 2.16 s, NextUI's menu at 3.97 s. The first two
+are 0.45–0.51 s after their markers, so the LED leads the counter by about half
+a second. On the counter, the menu is at ~3.45 s, ~1.1 s after `nextui.elf`
+starts, and the logo takes 0.5 s to reach the panel once the backlight is on.
 
 ## Where the pre-kernel time goes, on the vendor U-Boot
 
