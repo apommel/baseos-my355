@@ -18,8 +18,6 @@ computing and re-checking here.
 Usage:
     mkfit.py uboot VENDOR_FIT UBOOT_BIN OUT --uboot-load 0xa00000
     mkfit.py boot  IMAGE DTB OUT --release R --root /dev/mmcblk1p3
-    mkfit.py addresses
-    mkfit.py verify-uboot META ITB
     mkfit.py info  FIT
 """
 
@@ -27,8 +25,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -46,7 +44,7 @@ BOOT_HDR_VERSION = 1
 # Where the vendor FIT puts its first payload; every later one is 512-aligned.
 FIT_DATA_START = 0x1000
 
-# The DRAM map, shared with the boot script build-uboot.sh generates. One source
+# The DRAM map, shared with board/my355/uboot.env. One source
 # of truth, because an overlap here is a silent hang on a unit with no console.
 KERNEL_LOAD_ADDR = 0x02000000   # decompressed kernel; 2 MiB-aligned per its header
 FIT_LOAD_ADDR = 0x0A000000      # the boot FIT as read off the card
@@ -212,6 +210,7 @@ def cmd_uboot(a) -> int:
     uboot = open(a.uboot_bin, "rb").read()
     if uboot[:4] == b"\x7fELF":
         sys.exit("mkfit: expected u-boot.bin, got an ELF")
+    check_bootcmd(uboot)
 
     tree = parse_fdt(vendor)
     images = tree["nodes"]["images"]["nodes"]
@@ -407,48 +406,21 @@ def cmd_boot(a) -> int:
 # --------------------------------------------------------------------------
 
 
-def addresses() -> "dict[str, str]":
-    """The values build-uboot.sh bakes into CONFIG_BOOTCOMMAND."""
+def check_bootcmd(uboot: bytes) -> None:
+    """The boot script hardcodes the DRAM map and header: check they match."""
+    start = uboot.find(b"bootcmd=")
+    if start < 0:
+        sys.exit("mkfit: u-boot.bin has no bootcmd")
+    cmd = uboot[start:uboot.index(b"\0", start)].decode()
+    words = set(re.split(r"[\s;*]+", cmd))
     magic = struct.unpack("<II", BOOT_HDR_MAGIC)
-    return {
-        "MY355_FIT_ADDR": f"{FIT_LOAD_ADDR:x}",
-        "MY355_HDR_ADDR": f"{HDR_LOAD_ADDR:x}",
-        "MY355_HDR_MAGIC0": f"{magic[0]:x}",
-        "MY355_HDR_MAGIC1": f"{magic[1]:x}",
-        "MY355_HDR_COUNT_ADDR": f"{HDR_LOAD_ADDR + len(BOOT_HDR_MAGIC):x}",
-        "MY355_LOG_ADDR": f"{LOG_LOAD_ADDR:x}",
-        "MY355_LOG_SECTORS": f"{LOG_SECTORS:x}",
-        "MY355_LOG_BYTES": f"{LOG_SECTORS * SECTOR:x}",
-    }
-
-
-def cmd_addresses(_a) -> int:
-    for key, value in addresses().items():
-        print(f"{key}={value}")
-    return 0
-
-
-def cmd_verify_uboot(a) -> int:
-    """Check a built `uboot` FIT still matches this tool's DRAM map and header.
-
-    The boot script bakes those in at build time; if they have moved since,
-    U-Boot reads the wrong place, and on this unit the only symptom is a card
-    that does not boot.
-    """
-    meta = json.load(open(a.meta))
-    got = hashlib.sha256(open(a.itb, "rb").read()).hexdigest()
-    problems = []
-    if got != meta.get("sha256"):
-        problems.append(f"{a.itb} is {got[:16]}…, built as {meta.get('sha256', '?')[:16]}…")
-    if meta.get("addresses") != addresses():
-        problems.append("built against a different DRAM map or header")
-    for line in problems:
-        print(f"  stale U-Boot build: {line}", file=sys.stderr)
-    if problems:
-        print("  rebuild it: ./build-uboot.sh", file=sys.stderr)
-        return 1
-    print(f"  {meta.get('banner')}{' (debug)' if meta.get('debug') else ''}")
-    return 0
+    want = [FIT_LOAD_ADDR, HDR_LOAD_ADDR, HDR_LOAD_ADDR + 4, HDR_LOAD_ADDR + 8,
+            *magic, LOG_SECTORS]
+    if "log" in words:
+        want += [LOG_LOAD_ADDR, LOG_SECTORS * SECTOR]
+    missing = [f"{v:x}" for v in want if f"{v:x}" not in words]
+    if missing:
+        sys.exit(f"mkfit: the bootcmd lacks {' '.join(missing)}")
 
 
 def cmd_info(a) -> int:
@@ -479,7 +451,7 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("uboot", help="FIT for the card's `uboot` partition")
-    p.add_argument("vendor_fit", help="stock U-Boot FIT (prepared/uboot.img)")
+    p.add_argument("vendor_fit", help="stock U-Boot FIT (mtd1)")
     p.add_argument("uboot_bin", help="our u-boot.bin")
     p.add_argument("out")
     p.add_argument("--uboot-load", type=lambda s: int(s, 0), required=True,
@@ -487,22 +459,14 @@ def main() -> int:
     p.set_defaults(func=cmd_uboot)
 
     p = sub.add_parser("boot", help="FIT for the card's `boot` partition")
-    p.add_argument("kernel", help="arm64 Image (work/my355/kernel/Image)")
-    p.add_argument("dtb", help="work/my355/kernel/rk3566-miyoo-flip.dtb")
+    p.add_argument("kernel", help="arm64 Image")
+    p.add_argument("dtb", help="rk3566-miyoo-flip.dtb")
     p.add_argument("out")
     p.add_argument("--release", required=True, help="the kernel release, for the FIT")
     p.add_argument("--root", required=True, help="the root= the device tree must name")
     p.add_argument("--slot-sectors", type=int, default=0,
                    help="refuse a FIT that does not leave the log sectors free")
     p.set_defaults(func=cmd_boot)
-
-    p = sub.add_parser("addresses", help="the DRAM map and header, as shell variables")
-    p.set_defaults(func=cmd_addresses)
-
-    p = sub.add_parser("verify-uboot", help="check a built FIT against this tool")
-    p.add_argument("meta", help="work/my355/uboot-mainline.json")
-    p.add_argument("itb", help="work/my355/uboot-mainline.itb")
-    p.set_defaults(func=cmd_verify_uboot)
 
     p = sub.add_parser("info", help="describe a FIT")
     p.add_argument("fit")

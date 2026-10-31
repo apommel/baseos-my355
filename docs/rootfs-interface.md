@@ -1,8 +1,8 @@
 # What frontends need from the rootfs
 
 The interface a rootfs built from source has to keep, so that stock-built
-frontends run unmodified, and how each piece of the harvest
-(`manifest/harvest.list`) relates to it. Everything else in the harvest can be
+frontends run unmodified, and how each piece of the stock harvest relates
+to it. Everything else in the harvest can be
 replaced by a current build.
 
 ## How it was measured
@@ -59,7 +59,7 @@ check.
 | `libasound_module_{pcm,ctl}_bluealsa.so` | — | alsa-lib, from the `.asoundrc` `audiomon` writes | alsa-lib's plugin ABI; talks to `bluealsa` over D-Bus | bluez-alsa 4.0.0 |
 | `libdbus-1.so.3` | `audiomon.elf` | SDL2 | 19 symbols, `LIBDBUS_1_3` | dbus 1.12.20 |
 | `libudev.so.1` | `audiomon.elf`, Dolphin | SDL2 | 28 symbols, `LIBUDEV_183` | harvested, 137 KB |
-| `libmali.so.1`, `libmali_hook.so.1`, `libEGL`, `libGLESv2`, `libgbm` | 16, 15, 4 | SDL2, GLideN64 | stock's names | built by `build-gpu.sh` |
+| `libmali.so.1`, `libmali_hook.so.1`, `libEGL`, `libGLESv2`, `libgbm` | 16, 15, 4 | SDL2, GLideN64 | stock's names | `libmali`, or `mesa-panfrost`'s stand-ins |
 | `libvulkan.so.1` | — | SDL2 | the loader | already Debian |
 
 Behind SDL2's two add-ons, and nowhere else on the card: `libfreetype.so.6`,
@@ -88,7 +88,7 @@ them.
 | `bluetoothctl`, `hciconfig`, `hcitool`, `bluetoothd` | `nextui.elf`, `minarch.elf`, `bt_init.sh` | BlueZ 5.62 |
 | `bluealsa` | `audiomon.elf`, `minarch.elf`, `bt_init.sh` | bluez-alsa 4.0.0 |
 | `bluealsa-aplay`, `bash`, `mkfs.ext4` | spruceOS ([rootfs](rootfs.md)) | |
-| `miyoo_inputd` | `MinUI.pak/launch.sh` | already an `overlay/` shim |
+| `miyoo_inputd` | `MinUI.pak/launch.sh` | already a `rootfs-overlay/` shim |
 
 Also named, all BaseOS's own already: `/etc/init.d/S36load_wifi_modules`,
 `S40bluetooth`, `S41dhcpcd`, `S49ntp`, `dev`, and `/usr/sbin/poweroff`.
@@ -115,7 +115,7 @@ frontend touches them, so any current version will do.
 | `/usr/share/alsa` | alsa-lib |
 | `/etc/dbus-1`, `/usr/share/dbus-1`, `/etc/bluetooth` | dbus-daemon, BlueZ |
 
-Also named, all from `overlay/` or the build: `/etc/passwd`, `group`,
+Also named, all from `rootfs-overlay/` or the build: `/etc/passwd`, `group`,
 `shells`, `hosts`, `resolv.conf`, `localtime`, `nsswitch.conf`, `fstab`,
 `machine-id`, `os-release`, `/etc/baseos-release` and `/usr/miyoo/version`.
 
@@ -123,17 +123,17 @@ Also named, all from `overlay/` or the build: `/etc/passwd`, `group`,
 
 `rtl8733bu_fw` and `rtl8733bu_config`, the Bluetooth firmware of the WiFi/BT
 chip. Mainline `btusb` loads them as `rtl_bt/rtl8723fu_*`, links in
-`overlay/`; the WiFi firmware is compiled into the `8733bu` driver. With BL31
+`rootfs-overlay/`; the WiFi firmware is compiled into the `8733bu` driver. With BL31
 and OP-TEE in `uboot.img`, these two files are all the stock firmware a rootfs
 built from source still needs.
 
-`rtk_btusb.ko` is in the harvest but no longer used: `build-rootfs.sh` puts the
+`rtk_btusb.ko` is in the harvest but no longer used: the build puts the
 mainline `btusb` stand-in at that path.
 
 ## How the rootfs provides it
 
-Buildroot builds everything above but the firmware (`build-rootfs.sh`,
-configuration and BaseOS's own packages in `buildroot/`). One toolchain and
+Buildroot builds everything above but the firmware (`configs/` and BaseOS's
+own packages in `package/`). One toolchain and
 one glibc for all of it, current releases, and each package configured for
 this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.1:
 
@@ -149,8 +149,8 @@ this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.1:
 | BlueZ, bluez-alsa | 5.62, 4.0.0 | 5.86, 4.3.1 |
 | wpa_supplicant | 2.9 | 2.12 |
 | curl, OpenSSL | 7.79.1, 1.1.1l | 8.22.0, 3.6.5 |
-| libmali | g13p0, then g29p1 from `build-gpu.sh` | g29p1, a Buildroot package |
-| adbd | Android 4.2 `core/adbd` | the same, `android-tools` |
+| libmali | g13p0 | g29p1, a Buildroot package |
+| adbd | Android 4.2 `core/adbd`, as a Nexus 4 | the same, `android-tools`, as the Miyoo Flip |
 | dropbear | harvested | 2026.94 |
 | CA certificates | harvested | Mozilla's, 2026-08-16 |
 | tzdata | harvested | 2026e |
@@ -166,9 +166,9 @@ Three choices behind it:
 - **libudev-zero**, not eudev: stock ran no udev daemon either, and
   libudev-zero reads kernel events directly. A patch applies its symbol map,
   which its Makefile leaves out, so imports at `LIBUDEV_183` resolve.
-- **libmali in Buildroot**, so SDL3's KMS/DRM backend builds against the GL
-  provider it runs on. Mesa stays in `build-gpu.sh` for now, building on
-  Debian trixie, whose glibc and libstdc++ are older than Buildroot's.
+- **libmali as the GL provider**, so SDL3's KMS/DRM backend builds against
+  it. Mesa (`mesa-panfrost`) installs beside it in `/usr/lib/mesa`, with
+  shaders precompiled by `host-mesa3d`, so the target needs no LLVM.
 
 NextUI's `LD_LIBRARY_PATH` puts `.system/my355/lib` first for everything it
 starts, rootfs programs included. That directory has its own OpenSSL 3

@@ -5,11 +5,9 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
 echo "== gptslot =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
+docker run --rm \
   -v "$HERE/src":/src:ro -v "$HERE/tools":/tools:ro \
   alpine:3.20 sh -euc '
   apk add -q build-base linux-headers python3 sgdisk

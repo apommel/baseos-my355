@@ -59,51 +59,39 @@ Rockchip's libmali or Mesa's Panfrost, picked in `baseos.conf`.
 
 ## Building
 
-Should work on macOS or Linux, x86_64 or ARM, using Docker or OrbStack.
-On x86_64 with plain Docker Engine (not Docker Desktop or OrbStack), enable ARM
-emulation once:
+Everything is built by [Buildroot](https://buildroot.org), in Docker or OrbStack,
+on macOS or Linux. On x86_64 with plain Docker Engine, enable ARM emulation once:
 
 ```sh
 docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
 
-The build needs two files from the stock firmware. Download them:
+Then:
 
 ```sh
-./fetch-prepared.sh
-./build-all.sh
+./build.sh
 ```
 
-or extract them from a backup of your own Flip's internal storage (same result):
-
-```sh
-./prepare-stock.sh ~/my-flip-nand-backup
-./build-all.sh
-```
-
-Either way you get `baseos-my355-<version>.img.zip`. Every build checks these files
-against the sizes and SHA-256 hashes in `manifest/prepared/source.json`.
+This writes `work/images/baseos-my355-<version>.img.zip`, the `.bosupd` update
+and `SHA256SUMS`. Two files come from the stock firmware, the vendor U-Boot
+and the Bluetooth firmware; the build downloads them, checked by hash.
 
 ## Layout
 
+The repository is a Buildroot external tree:
+
 ```
-fetch-prepared.sh   download the stock files
-prepare-stock.sh    extract the stock files from a NAND backup
-cache-pack.sh       package the stock files for publishing
-build-all.sh        build everything: the release .img.zip, .bosupd and SHA256SUMS
-build-uboot.sh      build U-Boot
-build-kernel.sh     build Linux, its device tree and modules
-build-gpu.sh        build Mesa
-build-rootfs.sh     build the root filesystem with Buildroot
-build-image.sh      build the SD card image
-build-update.sh     build the update file (.bosupd)
-flash-card.sh       write the image to an SD card (macOS)
-tests/              offline tests
-overlay/            init scripts and the frontend launcher
-buildroot/          the Buildroot configuration and BaseOS's own packages
-manifest/           list of stock files to keep
-tools/              image and boot chain tools; U-Boot in tools/uboot/, Linux in tools/kernel/
+build.sh            run the build in Docker
+configs/            the Buildroot defconfig
+board/my355/        kernel and U-Boot patches and configs, the rootfs overlay,
+                    the image scripts, the preloader installer
+package/            BaseOS's own packages: libmali, Mesa's Panfrost, the kernel
+                    modules, the stock firmware, SDL, src/'s tools
+patches/            fixes and hashes for Buildroot's own packages
 src/                boot splash and small helper programs
+tools/              image and boot chain tools
+tests/              offline tests
+flash-card.sh       write the image to an SD card (macOS)
 docs/               documentation — start at docs/README.md
 ```
 

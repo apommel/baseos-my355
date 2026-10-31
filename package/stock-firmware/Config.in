@@ -1,0 +1,8 @@
+config BR2_PACKAGE_STOCK_FIRMWARE
+	bool "stock-firmware"
+	help
+	  From the stock firmware: the vendor U-Boot FIT (mtd1), whose
+	  BL31, OP-TEE and control tree the card's U-Boot carries, and
+	  the RTL8733BU's Bluetooth firmware, which has no other source.
+	  Set STOCK_FIRMWARE_OVERRIDE_SRCDIR to a directory holding
+	  uboot.img and stock-harvest.tar from your own dump.

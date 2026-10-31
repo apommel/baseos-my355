@@ -114,7 +114,7 @@ constrains the design.
    `miyoo_inputd` and a kernel driver named `MIYOO Player1`. Also record the
    axis ranges of `MIYOO Player1`, since SDL mappings depend on them.
 3. ~~What are stock's input key codes?~~ Read from the stock DTB and copied
-   into `tools/kernel/dts/rk3566-miyoo-flip.dts`: the `gpio-keys-polled` and
+   into `board/my355/linux/dts/rockchip/rk3566-miyoo-flip.dts`: the `gpio-keys-polled` and
    `hall-mh248` nodes, the LEDs and the backlight table.
 4. **Does any pak or tool name `fcc00000.dwc3` literally?**
 5. **What do Dolphin and any standalone paks installed later touch?** Trace
@@ -122,15 +122,14 @@ constrains the design.
 
 ## Status
 
-`./build-kernel.sh` builds Linux 7.2.10: `tools/kernel` holds the device
-tree, the config fragment, and the patches and drivers, each split in two.
-`hardware/` makes the board work on mainline and could go upstream; `stock/`
-is the vendor interface on top, BaseOS-only. The out-of-tree `mali_kbase`
-and `8733bu` carry their own patches. The build adds both as modules. The
-config is arm64 `defconfig` cut to this board: what the board lacks or BaseOS
-never uses is switched off in the fragment, and `localmodconfig` keeps only
-the modules in `modules.list`, since nothing loads a hotplugged device's
-module. 27.2 → 16.5 MB Image, 855 → 20 modules (2026-10-28). It is
+Buildroot builds Linux 7.2.10 from `board/my355/linux`: the device tree and
+the patches, each split in two, our drivers among them. `hardware/` makes the
+board work on mainline and could go upstream; `stock/` is the vendor
+interface on top, BaseOS-only. The out-of-tree `mali_kbase` and `8733bu` are
+kernel-module packages with their own patches. `linux.config` is arm64
+`defconfig` cut to this board, keeping only the modules something loads, since
+nothing loads a hotplugged device's module. 27.2 → 16.5 MB Image, 855 → 20
+modules (2026-10-28). It is
 the only kernel BaseOS builds since the vendor path was removed
 ([decisions](decisions.md)); the comparisons with "main" below are against
 the last vendor-kernel build.
@@ -223,17 +222,17 @@ Different from stock, found on the first boots:
   mainline config at first, so `rcS` had nothing to keep (2026-10-30).
 - **GPU drivers.** `gpu=` in `baseos.conf` picks `mali` (the default) or
   `panfrost`, read by `baseos-gpu` once the frontend card is mounted.
-  `build-gpu.sh` builds both: Rockchip's newest G52 libmali (g29p1, from
-  `libmali-next`) with its wrappers, hook and Vulkan ICD, and Mesa 26.2.5's
-  Panfrost and PanVK in `/usr/lib/mesa`, mounted over libmali's names and
-  `/usr/share/vulkan` for Panfrost. The Vulkan loader is Debian's.
+  Both are packages: Rockchip's newest G52 libmali (g29p1, from
+  `libmali-next`) with its wrappers, hook and Vulkan ICD, and Mesa's
+  Panfrost and PanVK in `/usr/lib/mesa` (`mesa-panfrost`), mounted over libmali's names and
+  `/usr/share/vulkan` for Panfrost. The Vulkan loader is Buildroot's.
   - g29p1's GBM allocates from `/dev/dma_heap/system`; the heaps are built in.
   - NextUI, minarch and nextval link `libmali.so.1` and `libmali_hook.so.1`,
     not `libEGL`, so Mesa's side has a `libmali.so.1` that pulls in its EGL,
     GLES and GBM, and a hook with only `mali_injected`.
   - spruceOS binds its own g2p0 over `libmali.so.1`. It has no EGL 1.5
     `eglGetPlatformDisplay`, which Rockchip's hook required, exiting PyUI
-    before it drew: a patch in `buildroot/package/libmali` makes it optional,
+    before it drew: a patch in `package/libmali` makes it optional,
     falling back to the EXT form, as stock's hook used.
   - NextUI asks for GLES 3.2, and Panfrost has 3.1 on the G52: its shaders
     are 3.0, so `MESA_GLES_VERSION_OVERRIDE=3.2`. The shader cache is on
