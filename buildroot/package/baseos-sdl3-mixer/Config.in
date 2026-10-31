@@ -1,0 +1,8 @@
+config BR2_PACKAGE_BASEOS_SDL3_MIXER
+	bool "baseos-sdl3-mixer"
+	depends on BR2_PACKAGE_BASEOS_SDL3
+	help
+	  SDL3_mixer with its built-in decoders only: WAV, AIFF, VOC,
+	  AU, FLAC, MP3, Ogg Vorbis and MIDI (Timidity).
+
+	  https://github.com/libsdl-org/SDL_mixer

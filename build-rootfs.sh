@@ -9,13 +9,16 @@
 #                 ./build-kernel.sh's modules and ./build-gpu.sh's Mesa
 #   rootfs.json   what it was built from
 #   build-id      the build stamped into it, for build-update.sh
+#   baseos-my355-sdk.tar.gz
+#                 with --sdk: the cross-toolchain and a sysroot of every
+#                 library above, to build frontends against (docs/sdk.md)
 #
 # MY355_DIAG=1 adds overlay-diag/: boot-timing probes, not for release.
 #
 # The first build makes the toolchain, about an hour; later ones rebuild what
 # changed. Output and ccache live in a Docker volume, downloads in work/buildroot/dl.
 #
-# Usage: ./build-rootfs.sh [--clean] [make target ...]
+# Usage: ./build-rootfs.sh [--clean] [--sdk] [make target ...]
 #   e.g. ./build-rootfs.sh baseos-sdl3-dirclean all
 set -eu
 
@@ -38,13 +41,18 @@ BR_TAR="$CACHE/buildroot-$BR_VERSION.tar.xz"
 LIBMALI_SRC="$HERE/work/gpu/libmali-$(printf %.8s "$LIBMALI_COMMIT")"
 VOLUME="baseos-buildroot"
 
-CLEAN=0
-case "${1:-}" in
-  --clean) CLEAN=1; shift ;;
-  -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
-esac
+CLEAN=0 SDK=0
+while :; do
+  case "${1:-}" in
+    --clean) CLEAN=1; shift ;;
+    --sdk) SDK=1; shift ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    *) break ;;
+  esac
+done
 # src/ is a local package, which Buildroot does not watch for changes.
 TARGETS="${*:-baseos-tools-rebuild all}"
+[ "$SDK" -eq 0 ] || TARGETS="$TARGETS sdk"
 
 DIAG="${MY355_DIAG:-0}"
 case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
@@ -93,7 +101,7 @@ echo "   log: $WORK/rootfs-build.log"
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   -v "$VOLUME":/build -v "$CACHE/dl":/dl -v "$BR_TAR":/buildroot.tar.xz:ro \
   -v "$HERE":/baseos:ro -v "$LIBMALI_SRC":/src/libmali:ro -v "$WORK":/work \
-  -e BR_VERSION="$BR_VERSION" -e TARGETS="$TARGETS" -e BASEOS_DIAG="$DIAG" \
+  -e BR_VERSION="$BR_VERSION" -e TARGETS="$TARGETS" -e BASEOS_DIAG="$DIAG" -e SDK="$SDK" \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
   debian:trixie-slim sh -euc '
   export DEBIAN_FRONTEND=noninteractive
@@ -107,11 +115,12 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   [ -d "$B" ] || tar -xJf /buildroot.tar.xz -C /build
   make -C "$B" O=/build/output BR2_EXTERNAL=/baseos/buildroot baseos_my355_defconfig >/dev/null
   # shellcheck disable=SC2086
-  if ! make -C "$B" O=/build/output $TARGETS >/work/rootfs-build.log 2>&1; then
+  if ! make -C "$B" O=/build/output BR2_SDK_PREFIX=baseos-my355-sdk $TARGETS >/work/rootfs-build.log 2>&1; then
     tail -40 /work/rootfs-build.log >&2
     exit 1
   fi
   cp /build/output/images/rootfs.tar /work/rootfs.tar
+  if [ "$SDK" = 1 ]; then cp /build/output/images/baseos-my355-sdk.tar.gz /work/; fi
   make -C "$B" O=/build/output -s printvars VARS="%_VERSION" 2>/dev/null |
     sed -n "s/^\([A-Z0-9_]*\)_VERSION=\(.\+\)$/\1 \2/p" | sort > /work/rootfs-versions.txt
 '
