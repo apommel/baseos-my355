@@ -93,13 +93,15 @@ cache-pack.sh       package the stock files for publishing
 build-all.sh        build everything: the release .img.zip, .bosupd and SHA256SUMS
 build-uboot.sh      build U-Boot
 build-kernel.sh     build Linux, its device tree and modules
-build-gpu.sh        build libmali's wrappers and Mesa
+build-gpu.sh        build Mesa
+build-userland.sh   build the libraries and programs with Buildroot
 build-rootfs.sh     build the root filesystem
 build-image.sh      build the SD card image
 build-update.sh     build the update file (.bosupd)
 flash-card.sh       write the image to an SD card (macOS)
 tests/              offline tests
 overlay/            init scripts and the frontend launcher
+buildroot/          the Buildroot configuration and BaseOS's own packages
 manifest/           list of stock files to keep
 tools/              image and boot chain tools; U-Boot in tools/uboot/, Linux in tools/kernel/
 src/                boot splash and small helper programs

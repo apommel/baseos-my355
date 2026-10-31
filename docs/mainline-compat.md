@@ -232,8 +232,8 @@ Different from stock, found on the first boots:
     GLES and GBM, and a hook with only `mali_injected`.
   - spruceOS binds its own g2p0 over `libmali.so.1`. It has no EGL 1.5
     `eglGetPlatformDisplay`, which Rockchip's hook required, exiting PyUI
-    before it drew: `tools/gpu` makes it optional, falling back to the EXT
-    form, as stock's hook used.
+    before it drew: a patch in `buildroot/package/libmali` makes it optional,
+    falling back to the EXT form, as stock's hook used.
   - NextUI asks for GLES 3.2, and Panfrost has 3.1 on the G52: its shaders
     are 3.0, so `MESA_GLES_VERSION_OVERRIDE=3.2`. The shader cache is on
     `/data`.
@@ -248,6 +248,12 @@ Different from stock, found on the first boots:
   the panel's 640x480, and HPLL had no rate for 640x480@60's 25.175 MHz, so a
   TV plugged in later got no mode and stayed black. A PLL rate fixes it: fbdev
   lights the TV at 640x480, then NextUI sets 1280x720 (2026-10-30).
+- **Choppy audio in `minarch`.** The panel ran at 59.19 Hz, not stock's
+  59.9768: VPLL was 1200 MHz, and `dclk_vop1` divides it by a whole number,
+  so 32 MHz became 1200/38. minarch makes one core frame of audio per vsync,
+  sized for 59.9768 Hz, and its rate control corrects only ±0.5%, so its ring
+  ran dry about every 8 s and played silence. VPLL is 1248 MHz now, 39 x
+  32 MHz (2026-10-30).
 - **HDMI sound.** No `rockchiphdmi` card: dw-hdmi only registers its audio
   codec with `DRM_DW_HDMI_I2S_AUDIO` built in, and it was a module. Built in
   now.

@@ -6,14 +6,17 @@ them) and reports, for each rootfs library they link, who links it, which
 symbols they import from it and which symbol versions those need. Also lists
 library names the ELFs carry as strings without linking them (dlopen
 candidates), and rootfs paths named by the ELFs and scripts (programs run by
-path, config read in place).
+path, config read in place). Imports nothing in a program's library closure
+defines, at the version it needs, are listed per program.
 
 The rootfs is read from tarballs, the first to provide a path winning: give
 the stock harvest to measure the stock interface, rootfs.tar first to check a
-build against it.
+build against it. With --baseline, imports that resolve against the baseline
+(the stock harvest) but not against the rootfs given fail the scan.
 
 Usage:
     abi_scan.py CARD_DIR ROOTFS.tar [ROOTFS.tar ...] [--maps MAPS] [--json OUT]
+                [--baseline STOCK.tar]
 """
 
 from __future__ import annotations
@@ -51,9 +54,10 @@ class Elf:
         by_type = defaultdict(list)
         for s in secs:
             by_type[s[1]].append(s)
-        self.soname, self.needed, self.runpath = None, [], []
+        self.soname, self.needed, self.rpath = None, [], []
         self.imports: list[tuple[str, str | None, str | None]] = []  # sym, version, file
         self.exports: dict[str, str | None] = {}
+        self.defined: set[tuple[str, str | None]] = set()
         dyn = by_type.get(6)                                   # SHT_DYNAMIC
         if not dyn:
             return
@@ -71,8 +75,8 @@ class Elf:
                 self.needed.append(s(val))
             elif tag == 14:
                 self.soname = s(val)
-            elif tag in (15, 29):                              # RPATH, RUNPATH
-                self.runpath += s(val).split(":")
+            elif tag == 15:                                    # DT_RPATH
+                self.rpath += s(val).split(":")
 
         # Version index -> (version name, file it is needed from); defined versions.
         vers: dict[int, tuple[str, str | None]] = {}
@@ -127,6 +131,7 @@ class Elf:
                 self.imports.append((sym, ver[0] if ver else None, ver[1] if ver else None))
             else:
                 self.exports[sym] = ver[0] if ver else None
+                self.defined.add((sym, ver[0] if ver else None))
 
     @staticmethod
     def _sec(data, sec):
@@ -185,12 +190,35 @@ def pak_root(rel: str) -> str:
     return os.path.dirname(rel)
 
 
+def undefined_imports(card, card_lib, libs_elf):
+    """Per program, the imports its library closure does not define."""
+    out: dict[str, set[str]] = defaultdict(set)
+    for rel, e in card.items():
+        defined, names, seen, todo = set(), set(), set(), list(e.needed)
+        while todo:
+            n = todo.pop()
+            if n in seen:
+                continue
+            seen.add(n)
+            le = card_lib(rel, n) or libs_elf.get(n)
+            if le is None:
+                continue
+            defined |= le.defined
+            names |= le.exports.keys()
+            todo += le.needed
+        for sym, ver, _f in e.imports:
+            if (sym, ver) not in defined if ver else sym not in names:
+                out[rel].add(f"{sym}@{ver}" if ver else sym)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("card")
     ap.add_argument("rootfs", nargs="+")
     ap.add_argument("--maps", help="/proc/*/maps of the running stack, one file")
     ap.add_argument("--json")
+    ap.add_argument("--baseline", help="rootfs tarball the card is known to work on")
     a = ap.parse_args()
 
     libs, origin, rpaths, progs = read_rootfs(a.rootfs)
@@ -202,7 +230,7 @@ def main() -> int:
 
     card: dict[str, Elf] = {}
     scripts: dict[str, bytes] = {}
-    card_names: dict[str, set[str]] = defaultdict(set)         # basename -> dirs
+    card_libs: dict[str, list] = defaultdict(list)             # basename -> (dir, Elf)
     for dp, _d, files in os.walk(a.card):
         for f in files:
             full = os.path.join(dp, f)
@@ -216,25 +244,26 @@ def main() -> int:
             e = load_elf(data)
             if e is None or e.machine != 183:                  # EM_AARCH64
                 continue
-            card_names[f].add(os.path.dirname(rel))
-            if e.soname:
-                card_names[e.soname].add(os.path.dirname(rel))
+            for n in {f, e.soname} - {None}:
+                card_libs[n].append((os.path.dirname(rel), e))
             if platform_ok(rel):
                 card[rel] = e
                 e.strings = data
 
-    def bundled(rel: str, name: str) -> bool:
-        """On the card where this program finds it: its pak or NextUI's lib dir."""
+    def card_lib(rel: str, name: str) -> Elf | None:
+        """The card's copy this program finds: in its pak or NextUI's lib dir."""
         root = pak_root(rel)
-        return any(d == ".system/my355/lib" or d == root or d.startswith(root + "/")
-                   for d in card_names.get(name, ()))
+        return next((e for d, e in card_libs.get(name, ())
+                     if d == ".system/my355/lib" or d == root or d.startswith(root + "/")), None)
+
+    def bundled(rel: str, name: str) -> bool:
+        return card_lib(rel, name) is not None
 
     # soname -> consumers, symbols imported, versions needed.
     users: dict[str, set[str]] = defaultdict(set)
     syms: dict[str, set[str]] = defaultdict(set)
     vneed: dict[str, set[str]] = defaultdict(set)
     missing: dict[str, set[str]] = defaultdict(set)
-    unresolved: dict[str, set[str]] = defaultdict(set)
     dlopen: dict[str, set[str]] = defaultdict(set)
     paths_used: dict[str, set[str]] = defaultdict(set)
     run: dict[str, set[str]] = defaultdict(set)
@@ -267,9 +296,6 @@ def main() -> int:
                 if re_ is not None and sym in re_.exports:
                     syms[n].add(sym)
                     break
-            else:
-                if not any(bundled(rel, n) for n in e.needed):
-                    unresolved[rel].add(sym)
         for m in set(SO_RE.findall(e.strings)):
             n = m.decode()
             if n not in e.needed and n in libs and not bundled(rel, n):
@@ -281,6 +307,31 @@ def main() -> int:
     for rel, data in scripts.items():
         lines = [l.split(b"#", 1)[0] for l in data.splitlines()]
         scan_text(rel, data, lines)
+
+    unresolved = undefined_imports(card, card_lib, rootfs_elf)
+    regressed: dict[str, list[str]] = {}
+    if a.baseline:
+        base_libs, _o, _p, _g = read_rootfs([a.baseline])
+        base = undefined_imports(card, card_lib,
+                                 {n: load_elf(d) for n, d in base_libs.items()})
+        for rel, v in unresolved.items():
+            new = sorted(v - base.get(rel, set()))
+            if new:
+                regressed[rel] = new
+
+    # NextUI's lib dir leads LD_LIBRARY_PATH for everything it starts, rootfs
+    # programs too: an older copy there breaks them unless DT_RPATH wins.
+    shadowed: dict[str, list[str]] = {}
+    for n, entries in card_libs.items():
+        own = next((e for d, e in entries if d == ".system/my355/lib"), None)
+        if own is None or rootfs_elf.get(n) is None:
+            continue
+        lacks = {f"{sym}@{ver}" for le in rootfs_elf.values()
+                 if le is not None and "/usr/lib" not in le.rpath
+                 for sym, ver, file_ in le.imports
+                 if file_ == n and ver and (sym, ver) not in own.defined}
+        if lacks:
+            shadowed[n] = sorted(lacks)
 
     mapped: set[str] = set()
     if a.maps:
@@ -312,6 +363,8 @@ def main() -> int:
         "programs": {p: {"path": progs[p], "users": sorted(v)} for p, v in sorted(run.items())},
         "missing": {n: sorted(v) for n, v in sorted(missing.items())},
         "unresolved": {r: sorted(v) for r, v in sorted(unresolved.items())},
+        "regressed": regressed,
+        "shadowed": shadowed,
     }
     if a.json:
         with open(a.json, "w") as fh:
@@ -340,10 +393,20 @@ def main() -> int:
         for n, v in out["missing"].items():
             print(f"{n}  <- {', '.join(v)}")
     if out["unresolved"]:
-        print("\n## Unversioned imports no linked library defines\n")
+        print("\n## Imports no library in the closure defines\n")
+        print("(plugins import from the program that loads them)\n")
         for r, v in out["unresolved"].items():
             print(f"{r}: {len(v)} ({', '.join(sorted(v)[:6])}{' ...' if len(v) > 6 else ''})")
-    return 0
+    if a.baseline:
+        print(f"\n## Resolved on {os.path.basename(a.baseline)}, not here\n")
+        for r, v in regressed.items():
+            print(f"{r}: {', '.join(v)}")
+        print("none" if not regressed else "")
+    print("\n## Card libraries shadowing the rootfs's, lacking what it needs\n")
+    for n, v in shadowed.items():
+        print(f"{n}: {len(v)} ({', '.join(v[:6])}{' ...' if len(v) > 6 else ''})")
+    print("none" if not shadowed else "")
+    return 1 if regressed or shadowed else 0
 
 
 if __name__ == "__main__":
