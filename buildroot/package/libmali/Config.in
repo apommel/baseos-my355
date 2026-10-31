@@ -1,0 +1,28 @@
+config BR2_PACKAGE_LIBMALI
+	bool "libmali"
+	depends on BR2_aarch64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on BR2_INSTALL_LIBSTDCPP
+	select BR2_PACKAGE_HAS_LIBEGL
+	select BR2_PACKAGE_HAS_LIBGLES
+	select BR2_PACKAGE_HAS_LIBGBM
+	select BR2_PACKAGE_LIBGBM_HAS_FEATURE_DMA_BUF
+	select BR2_PACKAGE_LIBDRM
+	help
+	  Rockchip's G52 libmali (g29p1, libmali-next) with its EGL,
+	  GLES, GBM and Vulkan wrappers and hook. The sources are a
+	  sparse checkout build-userland.sh fetches: the branch carries
+	  every Rockchip GPU's blobs.
+
+if BR2_PACKAGE_LIBMALI
+
+config BR2_PACKAGE_PROVIDES_LIBEGL
+	default "libmali"
+
+config BR2_PACKAGE_PROVIDES_LIBGLES
+	default "libmali"
+
+config BR2_PACKAGE_PROVIDES_LIBGBM
+	default "libmali"
+
+endif

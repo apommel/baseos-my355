@@ -1,0 +1,15 @@
+config BR2_PACKAGE_BASEOS_SDL3
+	bool "baseos-sdl3"
+	depends on BR2_PACKAGE_HAS_LIBEGL
+	depends on BR2_PACKAGE_HAS_LIBGLES
+	depends on BR2_PACKAGE_HAS_LIBGBM
+	depends on BR2_PACKAGE_HAS_LIBUDEV
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_DBUS
+	select BR2_PACKAGE_LIBDRM
+	help
+	  SDL3 for KMS/DRM with OpenGL ES, Vulkan, ALSA, udev, D-Bus
+	  and HIDAPI: what stock's SDL2 had, which Buildroot's sdl3
+	  package turns off.
+
+	  https://www.libsdl.org/
