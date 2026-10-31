@@ -1,189 +1,130 @@
 #!/bin/sh
-# Build the my355 (Miyoo Flip) rootfs tarball.
+# Build the my355 (Miyoo Flip) rootfs with Buildroot (buildroot/, the
+# BR2_EXTERNAL tree; docs/rootfs.md, and docs/rootfs-interface.md for what
+# frontends need from it).
 #
-# Four sources, assembled in this order so each can override the last:
-#   1. ./build-userland.sh's Buildroot target — merged /usr, glibc, SDL3 under
-#      sdl2-compat, libmali, BlueZ, wpa_supplicant, curl, adbd, ...
-#      (docs/rootfs-interface.md)
-#   2. static BusyBox (Alpine busybox-static) — /bin/busybox plus applet links,
-#      where Buildroot left a name free
-#   3. ./build-kernel.sh's modules, ./build-gpu.sh's Mesa, and the two files
-#      still taken from stock: the Bluetooth firmware
-#   4. overlay/ — init, rcS, the frontend session, and the stand-ins for the
-#      stock files mainline drivers replace; with MY355_DIAG=1 overlay-diag/ on
-#      top: boot-timing probes, not for release
+# Produces, in work/my355:
+#   rootfs.tar    glibc, SDL3 under sdl2-compat, libmali, BlueZ, BusyBox,
+#                 BaseOS's own tools (src/) and overlay/, with
+#                 ./build-kernel.sh's modules and ./build-gpu.sh's Mesa
+#   rootfs.json   what it was built from
+#   build-id      the build stamped into it, for build-update.sh
 #
-# Every library a program in the result links must be in it, or the build fails.
+# MY355_DIAG=1 adds overlay-diag/: boot-timing probes, not for release.
 #
-# fbsplash is built from src/fbsplash.c: this device has no console, so a status
-# message on the panel is the only way to say "insert a card" or "installing
-# frontend". It reads panel geometry from the framebuffer and rotation from
-# /etc/baseos-release. src/gptgrow.c is built the same way.
+# The first build makes the toolchain, about an hour; later ones rebuild what
+# changed. Output and ccache live in a Docker volume, downloads in work/buildroot/dl.
+#
+# Usage: ./build-rootfs.sh [--clean] [make target ...]
+#   e.g. ./build-rootfs.sh baseos-sdl3-dirclean all
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools/common.sh
 . "$HERE/tools/common.sh"
+
+BR_VERSION="2026.08.1"
+BR_SHA256="34fb7bea8a213ffde39cc02e61703391560f26e0850f03138c722d0b09880f2b"
+BR_URL="https://buildroot.org/downloads/buildroot-$BR_VERSION.tar.xz"
+# Rockchip's libmali-next, the branch carrying g29p1 for Bifrost.
+LIBMALI_COMMIT="bf621d15f009509557d6b28f81427651695cac20"
+LIBMALI_BLOB="lib/aarch64-linux-gnu/libmali-bifrost-g52-g29p1.so"
+LIBMALI_BLOB_SHA256="605e3a5caf1be62bb48d97b1168434257355d56db5e3be9b515cfa742c173118"
+LIBMALI_GIT="https://github.com/JeffyCN/mirrors.git"
+
+CACHE="$HERE/work/buildroot"
 WORK="$HERE/work/my355"
-PREPARED="$WORK/prepared"
-mkdir -p "$WORK"
+BR_TAR="$CACHE/buildroot-$BR_VERSION.tar.xz"
+LIBMALI_SRC="$HERE/work/gpu/libmali-$(printf %.8s "$LIBMALI_COMMIT")"
+VOLUME="baseos-buildroot"
 
-BASEOS_VERSION="$(baseos_version)"
-BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
-# Two builds of the same uncommitted tree would otherwise share an id, and a card
-# skips a same-version payload whose id matches its own. build-update.sh reads it.
-case "$BASEOS_BUILD" in *-dirty) BASEOS_BUILD="$BASEOS_BUILD-$(date -u +%Y%m%d%H%M%S)" ;; esac
-printf '%s\n' "$BASEOS_BUILD" > "$WORK/build-id"
-
-baseos_require_prepared "$PREPARED"
-baseos_require_aarch64
+CLEAN=0
+case "${1:-}" in
+  --clean) CLEAN=1; shift ;;
+  -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+esac
+# src/ is a local package, which Buildroot does not watch for changes.
+TARGETS="${*:-baseos-tools-rebuild all}"
 
 DIAG="${MY355_DIAG:-0}"
 case "$DIAG" in 0|1) ;; *) echo "MY355_DIAG must be 0 or 1" >&2; exit 1 ;; esac
 [ "$DIAG" = 1 ] && echo "== MY355_DIAG=1: adding overlay-diag/ (not for release) =="
 
-[ -f "$WORK/userland.tar" ] || {
-  echo "missing $WORK/userland.tar (run ./build-userland.sh)" >&2; exit 1; }
-[ -f "$WORK/kernel/modules.tar" ] || {
-  echo "missing $WORK/kernel/modules.tar (run ./build-kernel.sh)" >&2; exit 1; }
-[ -f "$WORK/gpu/mesa.tar" ] || {
-  echo "missing $WORK/gpu/mesa.tar (run ./build-gpu.sh)" >&2; exit 1; }
+baseos_require_prepared "$WORK/prepared"
+baseos_require_aarch64
+for f in kernel/modules.tar gpu/mesa.tar; do
+  [ -f "$WORK/$f" ] || { echo "missing $WORK/$f (run ./build-${f%%/*}.sh)" >&2; exit 1; }
+done
+mkdir -p "$CACHE/dl"
 
+BASEOS_VERSION="$(baseos_version)"
+BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
+# Two builds of the same uncommitted tree would otherwise share an id, and a card
+# skips a same-version payload whose id matches its own.
+case "$BASEOS_BUILD" in *-dirty) BASEOS_BUILD="$BASEOS_BUILD-$(date -u +%Y%m%d%H%M%S)" ;; esac
+printf '%s\n' "$BASEOS_BUILD" > "$WORK/build-id"
+
+if [ ! -f "$BR_TAR" ] || [ "$(baseos_sha256 "$BR_TAR")" != "$BR_SHA256" ]; then
+  echo "== fetching $(basename "$BR_TAR") =="
+  curl -fSL --retry 3 -o "$BR_TAR.part" "$BR_URL"
+  got="$(baseos_sha256 "$BR_TAR.part")"
+  [ "$got" = "$BR_SHA256" ] || { echo "buildroot sha256 is $got, expected $BR_SHA256" >&2
+    rm -f "$BR_TAR.part"; exit 1; }
+  mv "$BR_TAR.part" "$BR_TAR"
+fi
+
+# The branch holds every Rockchip GPU's blobs; check out only the G52's.
+if [ ! -f "$LIBMALI_SRC/$LIBMALI_BLOB" ] ||
+   [ "$(baseos_sha256 "$LIBMALI_SRC/$LIBMALI_BLOB")" != "$LIBMALI_BLOB_SHA256" ]; then
+  echo "== fetching libmali $(printf %.8s "$LIBMALI_COMMIT") =="
+  rm -rf "$LIBMALI_SRC"
+  git init -q "$LIBMALI_SRC"
+  git -C "$LIBMALI_SRC" sparse-checkout set --no-cone '/*' '!/lib/' "/$LIBMALI_BLOB" '!/data/vulkan/lib/arm/'
+  git -C "$LIBMALI_SRC" fetch -q --depth 1 --filter=blob:none "$LIBMALI_GIT" "$LIBMALI_COMMIT"
+  git -C "$LIBMALI_SRC" checkout -q FETCH_HEAD
+  got="$(baseos_sha256 "$LIBMALI_SRC/$LIBMALI_BLOB")"
+  [ "$got" = "$LIBMALI_BLOB_SHA256" ] || { echo "libmali blob sha256 is $got" >&2; exit 1; }
+fi
+
+[ "$CLEAN" -eq 1 ] && docker volume rm -f "$VOLUME" >/dev/null
+
+echo "== building the rootfs: Buildroot $BR_VERSION, make $TARGETS =="
+echo "   log: $WORK/rootfs-build.log"
 docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
-  -v "$WORK":/work -v "$HERE/overlay":/overlay:ro \
-  -v "$HERE/overlay-diag":/overlay-diag:ro -e DIAG="$DIAG" \
-  -v "$HERE/src":/src:ro -v "$HERE/assets":/assets:ro \
+  -v "$VOLUME":/build -v "$CACHE/dl":/dl -v "$BR_TAR":/buildroot.tar.xz:ro \
+  -v "$HERE":/baseos:ro -v "$LIBMALI_SRC":/src/libmali:ro -v "$WORK":/work \
+  -e BR_VERSION="$BR_VERSION" -e TARGETS="$TARGETS" -e BASEOS_DIAG="$DIAG" \
   -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
-  alpine:3.20 sh -euc '
-  apk add -q busybox-static
-  R=/tmp/rootfs; rm -rf "$R"; mkdir -p "$R"
-
-  # 1. Buildroot: merged /usr (bin, sbin, lib and lib64 link into it), as stock.
-  tar -xf /work/userland.tar -C "$R"
-  # Replaced below by links or generated files; /root becomes a link.
-  rm -rf "$R"/root "$R"/etc/os-release "$R"/etc/localtime "$R"/etc/timezone \
-         "$R"/etc/resolv.conf "$R"/etc/hostname "$R"/etc/hosts "$R"/etc/shadow
-  # Frontends export LD_LIBRARY_PATH with their own libcrypto, libzstd, ...
-  # first; DT_RPATH, unlike DT_RUNPATH, is searched before it.
-  apk add -q pax-utils patchelf
-  scanelf -RBF "%n;%F" "$R"/usr 2>/dev/null | while IFS=";" read -r needed f; do
-    if [ -n "$needed" ]; then patchelf --force-rpath --set-rpath /usr/lib "$f"; fi
-  done
-
-  mkdir -p "$R"/proc "$R"/sys "$R"/dev "$R"/tmp "$R"/run "$R"/var \
-           "$R"/data "$R"/mnt/SDCARD "$R"/etc \
-           "$R"/userdata  # the frontend bind-mounts its card copy here, as on stock
-
-  # Stock uses the lowercase path, NextUI the uppercase one.
-  ln -sfn /mnt/SDCARD "$R"/mnt/sdcard
-
-  # 2. BusyBox and its applet links (mount, sh, init, getty, ... — rcS calls
-  #    them by path, so the links must exist). --install leaves a name
-  #    Buildroot already filled, so its programs win.
-  cp /bin/busybox.static "$R"/usr/bin/busybox
-  chroot "$R" /usr/bin/busybox --install -s
-  # -L, not -e: the links --install writes are absolute, so they resolve only
-  # on the device.
-  [ -L "$R"/sbin/init ] || { echo "busybox --install left no /sbin/init" >&2; exit 1; }
-
-  # 3. The Bluetooth firmware, the only stock files left: no source exists.
-  tar -xf /work/prepared/stock-harvest.tar -C "$R" \
-    usr/lib/firmware/rtl8733bu_fw usr/lib/firmware/rtl8733bu_config
-  # lib/modules/<release>, depmod already run.
-  tar -xf /work/kernel/modules.tar -C "$R"/usr
-  # bt_init.sh insmods this path: the stand-in that loads mainline btusb.
-  cp "$R"/usr/lib/modules/*/kernel/drivers/bluetooth/rtk_btusb.ko "$R"/usr/lib/modules/
-  # The second GPU stack baseos-gpu picks from, beside libmali: Mesa in usr/lib/mesa.
-  tar -xf /work/gpu/mesa.tar -C "$R"
-  # modetest moves aside for the wrapper in overlay/ that maps its object ids.
-  mv "$R"/usr/bin/modetest "$R"/usr/libexec/modetest
-
-  # fbsplash: the panel is the only output device this hardware has.
-  apk add -q build-base linux-headers pkgconf \
-    freetype-dev freetype-static zlib-static libpng-static bzip2-static brotli-static
-  gcc -static -O2 $(pkg-config --cflags freetype2) -o "$R"/usr/bin/fbsplash \
-    /src/fbsplash.c $(pkg-config --static --libs freetype2)
-  strip "$R"/usr/bin/fbsplash
-  mkdir -p "$R"/usr/share/baseos
-  cp /assets/boot.ttf "$R"/usr/share/baseos/boot.ttf
-  cp /assets/card-readme.txt "$R"/usr/share/baseos/card-readme.txt
-  cp /assets/baseos.conf "$R"/usr/share/baseos/baseos.conf
-
-  # The GPT tools: gptgrow for first-boot expand-to-fill, gptslot for A/B
-  # updates (overlay/usr/sbin/expand-storage, overlay/usr/sbin/baseos-update).
-  # rebootmode: a reboot argument (charge) for rcK, which busybox cannot pass.
-  # pwrkeyd: a clean poweroff on a 2 s hold of the power key, without a frontend.
-  # fatdirty: FAT32 or exFAT, and whether a card needs fsck before it is mounted.
-  # wifibtd: Bluetooth on/off, for when to power the WiFi/BT chip (wifibt-power).
-  for t in gptgrow gptslot rebootmode pwrkeyd fatdirty wifibtd; do
-    gcc -static -O2 -o "$R"/usr/sbin/"$t" /src/"$t".c
-    strip "$R"/usr/sbin/"$t"
-  done
-
-  # 4. The overlay wins over everything. cp -a carries the modes across, and
-  #    every script in overlay/ is committed executable.
-  # overlay/usr/sbin/poweroff replaces an applet link; cp would write through
-  # it into busybox itself.
-  rm -f "$R"/usr/sbin/poweroff
-  cp -a /overlay/. "$R"/
-  if [ "$DIAG" = 1 ]; then cp -a /overlay-diag/. "$R"/; fi
-
-  # cfg80211 reads it at load, or every channel stays at the world limits.
-  apk add -q wireless-regdb
-  cp /lib/firmware/regulatory.db /lib/firmware/regulatory.db.p7s "$R"/usr/lib/firmware/
-
-  # All three from VERSION so they cannot drift. NextUI reads
-  # /usr/miyoo/version for its About screen.
-  {
-    printf "BASEOS_VERSION=%s\n" "$BASEOS_VERSION"
-    printf "BASEOS_BUILD=%s\n" "$BASEOS_BUILD"
-    if [ "$DIAG" = 1 ]; then printf "BASEOS_DIAG=1\n"; fi
-  } >> "$R"/etc/baseos-release
-  {
-    printf "NAME=\"BaseOS\"\nID=baseos\n"
-    printf "VERSION_ID=%s\n" "$BASEOS_VERSION"
-    printf "PRETTY_NAME=\"BaseOS %s (my355)\"\n" "$BASEOS_VERSION"
-    printf "HOME_URL=\"https://github.com/apommel/baseos-my355\"\n"
-  } > "$R"/etc/os-release
-  mkdir -p "$R"/usr/miyoo
-  printf "BaseOS %s\n" "$BASEOS_VERSION" > "$R"/usr/miyoo/version
-
-  # Same target as stock: NextUI copies the chosen zone into /userdata/localtime,
-  # which the frontend bind-mounts onto its card.
-  ln -sf /userdata/localtime "$R"/etc/localtime
-
-  # The root is mounted read-only, so the home of root (shell history, SSH
-  # keys) lives on /data; /etc/init.d/dev creates it.
-  ln -sfn /data/root "$R"/root
-
-  # resolv.conf is written by the udhcpc event script into /run.
-  ln -sf /run/resolv.conf "$R"/etc/resolv.conf
-
-  # rcS restores machine-id from /data into tmpfs; the baked symlink keeps the
-  # root filesystem off the boot path.
-  ln -sf /run/machine-id "$R"/etc/machine-id
-
-  # baseos-config writes these into /run from baseos.conf on the card, starting
-  # from this shadow.
-  mv "$R"/etc/shadow "$R"/usr/share/baseos/shadow
-  chmod 600 "$R"/usr/share/baseos/shadow
-  for f in shadow hostname hosts; do ln -sf /run/"$f" "$R"/etc/"$f"; done
-
-  # Every DT_NEEDED resolves in /usr/lib or the run path of whoever needs it.
-  scanelf -RBqF "%F;%n;%r" "$R"/usr 2>/dev/null | while IFS=";" read -r f needed rpath; do
-    for n in $(echo "$needed" | tr , " "); do
-      found=0
-      for d in /usr/lib $(echo "$rpath" | tr : " "); do
-        case "$d" in "\$ORIGIN"*) d="${f#"$R"}"; d="${d%/*}" ;; esac
-        [ -e "$R$d/$n" ] && { found=1; break; }
-      done
-      [ "$found" = 1 ] || echo "${f#"$R"} needs $n"
-    done
-  done > /tmp/unresolved
-  [ ! -s /tmp/unresolved ] || { echo "unresolved libraries:" >&2; cat /tmp/unresolved >&2; exit 1; }
-
-  tar -cf /work/rootfs.tar -C "$R" .
-  echo "  rootfs: $(tar -tf /work/rootfs.tar | wc -l) entries, $(stat -c %s /work/rootfs.tar) bytes"
-  echo "  busybox applets: $(chroot "$R" /usr/bin/busybox --list | wc -l)"
+  debian:trixie-slim sh -euc '
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get -qq update >/dev/null
+  apt-get -qq install -y --no-install-recommends build-essential file wget cpio unzip \
+    rsync bc git ca-certificates python3 perl patch xz-utils bzip2 gzip libncurses-dev cmake \
+    >/dev/null
+  # Buildroot builds as root in this throwaway container.
+  export FORCE_UNSAFE_CONFIGURE=1
+  B=/build/buildroot-$BR_VERSION
+  [ -d "$B" ] || tar -xJf /buildroot.tar.xz -C /build
+  make -C "$B" O=/build/output BR2_EXTERNAL=/baseos/buildroot baseos_my355_defconfig >/dev/null
+  # shellcheck disable=SC2086
+  if ! make -C "$B" O=/build/output $TARGETS >/work/rootfs-build.log 2>&1; then
+    tail -40 /work/rootfs-build.log >&2
+    exit 1
+  fi
+  cp /build/output/images/rootfs.tar /work/rootfs.tar
+  make -C "$B" O=/build/output -s printvars VARS="%_VERSION" 2>/dev/null |
+    sed -n "s/^\([A-Z0-9_]*\)_VERSION=\(.\+\)$/\1 \2/p" | sort > /work/rootfs-versions.txt
 '
-echo "rootfs: $WORK/rootfs.tar"
+
+BR_VERSION="$BR_VERSION" LIBMALI_COMMIT="$LIBMALI_COMMIT" \
+ROOTFS_SHA="$(baseos_sha256 "$WORK/rootfs.tar")" \
+python3 - "$WORK/rootfs.json" "$WORK/rootfs-versions.txt" <<'EOF'
+import json, os, sys
+e = os.environ
+pkgs = dict(l.split(" ", 1) for l in open(sys.argv[2]).read().splitlines() if " " in l)
+json.dump({"buildroot": e["BR_VERSION"], "libmali": e["LIBMALI_COMMIT"],
+           "sha256": {"rootfs.tar": e["ROOTFS_SHA"]}, "packages": pkgs},
+          open(sys.argv[1], "w"), indent=2)
+EOF
+rm "$WORK/rootfs-versions.txt"
+echo "rootfs: $WORK/rootfs.tar  $(du -h "$WORK/rootfs.tar" | cut -f1)"

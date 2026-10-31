@@ -11,9 +11,8 @@ behaves exactly as it does on stock.
                              uboot.img, stock-harvest.tar, source.json
 ./build-kernel.sh    Linux, its device tree and modules
 ./build-gpu.sh       Mesa
-./build-userland.sh  Buildroot: glibc, SDL, libmali, BlueZ, ... → userland.tar
-./build-rootfs.sh    userland + static BusyBox + modules + Mesa + Bluetooth
-                     firmware + overlay → rootfs.tar
+./build-rootfs.sh    Buildroot: glibc, SDL, libmali, BlueZ, BusyBox, src/,
+                     overlay, + modules + Mesa + Bluetooth firmware → rootfs.tar
 ./build-image.sh     U-Boot + kernel + rootfs → baseos-my355.img
 ```
 
@@ -25,21 +24,21 @@ never re-prepared fails the build instead of shipping without the new path.
 
 ## Sources
 
-Four, applied in order so each can override the last:
+One Buildroot build (`build-rootfs.sh`, configuration in `buildroot/`)
+assembles it:
 
-1. **Buildroot's target** (`build-userland.sh`, configuration in `buildroot/`):
-   a merged `/usr` as the vendor rootfs has, with every library and program a
-   frontend uses ([what frontends need](rootfs-interface.md)).
-2. **Static BusyBox** (Alpine `busybox-static`) plus its applet symlinks — `rcS`
-   calls `/bin/mount` and friends by path. A name Buildroot already filled
-   keeps its program. `build-rootfs.sh` prints the applet count at the end of
-   a build.
-3. **The kernel's modules, Mesa, and the two stock files left**: the Bluetooth
-   firmware, taken from the harvest.
-4. **`overlay/`** — `init`, `inittab`, `rcS`, `rcK`, the frontend session,
-   the USB gadget. Committed executable, so `cp -a` is all the build does.
-
-The build fails if any program in the result links a library it lacks.
+1. **Packages**: a merged `/usr` as the vendor rootfs has, with every library
+   and program a frontend uses ([what frontends need](rootfs-interface.md)),
+   and BaseOS's own tools from `src/` (`baseos-tools`).
+2. **Static BusyBox** and its applet links — `rcS` calls `/bin/mount` and
+   friends by path. Installed first, so a full program wins a name both have.
+3. **`overlay/`** — `init`, `inittab`, `rcS`, `rcK`, the frontend session,
+   the USB gadget — over the packages.
+4. **`board/my355/post-build.sh`**: the kernel's modules, Mesa, and the two
+   stock files left, the Bluetooth firmware; the version files; and the run
+   path below. It fails the build if any program lacks a library it links.
+5. **`board/my355/post-fakeroot.sh`**: the links into `/run` and `/data` a
+   read-only root needs, and `overlay-diag/` with `MY355_DIAG=1`.
 
 `mtd3` is **squashfs**, so preparation uses `unsquashfs`. It is unpacked to a
 container-local scratch directory, never a bind mount: the stock rootfs contains
@@ -497,7 +496,7 @@ WiFi on blocked for 17.8 s and the address came at 37.5 s. `S41` now runs
 `udhcpc -f` in the background itself and retries every second (`-T 1 -A 2`):
 2.5 s and 9.4 s, of which association is 7.5 s.
 And stock's `S41dhcpcd` wraps the daemon in `start-stop-daemon`, which Alpine's
-`busybox-static` does not build, so the script invokes `udhcpc` directly.
+`busybox-static` lacked, so the script invokes `udhcpc` directly.
 
 Without any of this `wpa_supplicant` still associates and the frontend still
 reports "connected" — it reads carrier, not a lease — while `wlan0` holds only a
@@ -515,7 +514,7 @@ parts that script expects to find in the OS:
 |---|---|
 | `rtk_btusb.ko` | the transport. 2.3 MB, and it requests `rtl8733bu_fw` / `rtl8733bu_config` by name — both at `/lib/firmware`, both harvested. The empty `rtlbt/` directory beside them is unused |
 | `bluetoothd`, `bluetoothctl`, `bluealsa`, `hciconfig`, `hcitool` | plus `libbluetooth`, `libsbc` and the glib stack. `hcitool` is not optional: `PLAT_bluetoothConnected()` greps `hcitool con` for an `ACL` line, and its `popen` fallback only fires when `popen` itself fails — a missing binary just reads as "not connected", so the status-bar icon never appears |
-| `S40bluetooth` | ours. Stock's wraps `bluetoothd` in `start-stop-daemon`, absent from Alpine's `busybox-static`. It keeps a `pidof dbus-daemon` guard so it still works if the bus is somehow down, though `rcS` starts it. **BlueZ 5 never forks**: run it in the foreground and the script blocks, `bt_init.sh` blocks behind it and Settings hangs on "Enabling Bluetooth…" — so `setsid … -n &`, which is what `start-stop-daemon -b` was doing |
+| `S40bluetooth` | ours. Stock's wraps `bluetoothd` in `start-stop-daemon`, which Alpine's `busybox-static` lacked. It keeps a `pidof dbus-daemon` guard so it still works if the bus is somehow down, though `rcS` starts it. **BlueZ 5 never forks**: run it in the foreground and the script blocks, `bt_init.sh` blocks behind it and Settings hangs on "Enabling Bluetooth…" — so `setsid … -n &`, which is what `start-stop-daemon -b` was doing |
 | `/etc/bluetooth`, `/etc/dbus-1/system.d/*.conf` | installed by BlueZ and bluez-alsa |
 | the `dbus` user | D-Bus's `system.conf` drops privileges to it, so `passwd`, `group` and `shadow` must all name it `dbus`; an Ubuntu-style `messagebus` makes `dbus-daemon --system` refuse to start |
 | `libasound_module_{pcm,ctl}_bluealsa.so` | the rest of `alsa-lib/` is unreferenced — nothing sets `defaults.pcm.rate_converter`, so `type plug` uses the built-in linear one |
@@ -608,7 +607,7 @@ regardless of the stored toggle.
 
 ## Status messages
 
-This device has no console, so `fbsplash` — built from `src/fbsplash.c`, static,
+This device has no console, so `fbsplash` — built from `src/fbsplash.c` with
 freetype — is the only way to tell the owner anything.
 It reads panel geometry from the framebuffer and rotation from
 `/etc/baseos-release` (`BASEOS_PANEL_ROTATION_CCW=0`; the Flip's 640x480 panel is

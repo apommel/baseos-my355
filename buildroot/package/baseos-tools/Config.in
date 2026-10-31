@@ -1,0 +1,7 @@
+config BR2_PACKAGE_BASEOS_TOOLS
+	bool "baseos-tools"
+	select BR2_PACKAGE_FREETYPE
+	help
+	  BaseOS's own programs, from src/: fbsplash, the GPT tools
+	  for expand-to-fill and A/B updates, rebootmode, pwrkeyd,
+	  fatdirty and wifibtd.

@@ -129,7 +129,7 @@ image ([rootfs](rootfs.md)).
   Bluetooth firmware, but the published bundle still carries `boot.img` and
   every other entry. Pruning them is a `harvest.list` edit plus a new bundle.
 - **Buildroot for the userland.** Every library and program a frontend uses
-  is built from source (`build-userland.sh`), with one toolchain, current
+  is built from source (`build-rootfs.sh`), with one toolchain, current
   releases and this device's options; the harvest supplies only the Bluetooth
   firmware. It replaced stock binaries over Debian's glibc: Debian's builds
   were prebuilt and quick, but configured for desktops (its SDL2 links X11,
