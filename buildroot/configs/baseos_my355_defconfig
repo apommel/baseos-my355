@@ -1,6 +1,5 @@
-# BaseOS userland for the Miyoo Flip (RK3566, Cortex-A55).
-# Libraries and programs only: init, BusyBox and the kernel come from the
-# other build-*.sh, and build-rootfs.sh assembles the root.
+# BaseOS rootfs for the Miyoo Flip (RK3566, Cortex-A55). The kernel and Mesa
+# come from build-kernel.sh and build-gpu.sh, added by board/my355/post-build.sh.
 # The package set is docs/rootfs-interface.md's tiers.
 BR2_aarch64=y
 BR2_cortex_a55=y
@@ -16,14 +15,19 @@ BR2_KERNEL_HEADERS_7_1=y
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
 BR2_GCC_VERSION_15_X=y
 
-# System: no init, shell or skeleton users of Buildroot's own.
+# System: BusyBox, static as rcS runs dozens of applets on the boot path;
+# init, inittab and the scripts are overlay/'s.
 BR2_ROOTFS_MERGED_USR=y
 BR2_INIT_NONE=y
-BR2_SYSTEM_BIN_SH_NONE=y
-# BR2_PACKAGE_BUSYBOX is not set
+BR2_PACKAGE_BUSYBOX=y
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_BASEOS_PATH)/board/my355/busybox.fragment"
+BR2_SYSTEM_BIN_SH_BUSYBOX=y
 # BR2_TARGET_GENERIC_GETTY is not set
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_BASEOS_PATH)/../overlay"
 BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_BASEOS_PATH)/board/my355/post-build.sh"
+BR2_ROOTFS_POST_FAKEROOT_SCRIPT="$(BR2_EXTERNAL_BASEOS_PATH)/board/my355/post-fakeroot.sh"
 BR2_TARGET_ROOTFS_TAR=y
+BR2_PACKAGE_BASEOS_TOOLS=y
 
 # Tier 1: linked into frontend processes.
 BR2_PACKAGE_LIBMALI=y
@@ -77,6 +81,8 @@ BR2_PACKAGE_GESFTPSERVER=y
 BR2_PACKAGE_DOSFSTOOLS=y
 BR2_PACKAGE_DOSFSTOOLS_FSCK_FAT=y
 BR2_PACKAGE_EXFATPROGS=y
+# cfg80211 reads it at load, or every channel stays at the world limits.
+BR2_PACKAGE_WIRELESS_REGDB=y
 
 # Tier 4: data read in place.
 BR2_PACKAGE_CA_CERTIFICATES=y

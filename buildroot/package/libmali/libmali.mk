@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-# build-userland.sh pins the commit and mounts its sparse checkout here.
+# build-rootfs.sh pins the commit and mounts its sparse checkout here.
 LIBMALI_VERSION = g29p1
 LIBMALI_SITE = /src/libmali
 LIBMALI_SITE_METHOD = local

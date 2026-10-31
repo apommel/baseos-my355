@@ -132,7 +132,7 @@ mainline `btusb` stand-in at that path.
 
 ## How the rootfs provides it
 
-Buildroot builds everything above but the firmware (`build-userland.sh`,
+Buildroot builds everything above but the firmware (`build-rootfs.sh`,
 configuration and BaseOS's own packages in `buildroot/`). One toolchain and
 one glibc for all of it, current releases, and each package configured for
 this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.1:
@@ -174,7 +174,7 @@ NextUI's `LD_LIBRARY_PATH` puts `.system/my355/lib` first for everything it
 starts, rootfs programs included. That directory has its own OpenSSL 3
 `libcrypto.so.3`, older than Buildroot's 3.6, which `libssl` needs, so
 `wpa_supplicant` and `wpa_cli` failed to load and WiFi never came up. Stock's
-OpenSSL 1.1 used other names. `build-rootfs.sh` gives every Buildroot ELF a
+OpenSSL 1.1 used other names. `post-build.sh` gives every Buildroot ELF a
 `DT_RPATH` of `/usr/lib`, which glibc searches before `LD_LIBRARY_PATH` (a
 `DT_RUNPATH` comes after it). Mesa's bind mounts over `/usr/lib` still apply.
 

@@ -11,7 +11,7 @@ config BR2_PACKAGE_LIBMALI
 	help
 	  Rockchip's G52 libmali (g29p1, libmali-next) with its EGL,
 	  GLES, GBM and Vulkan wrappers and hook. The sources are a
-	  sparse checkout build-userland.sh fetches: the branch carries
+	  sparse checkout build-rootfs.sh fetches: the branch carries
 	  every Rockchip GPU's blobs.
 
 if BR2_PACKAGE_LIBMALI
