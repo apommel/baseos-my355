@@ -5,7 +5,7 @@ headers and pkg-config files, so a frontend builds against exactly what runs on
 the device instead of a stock toolchain and bundled copies.
 
 ```sh
-./build-rootfs.sh --sdk    # → work/my355/baseos-my355-sdk.tar.gz
+./build.sh sdk    # → work/images/baseos-my355-sdk.tar.gz
 ```
 
 It runs on **aarch64 Linux**, natively or in a `linux/arm64` container (as on
@@ -33,8 +33,7 @@ Everything in the sysroot is on the device, at the same soname: SDL3 and its
 image, ttf and mixer add-ons, SDL2 (sdl2-compat), EGL and GLES (libmali, or Mesa
 with `gpu=panfrost`), Vulkan, ALSA, libudev, D-Bus, curl and OpenSSL, sqlite,
 libzip, libarchive, zstd, lz4, xz, bzip2, zlib, libpng, libjpeg, libwebp,
-freetype, HarfBuzz, libsamplerate, cJSON and libevdev. The versions are in
-`work/my355/rootfs.json`.
+freetype, HarfBuzz, libsamplerate, cJSON and libevdev, at Buildroot 2026.08.1's versions or `package/`'s.
 
 A frontend need not bundle any of these. If it bundles its own copy anyway,
 the copy wins in the frontend's processes through `LD_LIBRARY_PATH`, and

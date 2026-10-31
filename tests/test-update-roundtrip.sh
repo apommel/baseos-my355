@@ -2,25 +2,23 @@
 # The real payload against a copy of the real image: the reserved halves receive
 # exactly the payload bytes, the GPT commits, the new rootfs is mountable and
 # carries the new version, and `data` and `primary` come through untouched.
-# Needs ./build-image.sh and ./build-update.sh to have run.
+# Needs ./build.sh to have run.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
-WORK="$HERE/work/my355"
-VERSION="$(baseos_version)"
+WORK="$HERE/work/images"
+VERSION="$(tr -d " \n" < "$HERE/VERSION")"
 PAYLOAD="$WORK/baseos-my355-$VERSION.bosupd"
 for f in "$WORK/baseos-my355.img" "$PAYLOAD"; do
-  [ -f "$f" ] || { echo "missing $f (run ./build-image.sh && ./build-update.sh)" >&2; exit 1; }
+  [ -f "$f" ] || { echo "missing $f (run ./build.sh)" >&2; exit 1; }
 done
 
 echo "== update round trip =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
+docker run --rm \
   -v "$WORK":/work:ro -v "$HERE/src":/src:ro -v "$HERE/tools":/tools:ro \
-  -v "$HERE/overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
-  -v "$HERE/overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
   --tmpfs /data --tmpfs /mnt/SDCARD \
   -e VERSION="$VERSION" \
   alpine:3.20 sh -euc '

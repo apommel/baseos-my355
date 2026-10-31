@@ -5,12 +5,10 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
 echo "== wifibt-power =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
-  -v "$HERE/overlay":/overlay:ro alpine:3.20 sh -euc '
+docker run --rm \
+  -v "$HERE/board/my355/rootfs-overlay":/overlay:ro alpine:3.20 sh -euc '
   mkdir -p /usr/share/baseos /data /stub
   cp /overlay/usr/share/baseos/log.sh /usr/share/baseos/
   export WIFIBT_SYS=/t/sys WIFIBT_RUN=/t/run WIFIBT_MODULES=/t/modules

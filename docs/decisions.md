@@ -120,26 +120,28 @@ the OS, the root never replays a journal, a stray write fails with `EROFS`
 instead of shadowing the card, and the running slot stays byte-identical to its
 image ([rootfs](rootfs.md)).
 
+### Everything in Buildroot
+
+One Buildroot build makes the toolchain, kernel, U-Boot, Mesa and the userland,
+with this repository as its external tree; `post-image.sh` composes the card.
+It replaced seven scripts that each built in their own container (Debian's
+glibc and LLVM for Mesa, a cached kernel tree with config assertions). What it
+buys: one toolchain and one source of versions and hashes, Buildroot's
+incremental rebuilds, and savedefconfigs in place of fragments. What it costs:
+a host LLVM to precompile Panfrost's shaders, since Buildroot's own `mesa3d`
+would want one on the target too. Every library and program a frontend uses is
+built from source; [what frontends need](rootfs-interface.md) measures that
+interface from a card, and `tools/abi_scan.py --baseline` checks a build
+against stock symbol by symbol. SDL2 is sdl2-compat over SDL3.
+
 ## Open
 
 - **spruceOS as a frontend.** Its card would be mounted and its `updater`
   executed, but whether it finds the userland it expects in the harvest is
   unchecked.
-- **The harvest after Buildroot.** The build takes two files from it, the
-  Bluetooth firmware, but the published bundle still carries `boot.img` and
-  every other entry. Pruning them is a `harvest.list` edit plus a new bundle.
-  The two cannot come from elsewhere yet: linux-firmware has no 8723F or
-  8733BU Bluetooth firmware (its `rtl_bt` stops at `rtl8723d`, checked
-  2026-10-31), and Realtek ships `rtl8733bu_fw` and `rtl8733bu_config` only
-  in vendor SDKs, with no licence published for them.
-- **Buildroot for the userland.** Every library and program a frontend uses
-  is built from source (`build-rootfs.sh`), with one toolchain, current
-  releases and this device's options; the harvest supplies only the Bluetooth
-  firmware. It replaced stock binaries over Debian's glibc: Debian's builds
-  were prebuilt and quick, but configured for desktops (its SDL2 links X11,
-  Wayland and PulseAudio, its dbus-daemon systemd), so the stock programs, on
-  OpenSSL 1.1 and BlueZ 5.62, had to stay. What made source builds safe is
-  knowing the interface: [what frontends need](rootfs-interface.md) measures
-  it from a card, and `tools/abi_scan.py --baseline` checks a build against
-  stock symbol by symbol. SDL2 is sdl2-compat over SDL3. Mesa still builds in
-  `build-gpu.sh`, where Debian's LLVM saves building one.
+- **The stock bundle.** The build takes three files from it: `uboot.img` and
+  the Bluetooth firmware, but the published bundle still carries `boot.img`
+  and the whole harvest. The firmware cannot come from elsewhere yet:
+  linux-firmware has no 8723F or 8733BU Bluetooth firmware (its `rtl_bt` stops
+  at `rtl8723d`, checked 2026-10-31), and Realtek ships `rtl8733bu_fw` and
+  `rtl8733bu_config` only in vendor SDKs, with no licence published for them.

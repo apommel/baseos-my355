@@ -10,10 +10,8 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
-PATCH="$HERE/tools/uboot/patches/0001-cmd-add-my355-boot-helpers.patch"
+PATCH="$HERE/board/my355/uboot/patches/0001-cmd-add-my355-boot-helpers.patch"
 [ -f "$PATCH" ] || { echo "missing $PATCH" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
@@ -106,7 +104,7 @@ int main(void)
 EOF
 
 echo "== my355 fg =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
+docker run --rm \
 	-v "$WORK":/work:ro alpine:3.20 sh -euc '
 	apk add -q build-base
 	cc -O2 -Wall -Werror -I/work -o /tmp/t /work/harness.c

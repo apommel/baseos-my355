@@ -1,0 +1,21 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] adbd: report the Miyoo Flip
+
+The Debian port has no property service and fills the connection banner
+with a Nexus 4's values.
+---
+--- a/core/adbd/adb.c
++++ b/core/adbd/adb.c
+@@ -302,9 +302,9 @@
+     };
+     static const int num_cnxn_props = ARRAY_SIZE(cnxn_props);
+     static const char *values[] = {
+-        "occam",
+-        "Nexus 4",
+-        "mako",
++        "my355",
++        "Miyoo Flip",
++        "my355",
+     };
+     int i;
+     size_t remaining = bufsize;

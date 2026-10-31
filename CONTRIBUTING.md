@@ -2,74 +2,50 @@
 
 ## Development environment
 
-macOS or Linux, x86_64 or ARM, with Docker or OrbStack. Anything touching a
-filesystem image or running AArch64 code goes in an unprivileged Alpine container, so
-the host needs no sudo and no loop mounts. `tools/common.sh` picks the platform per
-step: `linux/arm64` for device binaries, host arch otherwise. Set
-`BASEOS_DOCKER_PLATFORM_HOST` to override the latter.
-
-On an x86_64 host the `linux/arm64` steps (`build-rootfs.sh`) run under QEMU, which
-needs binfmt handlers registered. Docker Desktop and OrbStack ship them; a plain
-Docker Engine does not, and `build-rootfs.sh` says so rather than letting the
-container die with `exec format error`:
+macOS or Linux, x86_64 or ARM, with Docker or OrbStack. The build runs in a
+`linux/arm64` container, under QEMU on x86_64; a plain Docker Engine needs the
+binfmt handlers registered:
 
 ```sh
 docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
 
-Take a NAND backup even if you build from the bundle. Making one, and recovering from
-a bad preloader write, are in
-[docs/recovery.md](docs/recovery.md) — read it
+Take a NAND backup even if you never write to it. Making one, and recovering from
+a bad preloader write, are in [docs/recovery.md](docs/recovery.md) — read it
 before writing anything to `mtd5`, the one region where a mistake costs a MASKROM
 recovery.
 
 ## The build
 
+`./build.sh` runs Buildroot with this repository as `BR2_EXTERNAL`, and takes
+make targets:
+
 ```sh
-./fetch-prepared.sh                           # → work/my355/prepared/
-./build-uboot.sh                              # → work/my355/uboot-mainline.itb
-./build-kernel.sh                             # → work/my355/kernel/
-./build-gpu.sh                                # → work/my355/gpu/
-./build-rootfs.sh                             # → work/my355/rootfs.tar
-./build-image.sh                              # → work/my355/baseos-my355.img
-./build-update.sh                             # → the .bosupd payload
-./flash-card.sh diskN                         # macOS: the image → an SD card
+./build.sh                       # everything → work/images/
+./build.sh linux-rebuild all     # after editing a kernel patch
+./build.sh linux-menuconfig linux-update-defconfig
+./build.sh sdk                   # the SDK (docs/sdk.md)
+./flash-card.sh diskN            # macOS: the image → an SD card
 ```
 
-`./build-all.sh` runs them all and packages the release. U-Boot, the kernel,
-Mesa and Buildroot keep their trees cached, so a rerun is incremental; the first
-`build-rootfs.sh` builds Buildroot's toolchain and takes about an hour. The kernel's
-command line is in its device tree, `tools/kernel/dts/rk3566-miyoo-flip.dts`.
+The first build takes a few hours, mostly the toolchain and the host LLVM that
+compiles Panfrost's shaders; later ones rebuild what changed. Buildroot does not
+track config or patch edits: rebuild the package, as above.
 
-To derive the inputs instead — needed to move onto a new vendor release — replace
-the first line with
-`./prepare-stock.sh NAND_DIR`, whose three `mtd*.img` files are described in
-[docs/recovery.md](docs/recovery.md). It verifies the harvest is a
-**closed set**: every `DT_NEEDED` of every harvested ELF must resolve inside it, or
-the build fails. That is what makes `manifest/harvest.list` a proof rather than a
-guess. It cannot see `dlopen` or `system()`; those are in
-[docs/rootfs.md](docs/rootfs.md).
-
-Both paths get the same check — `tools/source_manifest.py verify` runs before
-every build step, and in `fetch-prepared.sh` and `cache-pack.sh`. Besides the
-hashes in `source.json`, it checks the harvest's paths against
-`manifest/harvest.list`, because those hashes still match an old tar after the
-list changes. So **editing the list means re-running `prepare-stock.sh`**, and
-`cache-pack.sh` after it so the published bundle follows.
-
-### Publishing a new bundle
-
-After a `prepare-stock.sh` run against new firmware, `./cache-pack.sh` verifies,
-packs, writes `manifest/prepared/*` and prints the `gh release create` line.
-Publish before committing the manifests — they name a URL that has to resolve.
-This distributes vendor firmware; see [NOTICE](NOTICE).
-
-Build knobs:
-
-| | |
-|---|---|
-| `MY355_UBOOT_DEBUG` | `build-uboot.sh`: `0` (default) is the release build; `1` saves U-Boot's console to the card and signals stages on the charge LED, for bring-up and failed boots — [diagnostics](docs/diagnostics.md) |
-| `MY355_DIAG` | `1` to `build-uboot.sh` and `build-rootfs.sh`: boot-timing aids — a bootstage mark per U-Boot initcall and per card-init step, and a probe for the first frame (`baseos-bootinfo timeline`) and for what the panel shows (`/run/boot-display.log`). Not for release — [U-Boot](docs/uboot.md) |
+- **Kernel:** Linux from kernel.org, `board/my355/linux/hardware/` (the board on
+  mainline) then `stock/` (the stock interface on top), `linux.config`, and the
+  device tree, which carries the command line.
+- **U-Boot:** `board/my355/uboot/` and `uboot.config`; the boot script is
+  `uboot.env`. `post-image.sh` packs it with stock's BL31 and OP-TEE.
+- **Stock firmware:** `package/stock-firmware` downloads the published bundle.
+  To use your own dump instead, put `uboot.img` (`mtd1`) and a
+  `stock-harvest.tar` holding `usr/lib/firmware/rtl8733bu_{fw,config}` (from
+  `mtd3`) in a directory, and build with `STOCK_FIRMWARE=<dir> ./build.sh`.
+- **Diagnostics:** `./build.sh --diag` builds into its own output directory with
+  U-Boot's console saved to the card, a bootstage mark per initcall and per
+  card-init step, and probes for the first frame (`baseos-bootinfo timeline`)
+  and what the panel shows (`/run/boot-display.log`). Not for release —
+  [diagnostics](docs/diagnostics.md).
 
 ## Debugging a device that cannot talk
 
@@ -96,15 +72,14 @@ attach afterwards.
 
 ## Tests
 
-`tests/` is offline: none needs a device, and all but `test-harvest-drift.sh`,
-which is plain host Python, run in a container.
+`tests/` is offline: none needs a device, and all run in a container.
 
 ```sh
 for t in tests/test-*.sh; do "$t" || break; done
 ```
 
 `test-update-roundtrip.sh` is the exception to "no inputs needed" — it runs the
-real payload against the real image, so `./build-all.sh` has to have run first.
+real payload against the real image, so `./build.sh` has to have run first.
 
 ## Conventions
 
@@ -115,9 +90,9 @@ real payload against the real image, so `./build-all.sh` has to have run first.
 - Stock-built software runs unmodified. What it needs from the kernel is
   provided by the kernel ([docs/mainline-compat.md](docs/mainline-compat.md)),
   with mainline's interface as the base and stock's as a thin layer over it;
-  in `tools/kernel`, `hardware/` is the board and `stock/` that layer.
+  in `board/my355/linux`, `hardware/` is the board and `stock/` that layer.
 - Claims in `docs/` are *verified* (observed on hardware) or *inferred* (from
   binaries). Retracted ones are kept, not deleted, in
   [docs/history.md](docs/history.md).
-- No vendor binaries in git. The bundle is a release artifact, pinned by hash from
-  `manifest/prepared/`.
+- No vendor binaries in git. The bundle is a release artifact, pinned by hash in
+  `package/stock-firmware/`.

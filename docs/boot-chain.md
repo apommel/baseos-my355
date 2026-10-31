@@ -171,9 +171,9 @@ Verified end to end on 2026-08-23, from a freshly flashed card, on battery:
 
 Four seconds, first attempt. The device came up in BaseOS at `storagemedia=sd`.
 
-Code: [tools/preloader-installer](../tools/preloader-installer) — `bootstrap.sh` (what
+Code: [board/my355/preloader-installer](../board/my355/preloader-installer) — `bootstrap.sh` (what
 stock executes), `install.sh` (the procedure), `patch-preloader.sh` + `fdtpatch.awk`
-(the edit), `mkfwimg.py` (packs the image, run by `build-image.sh`).
+(the edit), `mkfwimg.py` (packs the image, run by `post-image.sh`).
 
 ### Why patch in place instead of shipping a preloader
 

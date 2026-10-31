@@ -1,0 +1,7 @@
+config BR2_PACKAGE_RTL8733BU
+	bool "rtl8733bu"
+	depends on BR2_LINUX_KERNEL
+	help
+	  The RTL8733BU's WiFi driver (8733bu.ko).
+
+	  https://github.com/Charliechen114514/rtl8733bu-linux-driver

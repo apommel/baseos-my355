@@ -4,11 +4,9 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
 echo "== gptgrow =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
+docker run --rm \
   -v "$HERE/src":/src:ro -v "$HERE/tools":/tools:ro \
   alpine:3.20 sh -euc '
   apk add -q build-base linux-headers python3 sgdisk
@@ -40,9 +38,9 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
 '
 
 echo "== expand-storage =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
-  -v "$HERE/overlay/usr/sbin/expand-storage":/test/expand-storage:ro \
-  -v "$HERE/overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+docker run --rm \
+  -v "$HERE/board/my355/rootfs-overlay/usr/sbin/expand-storage":/test/expand-storage:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
   --tmpfs /data \
   alpine:3.20 sh -euc '
   mknod /dev/mmcblk1 b 7 0

@@ -1,0 +1,8 @@
+config BR2_PACKAGE_MALI_KBASE
+	bool "mali-kbase"
+	depends on BR2_LINUX_KERNEL
+	help
+	  ROCKNIX's Arm Mali kbase driver (r54p2), the kernel side
+	  of libmali.
+
+	  https://github.com/rocknix/mali_kbase

@@ -5,12 +5,10 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
 echo "== baseos-config =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
-  -v "$HERE/overlay":/overlay:ro -v "$HERE/assets":/assets:ro alpine:3.20 sh -euc '
+docker run --rm \
+  -v "$HERE/board/my355/rootfs-overlay":/overlay:ro -v "$HERE/board/my355/assets":/assets:ro alpine:3.20 sh -euc '
   SCRIPT=/overlay/usr/sbin/baseos-config
   TMP=/tmp/t; mkdir -p "$TMP/run" "$TMP/bin"
   export BASEOS_SHADOW_DEFAULT=/overlay/etc/shadow

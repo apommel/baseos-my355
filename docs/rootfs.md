@@ -3,55 +3,34 @@
 How the BaseOS userland is assembled, and what it must reproduce so NextUI
 behaves exactly as it does on stock.
 
-## Pipeline
-
-```
-./fetch-prepared.sh  published bundle → work/my355/prepared/
-./prepare-stock.sh   NAND backup      → the same three files:
-                             uboot.img, stock-harvest.tar, source.json
-./build-kernel.sh    Linux, its device tree and modules
-./build-gpu.sh       Mesa
-./build-rootfs.sh    Buildroot: glibc, SDL, libmali, BlueZ, BusyBox, src/,
-                     overlay, + modules + Mesa + Bluetooth firmware → rootfs.tar
-./build-image.sh     U-Boot + kernel + rootfs → baseos-my355.img
-```
-
-Both routes produce byte-identical inputs, and `source.json` — which travels in
-git, not inside the bundle — is what every build checks them against. The
-harvest's paths are checked against `manifest/harvest.list` as well: its hash
-would still match an old tar after the list changes, so a list edit that was
-never re-prepared fails the build instead of shipping without the new path.
-
 ## Sources
 
-One Buildroot build (`build-rootfs.sh`, configuration in `buildroot/`)
-assembles it:
+One Buildroot build (`./build.sh`, `configs/baseos_my355_defconfig`)
+assembles it, with the kernel and U-Boot:
 
 1. **Packages**: a merged `/usr` as the vendor rootfs has, with every library
    and program a frontend uses ([what frontends need](rootfs-interface.md)),
    and BaseOS's own tools from `src/` (`baseos-tools`).
 2. **Static BusyBox** and its applet links — `rcS` calls `/bin/mount` and
    friends by path. Installed first, so a full program wins a name both have.
-3. **`overlay/`** — `init`, `inittab`, `rcS`, `rcK`, the frontend session,
-   the USB gadget — over the packages.
-4. **`board/my355/post-build.sh`**: the kernel's modules, Mesa, and the two
-   stock files left, the Bluetooth firmware; the version files; and the run
-   path below. It fails the build if any program lacks a library it links.
+3. **`board/my355/rootfs-overlay/`** — `init`, `inittab`, `rcS`, `rcK`, the
+   frontend session, the USB gadget — over the packages; with `--diag`,
+   `board/my355/diag/rootfs-overlay/` too.
+4. **`board/my355/post-build.sh`**: the assets, the version files, and the
+   run path below. It fails the build if any program lacks a library it links.
 5. **`board/my355/post-fakeroot.sh`**: the links into `/run` and `/data` a
-   read-only root needs, and `overlay-diag/` with `MY355_DIAG=1`.
+   read-only root needs.
 
-`mtd3` is **squashfs**, so preparation uses `unsquashfs`. It is unpacked to a
-container-local scratch directory, never a bind mount: the stock rootfs contains
-both `/mnt/sdcard` and `/mnt/SDCARD`, which collide on a case-insensitive host
-filesystem such as macOS.
+The two stock files left, the Bluetooth firmware, come from
+`package/stock-firmware`.
 
 ## The harvest is measured, not guessed
 
-`manifest/harvest.list` was derived by reading `/proc/<pid>/maps` across the
+The harvest list was derived by reading `/proc/<pid>/maps` across the
 whole running NextUI stack on hardware — every entry was observed mapped, or is
 needed by something that was. Buildroot now builds all of it but the Bluetooth
 firmware, from the interface [what frontends need](rootfs-interface.md)
-measured; the list still defines what preparation extracts and checks.
+measured.
 
 Two findings keep it small:
 
@@ -85,8 +64,8 @@ the list grows as more of the stack is exercised:
 | `alsa-lib/*_bluealsa.so` | alsa-lib `dlopen` | `audiomon` writes an `.asoundrc` naming `type bluealsa` for both pcm and ctl |
 | `modetest` | `libmsettings` `system()` | the panel's DRM `contrast` and `saturation` properties are set with `modetest -M rockchip -w 179:<prop>:<0-100>`; brightness is sysfs PWM and worked without it |
 | `fsck.fat` | `mount-frontend` | clears a card's FAT dirty flag before it is mounted (below). dosfstools 4.2, libc only |
-| `mkfs.ext4` | spruceOS `setup_32bit_libs.sh` | formats the image behind spruceOS's `/usr` overlay. `/etc/mke2fs.conf`, stock's, is in `overlay/` |
-| `bash` | spruceOS | PortMaster ports, and root's shell in spruceOS's `/etc/passwd`. `/etc/shells` lists it, in `overlay/` |
+| `mkfs.ext4` | spruceOS `setup_32bit_libs.sh` | formats the image behind spruceOS's `/usr` overlay. `/etc/mke2fs.conf`, stock's, is in `rootfs-overlay/` |
+| `bash` | spruceOS | PortMaster ports, and root's shell in spruceOS's `/etc/passwd`. `/etc/shells` lists it, in `rootfs-overlay/` |
 | `bluealsa-aplay` | spruceOS `bt_audio_ready()` | detects a Bluetooth headset |
 
 Two layout notes. Zone files live in `posix/` and the top-level names symlink
@@ -124,11 +103,11 @@ second, and `pidof` alone turned every `restart` into a stop.
 ### Version identity
 
 `/etc/baseos-release` carries `BASEOS_TARGET` and the panel rotation `fbsplash`
-reads; `build-rootfs.sh` appends `BASEOS_VERSION` from `VERSION` and a
+reads; `post-build.sh` appends `BASEOS_VERSION` from `VERSION` and a
 `git describe` `BASEOS_BUILD`. An uncommitted
 tree's `-dirty` id gets a UTC timestamp appended, so two such builds never share
-an id: a card skips a same-version payload whose id matches its own. The id goes
-to `work/my355/build-id`, which `build-update.sh` puts in the manifest.
+an id: a card skips a same-version payload whose id matches its own.
+`post-image.sh` puts the same id in the `.bosupd` manifest.
 
 `/usr/miyoo/version` is written from the same variable and reads
 `BaseOS <version>`. It exists because `PLAT_getOsVersionInfo()` reads that path for the About screen
@@ -556,10 +535,8 @@ widest set (gio, gobject, gmodule, mount, blkid, ffi, mpg123, sbc, bluetooth),
 needed; BlueZ creates its adapter directory under the `/var/lib/bluetooth` link
 on first power-on.
 
-`rtk_btusb.ko` is 2.3 MB on disk but 72 KB once loaded: it ships `with
-debug_info`, and `strip --strip-debug` takes it to 131 KB. `build-rootfs.sh`
-does that: insmod reads the whole file, so it shortens Bluetooth power-on. Boot
-is unaffected, since nothing loads it until Bluetooth is turned on.
+`rtk_btusb.ko` is now the stand-in that loads mainline `btusb`, a few KB, so
+insmod no longer reads stock's 2.3 MB module on Bluetooth power-on.
 
 `hciattach` is not installed. `bt_init.sh` only reaches it if `hci0` never
 appears, and the call it makes there (`hciattach -n ttyS1 xradio`) is for a

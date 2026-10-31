@@ -34,8 +34,8 @@ reset, taking the record with it.
 
 During bring-up a kernel-side LED heartbeat (`/leds/work
 linux,default-trigger`, which `rkbootimg.py` could once set) was used and then
-removed once the chain worked. It is a one-line addition to `build-image.sh`'s
-`APPEND` if a future bring-up needs it again — see [history](history.md).
+removed once the chain worked. It is a one-line addition to the device tree
+if a future bring-up needs it again — see [history](history.md).
 
 ## Reading the card afterwards
 
@@ -63,9 +63,9 @@ busybox runs, ruling out the rootfs while the real bug was elsewhere.
 
 U-Boot ([U-Boot](uboot.md) Part 3) draws nothing: the panel stays dark until the kernel lights it and `rcS` draws
 the logo at ~2.0 s, so a dark panel before then says nothing about whether the
-boot worked. A debug build (`MY355_UBOOT_DEBUG=1`) makes up for it two ways.
-The default release build (`0`) has neither: a failed boot is dark, then off.
-Rebuild with `MY355_UBOOT_DEBUG=1` and flash it to see why.
+boot worked. A diag build (`./build.sh --diag`) makes up for it two ways.
+The release build has neither: a failed boot is dark, then off.
+Rebuild with `--diag` and flash it to see why.
 
 **The charge LED** (`gpio0 PC2`, off from reset until the kernel's
 `battery-charging` trigger claims it) marks U-Boot's stages once

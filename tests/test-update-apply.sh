@@ -4,13 +4,11 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
 echo "== baseos-update =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
-  -v "$HERE/overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
-  -v "$HERE/overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+docker run --rm \
+  -v "$HERE/board/my355/rootfs-overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
   --tmpfs /data --tmpfs /mnt/SDCARD \
   alpine:3.20 sh -euc '
   apk add -q python3

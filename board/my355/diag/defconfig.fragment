@@ -1,0 +1,4 @@
+# Diagnostics, not for release (docs/diagnostics.md): build.sh --diag.
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_BASEOS_PATH)/board/my355/rootfs-overlay $(BR2_EXTERNAL_BASEOS_PATH)/board/my355/diag/rootfs-overlay"
+BR2_TARGET_UBOOT_PATCH="$(BR2_EXTERNAL_BASEOS_PATH)/board/my355/uboot/patches $(BR2_EXTERNAL_BASEOS_PATH)/board/my355/diag/uboot-patches"
+BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_BASEOS_PATH)/board/my355/diag/uboot.fragment"

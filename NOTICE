@@ -19,21 +19,22 @@ Files that remain upstream's work, unmodified or nearly so:
                                 three slotted regions and header-derived geometry
     src/gpt.h                   the CRC and entry helpers both of them share
     tools/mkupdate.py           update payload builder; extended to three regions
-    overlay/usr/sbin/baseos-update
+    board/my355/rootfs-overlay/usr/sbin/baseos-update
                                 the update engine, adapted to this layout
-    tools/common.sh             container platform selection
     flash-card.sh               macOS card writer; reduced to one target, and its
                                 disk guard rekeyed on removable and virtual media
 
 Taken later, from upstream commit 7dec5cb (2026-09-18):
 
-    overlay/usr/sbin/baseos-config
+    board/my355/rootfs-overlay/usr/sbin/baseos-config
                                 the baseos.conf parser; reduced to hostname and
                                 ssh_password, with a fixed default hostname
-    assets/baseos.conf          its template
+    board/my355/assets/baseos.conf
+                                its template
     tests/test-baseos-config.sh its tests, adapted to the above
 
-assets/boot.ttf is licensed under the SIL Open Font License; see assets/OFL.txt.
+board/my355/assets/boot.ttf is licensed under the SIL Open Font License; see
+board/my355/assets/OFL.txt.
 
 Everything else — the Rockchip boot chain, the SPI NAND preloader work, the my355
 rootfs, overlay and documentation — is new in this repository.
@@ -41,18 +42,17 @@ rootfs, overlay and documentation — is new in this repository.
 VENDOR FIRMWARE
 ---------------
 
-BaseOS links against the vendor's own userland rather than rebuilding it, and boots
-the vendor's BL31 and OP-TEE. Two artifacts are therefore vendor-derived:
+BaseOS boots the vendor's BL31 and OP-TEE, and loads the vendor's Bluetooth
+firmware. Both come from the stock firmware:
 
     uboot.img           Miyoo's Rockchip U-Boot FIT, whose BL31, OP-TEE and
                         control device tree are used verbatim
-    stock-harvest.tar   86 allowlisted paths from the stock squashfs — glibc,
-                        Mali, SDL2, wpa_supplicant, BlueZ, firmware blobs
-                        (manifest/harvest.list; the count is in source.json)
+    stock-harvest.tar   allowlisted paths from the stock squashfs, of which
+                        the build takes rtl8733bu_fw and rtl8733bu_config
 
-None of them is committed to this repository. They are published as a release
-artifact by cache-pack.sh and pinned by hash from manifest/prepared/, and
-prepare-stock.sh regenerates the identical bytes from a dump of your own unit.
+Neither is committed to this repository. They are published as a release
+artifact, pinned by hash in package/stock-firmware/, which can be pointed at a
+dump of your own unit instead.
 
 Publishing that bundle redistributes Miyoo's firmware. Miyoo has not granted
 permission to do so, and parts of it are third-party works under their own terms
@@ -62,7 +62,7 @@ glibc is LGPL; the Mali userspace is ARM proprietary).
 KERNEL SOURCES
 --------------
 
-tools/kernel/ holds patches, drivers and a device tree for Linux, and is
+board/my355/linux/ holds patches, drivers and a device tree for Linux, and is
 GPL-2.0 like the kernel it builds into, as each driver's SPDX line says. Several
 pieces come from, or follow, ROCKNIX's and zlyme's Miyoo Flip work and upstream
 Rockchip patches; the origin is noted in the file or in docs/mainline-compat.md.
@@ -71,7 +71,7 @@ LICENSE
 -------
 
 My own work in this repository — everything listed as new above, except
-tools/kernel/ — is MIT licensed; see LICENSE. Use it freely.
+board/my355/linux/ — is MIT licensed; see LICENSE. Use it freely.
 
 The files listed above as upstream's work carry no license, since upstream BaseOS
 ships none; MIT cannot be granted over them. The font is OFL, and the vendor

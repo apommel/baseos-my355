@@ -29,13 +29,8 @@ adb shell "md5sum /dev/mtdblock0 /dev/mtdblock1 /dev/mtdblock2 /dev/mtdblock3 /d
 md5 mtd*.img          # md5sum on Linux
 ```
 
-`prepare-stock.sh` reads three of these, and expects them named as its own
-backup was — `mtd1-uboot.img`, `mtd2-boot.img`, `mtd3-rootfs.img` — in one
-directory:
-
-```sh
-./prepare-stock.sh ~/my-flip-nand-backup
-```
+`mtd1` and `mtd3` can replace the published stock bundle in a build
+(`STOCK_FIRMWARE`, [CONTRIBUTING](../CONTRIBUTING.md)).
 
 `mtd5` is the preloader, and is the file the rest of this page is about.
 

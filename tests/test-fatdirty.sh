@@ -6,11 +6,9 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=../tools/common.sh
-. "$HERE/tools/common.sh"
 
 echo "== fatdirty =="
-docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_HOST" \
+docker run --rm \
   -v "$HERE/src":/src:ro alpine:3.20 sh -euc '
   apk add -q build-base linux-headers dosfstools exfatprogs
   gcc -O2 -Wall -Wextra -Werror -o /usr/bin/fatdirty /src/fatdirty.c
