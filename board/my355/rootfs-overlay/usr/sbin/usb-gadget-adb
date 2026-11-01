@@ -8,7 +8,8 @@
 #   gadget   rockchip           idVendor 0x2207  idProduct 0x0006
 #   function ffs.adb            functionfs mounted at /dev/usb-ffs/adb
 #   config   b.1 "adb"
-#   UDC      the only entry in /sys/class/udc (fcc00000.usb on mainline)
+#   UDC      the only entry in /sys/class/udc (fcc00000.usb on mainline), which
+#            exists only while the OTG controller is in device mode
 #
 # This is a convenience and NEVER a boot dependency: no `set -e`, every failure
 # path returns quietly, and /etc/init.d/dev backgrounds it so it cannot
@@ -42,10 +43,6 @@ log "start"
 grep -q " $CONFIGFS " /proc/mounts 2>/dev/null || \
 	/bin/mount -t configfs none "$CONFIGFS" 2>/dev/null || { log "configfs mount failed"; exit 0; }
 log "configfs ok"
-
-udc=$(ls /sys/class/udc 2>/dev/null | head -1)
-[ -n "$udc" ] || { log "no UDC in /sys/class/udc"; exit 0; }
-log "udc=$udc"
 
 # The SoC's own serial, which U-Boot reads from the OTP; the machine id if not,
 # so two units are never indistinguishable to a host.
@@ -109,7 +106,14 @@ tick=/run/usb-gadget-adb.tick
 exec 3<> "$tick" || exit 0
 bound=0
 cable=
+udc=
 while :; do
+	# dwc3 can start as a host and only register its UDC on a later switch to
+	# device mode, so the UDC is looked up on every tick, not once.
+	u=
+	for d in /sys/class/udc/*; do [ -e "$d" ] && u=${d##*/}; done
+	[ "$u" = "$udc" ] || log "udc: ${u:-none}"
+	udc=$u
 	# What the PHY saw on each plug: a cable taken for a charger never binds.
 	if [ -n "$extcon" ]; then
 		c=$(grep '=1$' "$extcon" 2>/dev/null | tr '\n' ' ')
@@ -118,7 +122,7 @@ while :; do
 	fi
 	cur=
 	read -r cur < "$G/UDC" 2>/dev/null
-	if [ -z "$cur" ] && [ -e "$FFS/ep1" ] && data_cable; then
+	if [ -z "$cur" ] && [ -n "$udc" ] && [ -e "$FFS/ep1" ] && data_cable; then
 		printf '%s' "$udc" > "$G/UDC" 2>/dev/null
 		[ "$bound" = 1 ] && log "UDC rebound -> $udc" || log "UDC bound -> $(cat "$G/UDC" 2>/dev/null)"
 		bound=1

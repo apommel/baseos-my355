@@ -235,9 +235,9 @@ so one file reads as the chronology of a boot:
 ```
 0.47 rcS: ...
 0.52 expand-storage: expanded to fill the card
-1.57 usb-gadget-adb: start
-1.85 usb-gadget-adb: UDC bound -> fcc00000.dwc3
-3.72 frontend-session: exec /mnt/SDCARD/.tmp_update/updater
+0.69 frontend-session: exec /mnt/SDCARD/.tmp_update/updater
+0.77 usb-gadget-adb: start
+2.99 usb-gadget-adb: UDC bound -> fcc00000.usb
 ```
 
 The file is `/data/baseos.log`, copied line for line to `/mnt/SDCARD/baseos.log`
@@ -282,7 +282,7 @@ off a running stock unit, not derived from the script:
 gadget    rockchip      idVendor 0x2207  idProduct 0x0006  bcdDevice 0x0310
 function  ffs.adb       functionfs at /dev/usb-ffs/adb, -o uid=2000,gid=2000
 config    b.1 "adb"
-UDC       fcc00000.dwc3
+UDC       fcc00000.usb, once dwc3 is in device mode
 env       ADB_TCP_PORT unset  (see below — adb is USB-only)
 ```
 
@@ -299,12 +299,14 @@ descriptors before the UDC is bound, or the host sees a gadget with no endpoints
 A successful run logs:
 
 ```
-1.57 usb-gadget-adb: start
-1.60 usb-gadget-adb: gadget created
-1.62 usb-gadget-adb: functionfs mounted: ep0
-1.62 usb-gadget-adb: adbd started
-1.84 usb-gadget-adb: after wait: ep0 ep1 ep2
-1.85 usb-gadget-adb: UDC bound -> fcc00000.dwc3
+0.76 usb-gadget-adb: gadget created
+0.80 usb-gadget-adb: functionfs mounted: ep0
+0.80 usb-gadget-adb: adbd started (pid 227)
+0.92 usb-gadget-adb: after wait: ep0 ep1 ep2
+0.94 usb-gadget-adb: extcon: /sys/class/extcon/extcon0/state
+0.95 usb-gadget-adb: udc: fcc00000.usb
+2.97 usb-gadget-adb: cable: CDP=1
+2.99 usb-gadget-adb: UDC bound -> fcc00000.usb
 ```
 
 It never blocks boot: no `set -e`, every failure path returns quietly, and
