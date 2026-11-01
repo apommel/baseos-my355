@@ -151,7 +151,9 @@ It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
 `baseos-compat-check` checks the table's rows on a running unit, one `ok` or
 `FAIL` line each, and exits 1 on any mismatch. Its first run (2026-11-01)
 passed everything except the `conservative` cpufreq governor, which
-`governor.sh` sets in one of its modes and `linux.config` lacked.
+`governor.sh` sets in one of its modes: arm64's `defconfig` builds it as a
+module, and cutting `linux.config` to the modules something loads had dropped
+it. It is built in now, and every row passes.
 
 Different from stock, found on the first boots:
 
