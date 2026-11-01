@@ -1,6 +1,6 @@
 #!/bin/sh
 # The GPU stack that baseos.conf's gpu= picks, set up by rcS before the
-# frontend starts: mali (the default: libmali and mali_kbase) or panfrost (Mesa).
+# frontend starts: panfrost (the default: Mesa) or mali (libmali and mali_kbase).
 
 . /usr/share/baseos/log.sh
 . /usr/share/baseos/conf.sh
@@ -8,8 +8,8 @@
 conf_get gpu
 case "$CONF_VALUE" in
 	mali|panfrost) gpu=$CONF_VALUE ;;
-	'') gpu=mali ;;
-	*) log "baseos.conf: unknown gpu=$CONF_VALUE, using mali"; gpu=mali ;;
+	'') gpu=panfrost ;;
+	*) log "baseos.conf: unknown gpu=$CONF_VALUE, using panfrost"; gpu=panfrost ;;
 esac
 
 if [ "$gpu" = panfrost ]; then
