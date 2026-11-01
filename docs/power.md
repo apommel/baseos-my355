@@ -42,6 +42,39 @@ zlyme's 790 mV (four 40 s runs each, ABBA, 2026-10-28), so ~20 mW, below
 stock's floor for every bin. Above 816 MHz a lower voltage only lowers the
 clock ([mainline compat](mainline-compat.md)).
 
+## Levers measured on mainline, 2026-11-01
+
+Mainline's RK817 driver has no `current_now`, so these come from `current_avg`
+× `voltage_avg` read every second, with the coulomb counter (RK817 registers
+0x74–0x77) as a cross-check: six ABBA pairs of 10 s settling and 30 s
+measuring, on battery, brightness 5. A point still swings ~100 mW; the means
+resolve ~20–30 mW.
+
+| lever | where | off | on | difference |
+|---|---|---|---|---|
+| cpu1–3 offline | gambatte | 2674 | 2790 | **+116**, every pair |
+| 200 more wake-ups/s | gambatte | 2673 | 2679 | +6 |
+| autosuspend on the WiFi chip's USB | gambatte | 2689 | 2681 | −8 |
+| `rtw_lps_level` 2 (clock-gated LPS) | gambatte | 2705 | 2711 | +6 |
+| `vdd_gpu` cut while the GPU is suspended | menu | 2315 | 2256 | −59; −28 on the counter |
+| a cluster power-down idle state | menu | 2249 | 2247 | −2 |
+
+None is kept:
+
+- **Fewer cores** loses, presumably because the one left runs at higher rates.
+- **Interrupts instead of polling.** The two 10 ms pollers, `gpio-keys-polled`
+  and the `MIYOO Player1` pad, are ~200 wake-ups/s; a program adding that many
+  cost nothing measurable.
+- **WiFi.** The chip never autosuspended while associated, and level 2 changed
+  nothing but the ping (mean round trip 5.5 ms against 4.4).
+- **`vdd_gpu`** is cut in suspend already (`regulator-off-in-suspend`). Awake,
+  the most it can give is the menu's 1–2.5%, and it would need `mali_kbase`
+  to drop the rail itself; not worth carrying.
+- **Cluster sleep** (`arm,psci-suspend-param = <0x1010000>`): the vendor BL31
+  accepts it and the cores entered it ~70 times a second, for nothing.
+- **The zram compressor** does not matter: a game leaves ~790 MB available, so
+  swap is hardly touched.
+
 ## The DDR touch boost — removed
 
 The mainline DMC driver (`rk3568-dmc.c`) has no touch boost. The vendor one
@@ -84,7 +117,7 @@ performance mode, `dmc_ondemand` up to 1056 MHz, now scales with load too.
 One Realtek RTL8733BU on USB (`2-1`) carries both. WiFi runs at the driver's
 deepest station power save already (`LPS mode: MAX`); `rtw_lps_level` is 0
 (`LPS_NORMAL`), with clock- and power-gated levels left alone because the link
-is already weak. NextUI's WiFi and BT off are rfkill soft blocks (`wifi_init.sh`,
+is already weak; level 2 saved nothing on mainline (above). NextUI's WiFi and BT off are rfkill soft blocks (`wifi_init.sh`,
 `bt_init.sh`), which leave the chip powered and enumerated. The vendor
 `wlan-platdata` driver exposes `/sys/class/rkwifi/wifi_power`: writing 0
 drops the chip off USB (`WIFI,poweren_gpio`), and writing 1 brings it back
