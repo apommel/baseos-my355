@@ -406,6 +406,11 @@
 	};
 };
 
+/* Stock starts throttling at 75 °C; the GPU's map already sits on its 75 °C trip. */
+&cpu_alert0 {
+	temperature = <75000>;
+};
+
 &cru {
 	assigned-clocks = <&pmucru CLK_RTC_32K>, <&cru PLL_GPLL>,
 			  <&pmucru PLL_PPLL>, <&cru PLL_VPLL>;
