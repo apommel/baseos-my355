@@ -560,7 +560,8 @@
 
 &i2c0 {
 	status = "okay";
-	clock-frequency = <100000>;
+	/* Fast mode: the RK817's probe is register traffic, 111 ms at 100 kHz. */
+	clock-frequency = <400000>;
 
 	vdd_cpu: regulator@40 {
 		compatible = "rockchip,rk8600";
