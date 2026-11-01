@@ -6,9 +6,9 @@ Superseded tables and the measurements that led here are in
 
 Measured on the vendor 5.10 kernel, which BaseOS booted until 1.3.0. The
 mainline kernel's figures, against these, are in
-[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.10 s,
-hands off at 1.38–1.39 s, shows the logo at 1.36–1.42 s and starts `nextui.elf`
-at 2.31–2.36 s (2026-10-31, warm). The initcall list below has no counterpart there;
+[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.01–1.05 s,
+hands off at 1.29–1.35 s, shows the logo at 1.27–1.31 s and starts `nextui.elf`
+at 2.27–2.35 s (2026-11-01, warm). The initcall list below has no counterpart there;
 the SD and `rcS` findings carry over.
 
 Figures are cold boots on hardware with **USB unplugged at power-on** — a
@@ -103,9 +103,9 @@ cold and warm apart.
 
 | marker | what it is | at (warm) |
 |---|---|---|
-| `backlight` | `rcS` lights the backlight; the panel shows nothing yet | 1.21–1.23 s |
-| `logo` | `fbsplash` returns: its pan is a blocking commit, so the first modeset and the panel's power-up are behind it, and the logo is on the glass | 1.36–1.42 s |
-| `nextui` | `nextui.elf` starts | 2.31–2.36 s |
+| `backlight` | `rcS` lights the backlight; the panel shows nothing yet | 1.13–1.16 s |
+| `logo` | `fbsplash` returns: its pan is a blocking commit, so the first modeset and the panel's power-up are behind it, and the logo is on the glass | 1.27–1.31 s |
+| `nextui` | `nextui.elf` starts | 2.27–2.35 s |
 | `frame` | NextUI's first framebuffer on the panel (`--diag`, `baseos-frameprobe`) | — |
 
 Nothing marks the menu. NextUI's first frame precedes a working menu, so
@@ -269,6 +269,70 @@ A FAT card that was once powered off uncleanly keeps mounting as "not properly
 unmounted": Linux never clears a dirty flag that was already set at mount, only
 `fsck.fat` does. `mount-frontend` now runs it on such a card before mounting it;
 checking a clean one costs 1.8 ms ([rootfs](rootfs.md)).
+
+## The mainline boot, step by step
+
+Profiled on 2026-11-01, warm reboots on `gpu=mali`: `initcall_debug` for the
+kernel (three boots; it adds ~30 ms), and a probe line per step in NextUI's
+`updater`, `my355.sh` and `launch.sh` (three boots, without `initcall_debug`),
+each one shell builtin. Times are from kernel entry (0.62 s) for the kernel,
+and on the uptime clock for userland, 0.70 s behind power-on.
+
+| kernel time | what |
+|---|---|
+| 0 → 0.157 s | early init, initcalls before I2C; `of_platform_default_populate_init` 32 ms |
+| 0.157 → 0.271 s | **`rk3x_i2c_driver_init`, 114 ms**: the RK817 (111 ms: 44 before its children, regulators 41, RTC 14, power key 6) and `vdd_cpu`, on a 100 kHz bus |
+| 0.271 → 0.367 s | the rest; `clk_debug_init` and `rk817_charger_driver_init` 23 ms each |
+| 0.367 → 0.444 s | **`deferred_probe_initcall`, 76 ms**: io-domains, display, USB, the boot slot's controller (at 0.41 s), `rk817-sound` |
+| 0.426 → 0.499 s | the boot card's init and SDR104 tuning; root waited for from 0.468 s |
+| 0.516 s | root mounted, `Run /init` |
+
+591 initcalls sum to 0.40 s. The boot slot defers on io-domains, which defer
+on the PMIC's regulators: tried before the I2C bus exists, both wait for
+`deferred_probe_initcall`, the first point where the kernel retries, and the
+card's 73 ms of init then runs in line instead of alongside the other
+initcalls.
+
+| uptime | NextUI's start |
+|---|---|
+| 0.69 s | hand-off, `exec updater` |
+| 0.71 → 0.78 s | `updater`, `my355.sh` (the `/userdata` binds ~25 ms) |
+| 0.78 → 0.89 s | `launch.sh`: `mkdir`s ~45 ms, sysfs, daemons, `governor.sh auto` ~35 ms |
+| 0.89 → 1.39 s | **the first `nextval.elf wifi`, 0.50 s**; the second, for Bluetooth, takes 0.07 s |
+| 1.47 → 1.66 s | **`run_hooks.sh boot.d`, 0.16–0.22 s**: the Status LED pak's `apply.sh` |
+| 1.70 s | `tinymix`, then `nextui.elf` starts (2.40 s from power-on) |
+| ~2.75 s | the menu, ~1.1 s later (filmed, *What the screen shows*) |
+
+`nextval.elf` reads one key of `system.json`, but links what `nextui.elf`
+links: `libmali` (60 MB), SDL2, SDL2_image, SDL2_ttf. The first call loads
+them cold; the cost moves to whichever binary runs first (*The `launch.sh`
+prologue*, below). `run_hooks.sh` starts hooks in the background, then waits
+for them, and the Status LED hook is ~40 forks of `sed`, `tr` and `grep`.
+
+**Levers, ours:**
+
+- **Done: the PMIC's I2C at 400 kHz** (fast mode, which the RK817 and RK8600
+  are rated for). Ten warm reboots against five before: `Run /init`
+  1.10–1.14 → 1.01–1.05 s, hand-off 1.40–1.43 → 1.29–1.35 s, logo 1.36–1.42 →
+  1.27–1.31 s, `nextui.elf` 2.31–2.46 → 2.27–2.35 s. No I2C errors.
+- **Tried, not kept: the I2C bus, the RK817 and its regulators registered at
+  `subsys_initcall`.** io-domains and the boot slot then probe on the first
+  try, the card is found at 0.32 s of kernel time instead of 0.50, and
+  `Run /init` is 0.99 s on 14 boots of 15. On top of 400 kHz, ten warm
+  reboots: hand-off 1.26–1.30 s, `nextui.elf` 2.20–2.31 s, ~60 ms; but the logo
+  1.30–1.34 s, 20–30 ms later, fbsplash now running alongside `baseos-gpu`'s
+  `mali_kbase` load and libmali prefetch. It patches three mainline drivers,
+  and it moves the power key ahead of the lid at event1, which the lid driver
+  linked first in its Makefile puts back. Not worth carrying for 60 ms.
+- `gpu=panfrost`, whose libraries load faster: `nextui.elf` ~0.25 s earlier
+  ([mainline compatibility](mainline-compat.md)).
+
+**Levers, NextUI's:** `nextval.elf` without the graphics stack, or the two
+keys read in shell, which saves its 0.07 s twice and starts `nextui.elf`
+sooner, though the libraries still load once; boot hooks that do not hold up
+`nextui.elf`, or a Status LED hook in builtins (~0.2 s); the `mkdir`s and
+`governor.sh` as builtins (~0.05 s). What `nextui.elf` does in its ~1.1 s to
+the menu is not measured: it logs no timestamps.
 
 ## What is left
 
