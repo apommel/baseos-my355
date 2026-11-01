@@ -230,8 +230,8 @@ Different from stock, found on the first boots:
 - **Crash record.** Stock's ramoops region (960 KiB at `0x110000`, below
   System RAM) with `PSTORE_RAM` and `PSTORE_CONSOLE`; neither was in the
   mainline config at first, so `rcS` had nothing to keep (2026-10-30).
-- **GPU drivers.** `gpu=` in `baseos.conf` picks `mali` (the default) or
-  `panfrost`, read by `baseos-gpu` once the frontend card is mounted.
+- **GPU drivers.** `gpu=` in `baseos.conf` picks `panfrost` (the default) or
+  `mali`, read by `baseos-gpu` once the frontend card is mounted.
   Both are packages: Rockchip's newest G52 libmali (g29p1, from
   `libmali-next`) with its wrappers, hook and Vulkan ICD, and Mesa's
   Panfrost and PanVK in `/usr/lib/mesa` (`mesa-panfrost`), mounted over libmali's names and
@@ -408,7 +408,7 @@ against main's 2.93–2.98. Tuning still lands on the window's edge on three
 boots of six, about half since `vdd_logic` went to 875 mV (6 of 22 before),
 but it costs ~32 ms instead of 128.
 
-Six more on `gpu=mali`, the default: hand-off 1.32–1.36 s, `nextui.elf`
+Six more on `gpu=mali`, then the default: hand-off 1.32–1.36 s, `nextui.elf`
 2.27–2.38 s, first frame **3.01–3.14 s**, so ~0.45 s behind Panfrost and just
 behind main. `launch.sh`'s first `nextval.elf` takes 0.56 s at boot: it is the
 first to map libmali g29p1 (60 MB, stripped, 100k relocations), while keymon,

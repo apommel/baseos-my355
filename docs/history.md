@@ -166,6 +166,7 @@ Nothing here describes current behaviour. The working result is
 | 2026-11-01 | **zram swap had been off since the Buildroot BusyBox.** `rcS` runs `swapon -p 100`, and Buildroot's BusyBox had no `-p` (`FEATURE_SWAPON_PRI`), so the call failed and `zram0` never swapped from the 2026-10-31 rootfs on. With the option back, `/proc/swaps` lists it at priority 100 ([rootfs](rootfs.md)) |
 | 2026-11-01 | **The idle and in-game power levers, measured and dropped.** Cores offlined (+116 mW), interrupts in place of the 10 ms pollers, WiFi autosuspend and `rtw_lps_level` 2 (all within ±10 mW), `vdd_gpu` cut while the GPU sleeps (−28 to −59 mW, menu only) and a cluster idle state (−2 mW) ([power](power.md)) |
 | 2026-11-01 | **zram compresses with zstd.** Seven backends on the memory of Super Mario 64, a PS1 game and the NextUI menu: zstd stores what is not zero-filled in 16–35% less RAM than lzo-rle, for 6–15 µs more per swap-in at 1.8 GHz; the others are kept out of the kernel. Selecting any backend stops the kernel building LZO by default, which silently moved the default to lz4 ([rootfs](rootfs.md)) |
+| 2026-11-01 | **Panfrost is the default GPU stack.** With no `gpu=` in `baseos.conf`, `baseos-gpu` sets up Mesa's Panfrost and PanVK; `gpu=mali` still selects libmali and `mali_kbase` ([mainline compatibility](mainline-compat.md)) |
 
 ## SD boot investigation — result: **the stock SPL cannot boot from SD**
 
