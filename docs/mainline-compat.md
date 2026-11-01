@@ -148,6 +148,11 @@ It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
 - the reboot modes, so a shutdown with the charger in restarts into charge mode
 - `/dev/mali0` (r54p2), `card0` with `DSI-1` and `HDMI-A-1`
 
+`baseos-compat-check` checks the table's rows on a running unit, one `ok` or
+`FAIL` line each, and exits 1 on any mismatch. Its first run (2026-11-01)
+passed everything except the `conservative` cpufreq governor, which
+`governor.sh` sets in one of its modes and `linux.config` lacked.
+
 Different from stock, found on the first boots:
 
 - **SD speed.** With UHS, tuning failed on the boot slot (`-5`, all phases
@@ -198,7 +203,10 @@ Different from stock, found on the first boots:
 - **adb.** Bound with no data cable attached, the USB2 PHY stays idle and dwc3
   fails EP0 (`failed to enable ep0out`), as zlyme found in its Phase 12D
   research. `peripheral` mode didn't help. `usb-gadget-adb` waits for the OTG
-  PHY's extcon to report SDP or CDP, then binds. The port stays `otg`.
+  PHY's extcon to report SDP or CDP, then binds. The port stays `otg`. dwc3
+  can come up as a host and register its UDC only on switching to device
+  mode, so the UDC is looked up on every tick: one boot (2026-11-01) found
+  none at 0.77 s, gave up, and had no adb until the script was rerun.
   Booted without the cable, the port is suspended, and charger detection run
   in that state reports a DCP, so a computer plugged in later was never bound.
   The PHY driver now powers the port on before detecting. A replug often went

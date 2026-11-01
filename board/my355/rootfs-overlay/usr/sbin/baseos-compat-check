@@ -1,0 +1,123 @@
+#!/bin/sh
+# The vendor-kernel interfaces stock-built software relies on, checked on the
+# running kernel: one line per row of docs/mainline-compat.md, ok or FAIL with
+# what was found. Exit status 1 if any failed. Read-only, except that gpio150
+# and gpio20 are exported and unexported again if nothing had them yet.
+
+fails=0
+ok() { echo "ok    $1"; }
+fail() { echo "FAIL  $1: $2"; fails=$((fails + 1)); }
+# expect <what> <wanted> <got>
+expect() { if [ "$2" = "$3" ]; then ok "$1"; else fail "$1" "${3:-missing}, want $2"; fi; }
+exists() { if [ -e "$2" ]; then ok "$1"; else fail "$1" "no $2"; fi; }
+rd() { cat "$1" 2>/dev/null; }
+
+# --- input ---------------------------------------------------------------
+ev=/sys/class/input
+expect "event0 name" gpio-keys-polled "$(rd $ev/event0/device/name)"
+# KEY_ESC (menu) 1, KEY_VOLUMEDOWN 114, KEY_VOLUMEUP 115: keymon reads event0 only.
+expect "event0 key codes" "c000000000000 2" "$(rd $ev/event0/device/capabilities/key)"
+expect "event1 name" "hall wake key" "$(rd $ev/event1/device/name)"
+pad=
+for e in $ev/event*; do
+	[ "$(rd "$e/device/name")" = "MIYOO Player1" ] && pad=$e/device/id
+done
+if [ -n "$pad" ]; then
+	expect "MIYOO Player1 identity" "0003 045e:028e 0114" \
+		"$(rd $pad/bustype) $(rd $pad/vendor):$(rd $pad/product) $(rd $pad/version)"
+else
+	fail "MIYOO Player1 identity" "no such input device"
+fi
+case "$(rd /sys/devices/platform/hall-mh248/hallvalue)" in
+0|1) ok "hallvalue" ;;
+*) fail "hallvalue" "$(rd /sys/devices/platform/hall-mh248/hallvalue)" ;;
+esac
+
+# --- sound ---------------------------------------------------------------
+expect "ALSA card 0" rockchiprk817 "$(rd /proc/asound/card0/id)"
+expect "ALSA card 1" rockchiphdmi "$(rd /proc/asound/card1/id)"
+controls=$(/usr/bin/amixer -c 0 controls 2>/dev/null)
+for c in "Playback Path" "SPK Volume" "Speaker Switch" "Headphone Switch"; do
+	case "$controls" in
+	*"name='$c'"*) ok "mixer control $c" ;;
+	*) fail "mixer control $c" "not on card 0" ;;
+	esac
+done
+exists "/dev/i2c-0" /dev/i2c-0
+
+# --- display -------------------------------------------------------------
+expect "card0 is rockchip-drm" display-subsystem "$(basename "$(readlink /sys/class/drm/card0/device)")"
+exists "card0-HDMI-A-1 status" /sys/class/drm/card0-HDMI-A-1/status
+for p in contrast saturation; do
+	exists "card0-DSI-1 $p" /sys/class/drm/card0-DSI-1/$p
+done
+exists "/dev/fb0" /dev/fb0
+case "$(readlink /sys/class/pwm/pwmchip0)" in
+*/fe6e0000.pwm/*) ok "pwmchip0 is the backlight (pwm4)" ;;
+*) fail "pwmchip0 is the backlight (pwm4)" "$(readlink /sys/class/pwm/pwmchip0)" ;;
+esac
+exists "backlight bl_power" /sys/class/backlight/backlight/bl_power
+
+# --- GPIO ----------------------------------------------------------------
+for n in 150 20; do
+	if [ -e /sys/class/gpio/gpio$n/value ]; then
+		ok "gpio$n exportable (already exported)"
+	elif echo $n > /sys/class/gpio/export 2>/dev/null; then
+		echo $n > /sys/class/gpio/unexport
+		ok "gpio$n exportable"
+	else
+		fail "gpio$n exportable" "export refused"
+	fi
+done
+
+# --- power, LEDs, clocks -------------------------------------------------
+for f in battery/capacity battery/status usb/online; do
+	exists "power_supply $f" /sys/class/power_supply/$f
+done
+for l in work charger; do
+	t=$(rd /sys/class/leds/$l/trigger)
+	missing=
+	for want in battery-charging default-on heartbeat; do
+		case " $t " in *" $want "*|*" [$want] "*) ;; *) missing="$missing $want" ;; esac
+	done
+	if [ ! -e /sys/class/leds/$l ]; then
+		fail "LED $l" "no such LED"
+	elif [ -n "$missing" ]; then
+		fail "LED $l" "no trigger$missing"
+	else
+		ok "LED $l"
+	fi
+done
+pol=/sys/devices/system/cpu/cpufreq/policy0
+g=$(rd $pol/scaling_available_governors)
+for want in schedutil performance conservative; do
+	case " $g " in *" $want "*) ;; *) fail "cpufreq governor $want" "have $g"; continue ;; esac
+	ok "cpufreq governor $want"
+done
+case " $(rd $pol/scaling_available_frequencies) " in
+*" 1800000 1992000 "*) ok "cpufreq 1992 MHz above 1800" ;;
+*) fail "cpufreq 1992 MHz above 1800" "$(rd $pol/scaling_available_frequencies)" ;;
+esac
+exists "devfreq fde60000.gpu" /sys/class/devfreq/fde60000.gpu/governor
+exists "devfreq dmc" /sys/class/devfreq/dmc/governor
+case "$(rd /sys/devices/platform/fde60000.gpu/utilisation)" in
+[0-9]|[0-9][0-9]|100) ok "GPU utilisation" ;;
+*) fail "GPU utilisation" "$(rd /sys/devices/platform/fde60000.gpu/utilisation)" ;;
+esac
+
+# --- the rest ------------------------------------------------------------
+case "$(readlink /sys/block/mmcblk1)" in
+*/fe2b0000.mmc/*) ok "mmcblk1 is the boot slot" ;;
+*) fail "mmcblk1 is the boot slot" "$(readlink /sys/block/mmcblk1)" ;;
+esac
+exists "rkwifi wifi_power" /sys/class/rkwifi/wifi_power
+exists "/dev/rtc0" /dev/rtc0
+exists "/dev/uinput" /dev/uinput
+exists "swap support" /proc/swaps
+if grep -q '^8733bu ' /proc/modules; then
+	exists "wlan0" /sys/class/net/wlan0
+fi
+
+[ "$fails" -eq 0 ] && { echo "all match"; exit 0; }
+echo "$fails mismatched"
+exit 1
