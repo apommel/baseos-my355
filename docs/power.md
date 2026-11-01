@@ -72,8 +72,9 @@ None is kept:
   to drop the rail itself; not worth carrying.
 - **Cluster sleep** (`arm,psci-suspend-param = <0x1010000>`): the vendor BL31
   accepts it and the cores entered it ~70 times a second, for nothing.
-- **The zram compressor** does not matter: a game leaves ~790 MB available, so
-  swap is hardly touched.
+- **The zram compressor** does not matter for power: a game leaves ~790 MB
+  available, so swap is hardly touched. It is zstd now, for capacity
+  ([rootfs](rootfs.md)).
 
 ## The DDR touch boost — removed
 

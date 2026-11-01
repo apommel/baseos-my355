@@ -2,6 +2,8 @@
 CONFIG_STATIC=y
 # rootfs-overlay/ has /init.
 # CONFIG_LINUXRC is not set
+# rcS's `swapon -p 100`: without it the call fails and zram0 never swaps.
+CONFIG_FEATURE_SWAPON_PRI=y
 
 # The rest of the applets earlier BaseOS shipped (Alpine's busybox-static), as
 # card scripts may call any of them.

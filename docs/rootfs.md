@@ -195,6 +195,30 @@ the system's own binaries it stored 177 MB in 109 MB (LZO, 2026-10-30).
 spruceOS runs its own `enable_zram.sh`, which keeps an active `zram0`, and
 resets it when its "Use ZRAM" setting is off.
 
+The compressor is zstd, the kernel's only zram backend. Every backend was
+measured on the anonymous memory of running programs, what swap would take:
+each dump written to a spare zram device with direct I/O, then every page read
+back in random order, as swap-ins come, 3 runs each at 1.8 GHz (2026-11-01).
+RAM for the pages that are not zero-filled, which every backend stores alike
+(73% of Super Mario 64's):
+
+| | N64 (116 MB) | PS1 (58 MB) | NextUI menu (28 MB) | write | read, per page |
+|---|---|---|---|---|---|
+| lzo-rle (was) | 15.3 MB | 13.4 MB | 3.2 MB | 240–450 MB/s | 8–12 µs |
+| lzo | 15.2 | 13.3 | 3.2 | 240–450 | 8–12 |
+| lz4 | 15.6 | 15.1 | 3.5 | 220–420 | 8–12 |
+| lz4hc | 14.8 | 13.8 | 3.2 | 23–44 | 8–11 |
+| **zstd** | **12.8** | **8.6** | **2.6** | 66–144 | 14–26 |
+| zstd, level 1 | 12.9 | 8.7 | 2.5 | 81–166 | 14–27 |
+| deflate | 12.7 | 8.9 | 2.6 | 15–34 | 15–27 |
+| 842 | 15.5 | 14.3 | 3.5 | 31–66 | 21–53 |
+
+zstd takes 16% less than LZO on the N64 core and 35% less on the PS1 one, for
+6–15 µs more per page brought back, about twice that at the 816 MHz games
+mostly run at. Swap holds the coldest pages and fills only under pressure,
+where fitting more is what keeps a game from thrashing. deflate compresses
+as well but writes 4–5 times slower; nothing else comes near.
+
 ### The GPU library is read ahead
 
 Every NextUI program links libmali, 58 MB, and the first to start faults in
