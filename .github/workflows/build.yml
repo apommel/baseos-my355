@@ -1,0 +1,89 @@
+# The full Buildroot build, then the tests with its output. A v* tag also makes
+# a draft release with the card image, the update and SHA256SUMS, for the notes
+# to be written and published by hand. Run by hand from the Actions tab, it
+# keeps the images as a workflow artifact instead.
+name: build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The build container is arm64 (build.sh); emulated on x86 it would not
+    # finish within a job's 6 hours.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build.sh names the build after `git describe`.
+          fetch-depth: 0
+
+      - name: Check the tag matches VERSION
+        if: github.ref_type == 'tag'
+        run: |
+          v="v$(tr -d ' \n' < VERSION)"
+          [ "$GITHUB_REF_NAME" = "$v" ] || { echo "tag $GITHUB_REF_NAME, VERSION says $v"; exit 1; }
+
+      # A clean build tree is ~30 GB, LLVM and Clang for Mesa most of it.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache
+          df -h /
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            work/dl
+            ${{ runner.temp }}/buildroot/ccache
+          key: buildroot-${{ github.run_id }}
+          restore-keys: buildroot-
+
+      - name: Build
+        run: BASEOS_BUILD_DIR="$RUNNER_TEMP/buildroot" ./build.sh
+
+      - name: Tests
+        run: for t in tests/test-*.sh; do "$t" || exit 1; done
+
+      - name: Build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            work/build.log
+            work/images/build.log
+          if-no-files-found: ignore
+
+      - name: Images
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseos-my355
+          path: |
+            work/images/*.img.zip
+            work/images/*.bosupd
+            work/images/SHA256SUMS
+
+      - name: Draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="$(tr -d ' \n' < VERSION)"
+          pre=
+          case "$v" in *-*) pre=--prerelease ;; esac
+          gh release create "$GITHUB_REF_NAME" --draft $pre \
+            --title "Miyoo Flip BaseOS $GITHUB_REF_NAME" \
+            --notes "Read the installation instructions in [INSTALL.md](https://github.com/$GITHUB_REPOSITORY/blob/main/INSTALL.md)." \
+            "work/images/baseos-my355-$v.img.zip" \
+            "work/images/baseos-my355-$v.bosupd" \
+            work/images/SHA256SUMS

@@ -79,7 +79,26 @@ for t in tests/test-*.sh; do "$t" || break; done
 ```
 
 `test-update-roundtrip.sh` is the exception to "no inputs needed" — it runs the
-real payload against the real image, so `./build.sh` has to have run first.
+real payload against the real image, and skips until `./build.sh` has run.
+
+CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs the same
+loop on every push and pull request, without a build.
+
+## Releases
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs the full
+build on GitHub's arm64 runner, then the tests including the round trip. Run
+by hand from the Actions tab, it keeps the images as a workflow artifact. A
+release is a tag matching `VERSION`:
+
+```sh
+git tag v1.4.0 && git push origin v1.4.0
+```
+
+The build then makes a **draft** release with the `.img.zip`, the `.bosupd` and
+`SHA256SUMS`, marked pre-release if the version has a suffix (`1.4.0-beta.1`).
+Write the notes and publish it from the releases page. A build from an empty
+cache takes hours; ccache and the downloads are cached for the next.
 
 ## Conventions
 
