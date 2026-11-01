@@ -93,50 +93,25 @@ scan_dirs() {
 	return 0
 }
 
-# Order two dotted strings: 0 same, 1 if $1 is newer, 2 if older. In a core
-# version a missing or non-numeric field counts as zero (1.1 beats 1.0.9); with
-# $3=pre, semver pre-release rules: text beats numbers, more fields beat fewer.
-dotted_cmp() {
-	da="$1" db="$2"
-	while [ -n "$da$db" ]; do
-		fa="${da%%.*}" fb="${db%%.*}"
-		case "$da" in *.*) da="${da#*.}" ;; *) da="" ;; esac
-		case "$db" in *.*) db="${db#*.}" ;; *) db="" ;; esac
-		if [ "$3" = pre ]; then
-			[ -n "$fa" ] || return 2
-			[ -n "$fb" ] || return 1
-		fi
-		an=1 bn=1
-		case "$fa" in ''|*[!0-9]*) if [ "$3" = pre ]; then an=0; else fa=0; fi ;; esac
-		case "$fb" in ''|*[!0-9]*) if [ "$3" = pre ]; then bn=0; else fb=0; fi ;; esac
-		case "$an$bn" in
-		11) [ "$fa" -gt "$fb" ] && return 1; [ "$fa" -lt "$fb" ] && return 2 ;;
-		10) return 2 ;;
-		01) return 1 ;;
-		*) [ "$fa" \> "$fb" ] && return 1; [ "$fa" \< "$fb" ] && return 2 ;;
-		esac
+# Is x.y.z $1 older than $2? A missing field is zero; a legacy suffix
+# (1.2.0-beta.1) is ignored.
+version_older() {
+	a="${1%%-*}." b="${2%%-*}."
+	while [ -n "$a$b" ]; do
+		x="${a%%.*}" y="${b%%.*}"
+		a="${a#*.}" b="${b#*.}"
+		[ "${x:-0}" -lt "${y:-0}" ] && return 0
+		[ "${x:-0}" -gt "${y:-0}" ] && return 1
 	done
-	return 0
-}
-
-# Is $1 a strictly newer version than $2? A release beats its own pre-releases,
-# so a beta tester's card takes the final 1.2.0 over 1.2.0-beta.1.
-version_newer() {
-	dotted_cmp "${1%%-*}" "${2%%-*}" core && vc=0 || vc=$?
-	[ "$vc" -eq 0 ] || return $((vc - 1))
-	case "$1" in *-*) pa="${1#*-}" ;; *) pa="" ;; esac
-	case "$2" in *-*) pb="${2#*-}" ;; *) pb="" ;; esac
-	[ -n "$pb" ] || return 1
-	[ -n "$pa" ] || return 0
-	dotted_cmp "$pa" "$pb" pre && return 1
-	[ $? -eq 1 ]
+	return 1
 }
 
 # Judge one payload: 0 = apply it, 1 = nothing to do, 2 = rejected outright.
-# Sets EV_VERSION / EV_BUILD / EV_SHA, EV_REASON for humans, and leaves the
-# payload's own manifest in $MANIFEST — which is what apply() reads afterwards.
+# Sets EV_VERSION / EV_BUILD / EV_SHA / EV_FORCED, EV_REASON for humans, and
+# leaves the payload's own manifest in $MANIFEST — which is what apply() reads.
 evaluate() {
-	EV_VERSION=""; EV_BUILD=""; EV_SHA=""; EV_REASON=""
+	EV_VERSION=""; EV_BUILD=""; EV_SHA=""; EV_FORCED=""; EV_REASON=""
+	case "${1##*/}" in force-*) EV_FORCED=1 ;; esac
 	if ! tar -xOf "$1" manifest > "$MANIFEST" 2>/dev/null || [ ! -s "$MANIFEST" ]; then
 		EV_REASON="not a BaseOS update payload"; return 2
 	fi
@@ -159,17 +134,14 @@ evaluate() {
 			*) EV_REASON="no usable $r-sha256"; return 2 ;;
 		esac
 	done
+	case "${EV_VERSION%%-*}" in
+		''|*[!0-9.]*) EV_REASON="no usable version"; return 2 ;;
+	esac
 
-	# Only ever move forward. Without this an old payload left on the card
-	# becomes applicable again the moment you update past it, so the device
-	# would downgrade, re-apply the newer one, and ping-pong. A rebuild of the
-	# running version is still allowed, which is what makes iteration work.
-	if version_newer "$EV_VERSION" "${BASEOS_VERSION:-0}"; then
-		:
-	elif [ "$EV_VERSION" = "${BASEOS_VERSION:-}" ] && [ "$EV_BUILD" != "${BASEOS_BUILD:-}" ]; then
-		:
-	else
-		EV_REASON="not newer than the running ${BASEOS_VERSION:-?}"; return 1
+	[ -z "$EV_FORCED" ] || { EV_REASON="ready (forced)"; return 0; }
+	# The history stops repeats; this stops a stale older payload downgrading.
+	if version_older "$EV_VERSION" "${BASEOS_VERSION:-0}"; then
+		EV_REASON="older than the running ${BASEOS_VERSION:-?}"; return 1
 	fi
 	if grep -q "^$EV_SHA " "$HISTORY" 2>/dev/null; then
 		EV_REASON="already applied to this card"; return 1
@@ -292,9 +264,10 @@ apply() {
 	version="$EV_VERSION"
 	build="$EV_BUILD"
 	want_sha="$EV_SHA"
+	forced="$EV_FORCED"
 
 	mkdir -p "$STATE_DIR"
-	log "applying $version ($build) from $payload"
+	log "applying $version ($build) from $payload${forced:+, forced}"
 	splash "$WRITE_FROM" "UPDATING SYSTEM"
 
 	# Never empty: the rootfs is always written (see unchanged).
@@ -330,6 +303,12 @@ apply() {
 		done_mb=$((done_mb + $(slot "$r" _SECTORS) / 2048))
 	done
 	log "verified: $regions"
+
+	# Forced skips the history, so left on the card it would apply every boot.
+	if [ -n "$forced" ]; then
+		remove_payload "$payload" || { fail "could not remove the forced $payload"; return 1; }
+		payload=
+	fi
 
 	# The commit. Everything above is reversible by doing nothing.
 	if ! /usr/sbin/gptslot "$DISK" flip $regions >> "$BASEOS_LOG" 2>&1; then
@@ -393,19 +372,20 @@ boot_check() {
 	return 0
 }
 
-# Only once confirmed: a payload that rolled back stays for status to explain.
+# On confirm, or before a forced commit; one that rolled back stays for status.
 # The own volume is mounted read-only, so a payload there needs it rw briefly.
 remove_payload() {
 	case "$1" in
 		"") return 0 ;;
 		"$OWN_MNT"/*)
-			own_mount && mount -o remount,rw "$OWN_MNT" 2>/dev/null || { cleanup; return 0; }
-			rm -f "$1" && log "removed $1"
+			own_mount && mount -o remount,rw "$OWN_MNT" 2>/dev/null || { cleanup; return 1; }
+			rm -f "$1"; rc=$?
 			mount -o remount,ro "$OWN_MNT"
 			cleanup ;;
-		*) rm -f "$1" && log "removed $1" ;;
+		*) rm -f "$1"; rc=$? ;;
 	esac
-	return 0
+	[ "$rc" -eq 0 ] && log "removed $1"
+	return "$rc"
 }
 
 confirm() {
@@ -458,7 +438,7 @@ status() {
 			evaluate "$candidate"; verdict=$?
 			printf "         %s %s (%s)\n" "$BASEOS_TARGET" "${EV_VERSION:-?}" "${EV_BUILD:-?}"
 			case "$verdict" in
-				0) printf "         WILL APPLY on the next boot\n" ;;
+				0) printf "         WILL APPLY on the next boot%s\n" "${EV_FORCED:+, forced}" ;;
 				1) printf "         skipped: %s\n" "$EV_REASON" ;;
 				*) printf "         rejected: %s\n" "$EV_REASON" ;;
 			esac

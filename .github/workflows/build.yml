@@ -79,9 +79,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           v="$(tr -d ' \n' < VERSION)"
-          pre=
-          case "$v" in *-*) pre=--prerelease ;; esac
-          gh release create "$GITHUB_REF_NAME" --draft $pre \
+          gh release create "$GITHUB_REF_NAME" --draft \
             --title "Miyoo Flip BaseOS $GITHUB_REF_NAME" \
             --notes "Read the installation instructions in [INSTALL.md](https://github.com/$GITHUB_REPOSITORY/blob/main/INSTALL.md)." \
             "work/images/baseos-my355-$v.img.zip" \

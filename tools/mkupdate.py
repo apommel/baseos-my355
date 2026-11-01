@@ -95,9 +95,7 @@ def main() -> int:
         if name not in parts:
             die(f"the image has no `{name}` partition")
 
-    # Both stamps matter: a manifest claiming a version the filesystem does not
-    # carry would make the card apply it, boot, still disagree about its own
-    # version, and apply it again.
+    # The card judges the manifest but runs the filesystem; they must agree.
     stamps = {
         f"BASEOS_VERSION={version}".encode(): False,
         f"BASEOS_BUILD={build}".encode(): False,
