@@ -1,0 +1,45 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] drm/panfrost: hold a PM reference across the job timeout
+
+A job that times out and then faults while the timeout handler runs takes
+the system down. The fault is handled by the job IRQ, which signals the
+job's fence and drops its runtime PM reference. With no other job queued
+the GPU autosuspends 50 ms later, and on RK3568 that disables its clocks
+and asserts its reset. The timeout handler then writes JOB_INT_MASK at the
+start of panfrost_reset() and the access aborts as an asynchronous SError.
+
+The core dump makes the window wide: it copies every BO of the job, which
+took about a second for Dolphin, while the GPU kept running and faulted
+again.
+
+Hold a reference from the register reads through the reset. If the GPU
+already suspended, resuming it soft-resets it, which the reset needs anyway.
+
+---
+--- a/drivers/gpu/drm/panfrost/panfrost_job.c
++++ b/drivers/gpu/drm/panfrost/panfrost_job.c
+@@ -787,6 +787,15 @@
+ 		return DRM_GPU_SCHED_STAT_NO_HANG;
+ 	}
+ 
++	/*
++	 * The job drops its PM reference if it faults from here on, and the
++	 * core dump can outlast the autosuspend delay: hold one for the reset.
++	 */
++	if (pm_runtime_resume_and_get(pfdev->base.dev)) {
++		dev_err(pfdev->base.dev, "gpu sched timeout, cannot resume the GPU\n");
++		return DRM_GPU_SCHED_STAT_NO_HANG;
++	}
++
+ 	dev_err(pfdev->base.dev, "gpu sched timeout, js=%d, config=0x%x, status=0x%x, head=0x%x, tail=0x%x, sched_job=%p",
+ 		js,
+ 		job_read(pfdev, JS_CONFIG(js)),
+@@ -800,6 +809,8 @@
+ 	atomic_set(&pfdev->reset.pending, 1);
+ 	panfrost_reset(pfdev, sched_job);
+ 
++	pm_runtime_put_autosuspend(pfdev->base.dev);
++
+ 	return DRM_GPU_SCHED_STAT_RESET;
+ }
+ 
