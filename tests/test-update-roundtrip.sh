@@ -2,7 +2,7 @@
 # The real payload against a copy of the real image: the reserved halves receive
 # exactly the payload bytes, the GPT commits, the new rootfs is mountable and
 # carries the new version, and `data` and `primary` come through untouched.
-# Needs ./build.sh to have run.
+# Skipped without the output of ./build.sh.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,11 +10,11 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$HERE/work/images"
 VERSION="$(tr -d " \n" < "$HERE/VERSION")"
 PAYLOAD="$WORK/baseos-my355-$VERSION.bosupd"
-for f in "$WORK/baseos-my355.img" "$PAYLOAD"; do
-  [ -f "$f" ] || { echo "missing $f (run ./build.sh)" >&2; exit 1; }
-done
 
 echo "== update round trip =="
+for f in "$WORK/baseos-my355.img" "$PAYLOAD"; do
+  [ -f "$f" ] || { echo "  SKIP no $f (run ./build.sh)"; exit 0; }
+done
 docker run --rm \
   -v "$WORK":/work:ro -v "$HERE/src":/src:ro -v "$HERE/tools":/tools:ro \
   -v "$HERE/board/my355/rootfs-overlay/usr/sbin/baseos-update":/test/baseos-update:ro \

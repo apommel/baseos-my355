@@ -13,6 +13,8 @@
 #
 # STOCK_FIRMWARE=<dir> takes uboot.img and stock-harvest.tar from a dump of
 # your own instead of the published bundle (CONTRIBUTING.md).
+# BASEOS_BUILD_DIR=<absolute dir> keeps the output tree and ccache there
+# instead of the Docker volume, so CI can cache them.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -32,7 +34,7 @@ while :; do
   case "${1:-}" in
     --diag) DIAG=1 OUTPUT=output-diag; shift ;;
     --clean) CLEAN=1; shift ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) break ;;
   esac
 done
@@ -71,7 +73,7 @@ case "$BASEOS_BUILD" in *-dirty) BASEOS_BUILD="$BASEOS_BUILD-$(date -u +%Y%m%d%H
 
 echo "== BaseOS $BASEOS_VERSION ($BASEOS_BUILD): make $TARGETS, log in work/build.log =="
 docker run --rm --platform linux/arm64 \
-  -v baseos-buildroot:/build -v "$DL":/dl -v "$IMAGES":/images \
+  -v "${BASEOS_BUILD_DIR:-baseos-buildroot}":/build -v "$DL":/dl -v "$IMAGES":/images \
   -v "$HERE":/baseos:ro -v "$LIBMALI":/src/libmali:ro $STOCK_MOUNT \
   -e BR_VERSION="$BR_VERSION" -e TARGETS="$TARGETS" -e O="/build/$OUTPUT" \
   -e DIAG="$DIAG" -e CLEAN="$CLEAN" \

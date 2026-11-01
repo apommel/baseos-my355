@@ -1,0 +1,23 @@
+# The offline tests in tests/, as CONTRIBUTING.md runs them. No Buildroot build:
+# test-update-roundtrip.sh skips without one.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: for t in tests/test-*.sh; do "$t" || exit 1; done

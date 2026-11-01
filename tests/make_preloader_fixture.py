@@ -13,14 +13,12 @@ def fdt(nodes):
     strings = bytearray()
     def stroff(name):
         probe = name.encode() + b"\0"
-        at = 0 if strings.startswith(probe) else bytes(strings).find(b"\0" + probe)
-        if at == 0 and strings.startswith(probe):
-            return 0
-        if at > 0:
-            return at + 1
-        off = len(strings)
-        strings.extend(probe)
-        return off
+        # Whole names only, never the tail of a longer one.
+        at = (b"\0" + bytes(strings)).find(b"\0" + probe)
+        if at < 0:
+            at = len(strings)
+            strings.extend(probe)
+        return at
     body = bytearray()
     def begin(name):
         body.extend(struct.pack(">I", 1))
