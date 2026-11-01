@@ -111,13 +111,18 @@ Users copy it to the root of either card and power on.
 ```
 1  read every *.bosupd's manifest — on the frontend card, then on this card's own
    `primary` if that is not already it (a read-only mount, on every boot)
-2  it must be built for my355, fit these slots, be newer than the running version
-   (or a rebuild of it), and not already be in /data/update/history
+2  it must be built for my355, fit these slots, not be older than the running
+   version, and its rootfs hash must not be in /data/update/history
 3  write each changed slot image into its spare half, 32 MiB at a time
 4  read each written half back and hash it                -> mismatch: stop here
 5  gptslot flip <the written regions>                         <- the commit point
 6  record the commit, then reboot
 ```
+
+The history, appended at commit, stops a payload applying twice or retrying
+after a rollback; the version check stops a stale older one. Versions are plain
+`x.y.z`; a legacy suffix (`1.2.0-beta.1`) is ignored. A `force-*.bosupd` skips
+both checks and is deleted before step 5, or nothing is committed.
 
 Step 5 is the only irreversible action and every check precedes it, so power loss
 at any earlier moment leaves the card byte-identical to before. `data` and

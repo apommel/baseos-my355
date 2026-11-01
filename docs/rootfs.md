@@ -101,10 +101,8 @@ second, and `pidof` alone turned every `restart` into a stop.
 
 `/etc/baseos-release` carries `BASEOS_TARGET` and the panel rotation `fbsplash`
 reads; `post-build.sh` appends `BASEOS_VERSION` from `VERSION` and a
-`git describe` `BASEOS_BUILD`. An uncommitted
-tree's `-dirty` id gets a UTC timestamp appended, so two such builds never share
-an id: a card skips a same-version payload whose id matches its own.
-`post-image.sh` puts the same id in the `.bosupd` manifest.
+`git describe --dirty` `BASEOS_BUILD`, both copied into the `.bosupd` manifest.
+The build id is only a label; [the card](card.md) says what decides an update.
 
 `/usr/miyoo/version` is written from the same variable and reads
 `BaseOS <version>`. It exists because `PLAT_getOsVersionInfo()` reads that path for the About screen

@@ -135,7 +135,9 @@ and the update writes there rather than over the volume your files are on. If th
 version does not start, the Flip restores the previous one by itself after three
 tries.
 
-You can leave the file on the card — it is applied once and then ignored.
+You can leave the file on the card — it is applied once and then ignored, as is
+an older version. To install it anyway, rename it to start with `force-`
+(`force-baseos-my355-1.2.0.bosupd`): it is applied on the next boot, then deleted.
 
 ## If something goes wrong
 
@@ -181,7 +183,7 @@ NextUI on a card in the left-hand slot, as above.
 Updates are skipped in silence, because the check runs on every boot. To see why, run
 `baseos-update status` over adb: it lists every payload it can find with the verdict
 for each — most often the file is older than what is already installed, or it has been
-applied before.
+applied before. Renaming it to start with `force-` installs it anyway.
 
 ### The Flip does not start at all
 

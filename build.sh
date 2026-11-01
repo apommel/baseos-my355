@@ -67,9 +67,10 @@ if [ "$(sha256 "$LIBMALI/$LIBMALI_BLOB" 2>/dev/null)" != "$LIBMALI_SHA256" ]; th
 fi
 
 BASEOS_VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
+# baseos-update compares plain x.y.z.
+echo "$BASEOS_VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' ||
+  { echo "VERSION must be x.y.z, not '$BASEOS_VERSION'" >&2; exit 1; }
 BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
-# A card skips a same-version payload with its own build id.
-case "$BASEOS_BUILD" in *-dirty) BASEOS_BUILD="$BASEOS_BUILD-$(date -u +%Y%m%d%H%M%S)" ;; esac
 
 echo "== BaseOS $BASEOS_VERSION ($BASEOS_BUILD): make $TARGETS, log in work/build.log =="
 docker run --rm --platform linux/arm64 \

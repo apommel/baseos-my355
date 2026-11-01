@@ -75,6 +75,7 @@ PY
   }
   # payload TARGET VERSION BUILD [flaw]
   payload() { python3 /mkpayload.py "/mnt/SDCARD/baseos-my355-$2.bosupd" "$@"; }
+  force() { mv "/mnt/SDCARD/baseos-my355-$1.bosupd" "/mnt/SDCARD/force-baseos-my355-$1.bosupd"; }
   no_flip() { [ ! -e /tmp/flip.log ] || { echo "flipped: $1" >&2; exit 1; }; }
   refused() { grep -q "UPDATE FAILED" /tmp/splash.log; }
 
@@ -84,11 +85,15 @@ PY
   no_flip "with no payload"
   [ ! -e /tmp/splash.log ]
 
-  # Built for another device, or for a card with different slots.
-  for flaw in target badslots; do
+  # Built for another device (forced or not), for other slots, or unversioned.
+  for flaw in target forced badslots version; do
     reset
-    if [ "$flaw" = target ]; then payload rg40xxv 0.4.0 def
-    else payload my355 0.4.0 def badslots; fi
+    case "$flaw" in
+    target) payload rg40xxv 0.4.0 def ;;
+    forced) payload rg40xxv 0.4.0 def; force 0.4.0 ;;
+    badslots) payload my355 0.4.0 def badslots ;;
+    version) payload my355 latest def ;;
+    esac
     if sh /test/baseos-update apply; then echo "$flaw was accepted" >&2; exit 1; fi
     no_flip "a $flaw mismatch"
     refused
@@ -152,29 +157,44 @@ PY
   sh /test/baseos-update boot-check
   [ "$(cat /tmp/flip.log)" = "rootfs" ]
 
-  # Nor is one older than the running version, which would ping-pong.
+  # Nor is one older than the running version.
   reset
   payload my355 0.2.0 old
   sh /test/baseos-update apply
   no_flip "an older payload"
 
-  # A release beats its own pre-releases, which order semver-style. Pairs are
-  # payload:running.
+  # Numeric, legacy suffix ignored, rebuilds taken. Pairs are payload:running.
   release() {
     printf "BASEOS_TARGET=my355\nBASEOS_VERSION=%s\nBASEOS_BUILD=abc\n" "$1" > /etc/baseos-release
   }
-  for pair in 0.4.0:0.4.0-beta.1 0.4.0-beta.2:0.4.0-beta.1 0.4.0-beta.10:0.4.0-beta.9 \
-      0.4.0-rc.1:0.4.0-beta.2 0.4.0-beta.1:0.4.0-beta 0.4.0-beta.1:0.3.0 0.4.1-beta.1:0.4.0; do
+  for pair in 0.10.0:0.9.0 1.0:0.9.9 1.2.0:1.2.0-beta.1 0.3.0:0.3.0; do
     reset; release "${pair#*:}"; payload my355 "${pair%:*}" def
     sh /test/baseos-update apply
     [ -e /tmp/flip.log ] || { echo "not taken: $pair" >&2; exit 1; }
   done
-  for pair in 0.4.0-beta.1:0.4.0 0.4.0-beta.1:0.4.0-beta.2 0.4.0-beta:0.4.0-beta.1 \
-      0.4.0-beta.2:0.4.0-rc.1 0.3.0:0.4.0-beta.1; do
+  for pair in 0.9.0:0.10.0 1.1.0:1.2.0-beta.1; do
     reset; release "${pair#*:}"; payload my355 "${pair%:*}" def
     sh /test/baseos-update apply
     no_flip "$pair"
   done
+
+  # Forced: older, then already applied, each time deleted before the commit.
+  reset; release 0.4.0
+  for run in older applied; do
+    rm -f /tmp/flip.log
+    payload my355 0.2.0 old; force 0.2.0
+    sh /test/baseos-update apply
+    [ -e /tmp/flip.log ] || { echo "forced $run payload not taken" >&2; exit 1; }
+    [ ! -e /mnt/SDCARD/force-baseos-my355-0.2.0.bosupd ]
+  done
+  # One it cannot delete is never committed.
+  reset
+  payload my355 0.2.0 old; force 0.2.0
+  rm /bin/rm; printf "#!/bin/sh\nexit 1\n" > /bin/rm; chmod +x /bin/rm
+  if sh /test/baseos-update apply; then echo "unremovable forced payload accepted" >&2; exit 1; fi
+  ln -sf /bin/busybox /bin/rm
+  no_flip "a forced payload it could not remove"
+  [ ! -f /data/update/state ]
   release 0.3.0
 
   # The trial: two quiet boots, then the third restores the previous slots.
@@ -199,5 +219,5 @@ PY
   [ ! -f /data/update/state ]
   [ ! -f /mnt/SDCARD/done.bosupd ]
 
-  echo "  PASS commits only what verifies, never twice, and rolls back"
+  echo "  PASS commits only what verifies, never twice unless forced, and rolls back"
 '
