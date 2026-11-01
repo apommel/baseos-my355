@@ -96,9 +96,9 @@ git tag v1.4.0 && git push origin v1.4.0
 ```
 
 The build then makes a **draft** release with the `.img.zip`, the `.bosupd` and
-`SHA256SUMS`, marked pre-release if the version has a suffix (`1.4.0-beta.1`).
-Write the notes and publish it from the releases page. A build from an empty
-cache takes hours; ccache and the downloads are cached for the next.
+`SHA256SUMS`. Write the notes and publish it from the releases page, ticking
+**Set as a pre-release** for a test build. Versions are plain `x.y.z`. A build
+from an empty cache takes hours; ccache and the downloads are cached for the next.
 
 ## Conventions
 
