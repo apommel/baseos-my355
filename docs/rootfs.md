@@ -79,6 +79,7 @@ the list grows as more of the stack is exercised:
 | `mkfs.ext4` | spruceOS `setup_32bit_libs.sh` | formats the image behind spruceOS's `/usr` overlay. `/etc/mke2fs.conf`, stock's, is in `overlay/` |
 | `bash` | spruceOS | PortMaster ports, and root's shell in spruceOS's `/etc/passwd`. `/etc/shells` lists it, in `overlay/` |
 | `bluealsa-aplay` | spruceOS `bt_audio_ready()` | detects a Bluetooth headset |
+| `libEGL.so`, `libGLESv2.so` | SDL2 `dlopen` | not harvested but linked by `build-rootfs.sh` to the harvested sonames, as on stock. The SDL2 builds spruceOS bundles for PICO-8 and DraStic on the Flip, and its GLideN64, open only these names, so without them it cannot load EGL and gets no video |
 
 Two layout notes. Zone files live in `posix/` and the top-level names symlink
 into it, so only `right/` can be dropped. `/etc/localtime` is a symlink to

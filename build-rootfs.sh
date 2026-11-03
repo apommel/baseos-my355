@@ -78,6 +78,11 @@ docker run --rm --platform "$BASEOS_DOCKER_PLATFORM_AARCH64" \
   mkdir -p "$R"/usr/libexec
   ln -sf gesftpserver     "$R"/usr/libexec/sftp-server
 
+  # Stock has these dev names, and some SDL2 builds dlopen them with no
+  # versioned fallback: spruceOS PICO-8, DraStic and GLideN64 on the Flip.
+  ln -sf libEGL.so.1    "$R"/usr/lib/libEGL.so
+  ln -sf libGLESv2.so.2 "$R"/usr/lib/libGLESv2.so
+
   # fbsplash: the panel is the only output device this hardware has.
   apk add -q build-base linux-headers pkgconf \
     freetype-dev freetype-static zlib-static libpng-static bzip2-static brotli-static
