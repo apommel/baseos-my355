@@ -250,12 +250,13 @@
 	};
 
 	/*
-	 * boot-on as on stock, so probe never cuts the card U-Boot booted from: a
-	 * card cut and repowered on this board may not answer (docs/uboot.md).
+	 * Both card rails stay on, as the vendor kernel never switches them: a card
+	 * cut and repowered may not answer (docs/uboot.md, docs/power.md).
 	 */
 	vcc_sd: vcc-sd {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc_sd";
+		regulator-always-on;
 		regulator-boot-on;
 		enable-active-low;
 		gpio = <&gpio0 RK_PA5 GPIO_ACTIVE_LOW>;
@@ -268,6 +269,7 @@
 	vcc_sd2: vcc-sd2 {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc_sd2";
+		regulator-always-on;
 		regulator-boot-on;
 		enable-active-low;
 		gpio = <&gpio2 RK_PB1 GPIO_ACTIVE_LOW>;
@@ -619,7 +621,7 @@
 			status = "okay";
 		};
 
-		/* Sleep states are stock's, but vccio_sd: BaseOS runs from the card. */
+		/* Sleep states are stock's, but vccio_sd: on, for the cards (docs/power.md). */
 		regulators {
 			vdd_logic: DCDC_REG1 {
 				regulator-name = "vdd_logic";
@@ -735,9 +737,10 @@
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <3300000>;
 
+				/* 1.8 V, as vccio3's pads are set while awake: 3.3 V cost ~11 mA. */
 				regulator-state-mem {
 					regulator-on-in-suspend;
-					regulator-suspend-microvolt = <3300000>;
+					regulator-suspend-microvolt = <1800000>;
 				};
 			};
 
@@ -981,8 +984,8 @@
 };
 
 /*
- * vccio_sd is shared with the boot slot and belongs to it: high speed only,
- * no UHS switch. Slot 1's pins are on a fixed 3.3 V domain.
+ * No vqmmc: vccio_sd belongs to the boot slot, so this one stays at high speed.
+ * Its pins (vccio4) may be fed from vccio_sd too (docs/hardware.md).
  */
 &sdmmc1 {
 	max-frequency = <150000000>;
