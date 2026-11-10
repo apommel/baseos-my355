@@ -274,7 +274,7 @@ zstd's slowness was U-Boot's build flags, not zstd (below).
 |---|---|---|
 | The vendor U-Boot hands the kernel a CPU at 1104 MHz; mainline at 816 | **verified, fixed** | stock serial log: `CLK: (sync kernel. arm: enter 816000 KHz …)`, `armclk 1104000 KHz`; mainline `cru_rk3568.h`: `APLL_HZ (816 * MHz)`. Before cpufreq, the kernel took 0.788 s at 816 MHz against the 0.785 s the ratio predicts |
 | `vdd_cpu` is a TCS4525 at i2c0 `0x1c`, at 850 mV | **wrong** | the Flip has an **RK8600 at `0x40`** (i2cdump of `0x1c` is empty; Miyoo confirmed one SKU, per the wiki). It powers on at **1000 mV** (VSEL0 `0x97`, read by our U-Boot). The 850 mV was read from a running kernel after cpufreq had set it |
-| quartz64-a's control tree is correct for the Flip | **wrong, replaced** | right for `sdmmc0`'s rails and card detect and the RK817's voltages, but its IO-domain map put **vccio4 in 1.8 V mode on a 3.3 V rail** until the kernel corrected it at 1.74 s; wrong for the CPU rail; and it describes Ethernet, PCIe and USB. The Flip's own tree since 2026-09-19 (*The control tree*, below) |
+| quartz64-a's control tree is correct for the Flip | **wrong, replaced** | right for `sdmmc0`'s rails and card detect and the RK817's voltages, but its IO-domain map put **vccio4 in 1.8 V mode where the Flip's tree has a 3.3 V rail** until the kernel corrected it at 1.74 s; wrong for the CPU rail; and it describes Ethernet, PCIe and USB. The Flip's own tree since 2026-09-19 (*The control tree*, below) |
 | its size is what makes early init slow (287 ms of driver model before relocation), so a Flip tree is the fix | **wrong** | the cost was reading any tree with the data cache off: cached, the same binding takes 9 ms (below). The Flip tree took 26 ms off, after relocation |
 | early init is slow because instructions are fetched uncached | **wrong** | enabling the I-cache first thing in `board_init_f` moved no step by more than 0.5 ms: the SPL leaves it on |
 | U-Boot may read the kernel at a fixed sector | **wrong** | an A/B update moves `boot` to its other half (`src/gptslot.c`: nothing in the boot chain references an address). That U-Boot would have booted the old kernel on the new rootfs |
@@ -645,11 +645,11 @@ values from the vendor kernel's tree and nothing U-Boot does not use:
 
 quartz64-a's rails matched the Flip's, down to the RK817's voltages, but its IO
 domains did not. U-Boot sets each domain's pad voltage as it binds the node,
-and quartz64-a feeds vccio4 from `vcc_1v8` where the Flip feeds it `vcc_3v3`.
-So every boot held vccio4 in 1.8 V mode on a 3.3 V rail from U-Boot until the
-kernel's driver probed at 1.74 s. The kernel's own log confirms the Flip's map
-(`vccio4(3300000 uV) supplied by vcc_3v3`). Rockchip's hardware design guide
-requires the setting to match the supply.
+and quartz64-a feeds vccio4 from `vcc_1v8` where the Flip's tree, as stock's,
+feeds it `vcc_3v3`. So every boot held vccio4 in 1.8 V mode from U-Boot until
+the kernel's driver probed at 1.74 s, against the tree's 3.3 V. Which rail the
+board really feeds it from is unconfirmed ([hardware](hardware.md)). Rockchip's
+hardware design guide requires the setting to match the supply.
 
 Dropping quartz64-a's Ethernet, PCIe, USB, SDIO, audio and display nodes
 took init after relocation from 59 to 36 ms. U-Boot now binds 242 devices

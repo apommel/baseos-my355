@@ -85,11 +85,41 @@ built in, and only one module loaded at runtime (`RTL8189FU`, unused).
 Stock's `runmiyoo.sh` binds `/mnt/sdcard` to the right slot only and power-offs with
 *"Please use the right SD slot for NextUI"* if a NextUI card is found on the left.
 
-The left slot is also capped at high speed: its pins sit in a fixed 3.3 V I/O
-domain, so it cannot do UHS ([boot time](boot-time.md)). The vendor tree still
-gives its controller the right slot's I/O rail, `vccio_sd`, as `vqmmc-supply`;
-BaseOS removes it, since the two controllers' requests on one rail lost the boot
-card on resume ([history](history.md)).
+## SD rails — partly unconfirmed
+
+| | right slot (boot) | left slot |
+|---|---|---|
+| controller | `sdmmc0`, `fe2b0000` | `sdmmc1`, `fe2c0000` |
+| pins | GPIO1_D5–GPIO2_A2, IO domain `vccio3` | GPIO2_A3–B0, detect GPIO2_B2, IO domain `vccio4` |
+| I/O rail | `vccio_sd`, RK817 LDO5, 1.8–3.3 V | `vcc_3v3` in the trees, **unconfirmed** (below) |
+| card power | `vcc_sd`, GPIO0_A5, active low (PMU domain) | `vcc_sd2`, GPIO2_B1, active low (in `vccio4`) |
+| bus | SDR104, 1.8 V signalling | high speed, 50 MHz, no voltage switch |
+
+Both card rails stay on, asleep too, as on the vendor kernel: mainline cutting
+them at suspend lost the left card on resume ([power](power.md)). `vccio_sd`
+sleeps at 1.8 V.
+
+**What feeds `vccio4` is not established.** Stock's tree and ours say
+`vcc_3v3`, and the IO-domain driver keeps its pads in 3.3 V mode accordingly;
+the kernel's `vccio4(3300000 uV) supplied by vcc_3v3` only restates the tree.
+Against it:
+
+- stock's own tree gives the left controller `vqmmc-supply = <&vccio_sd>`;
+- Zetarancio's notes report two 1.8 V cards working together, not reproduced
+  here;
+- the left card follows `vccio_sd`'s sleep voltage: 20 resumes of 20 at
+  3.3 V, lost on the nineteenth at 1.8 V and on the third with it off.
+
+For it, only the 2026-09-16 attempt at SDR104 on the left slot, which failed.
+That ran on the vendor kernel with both controllers on `vccio_sd`, where the
+left slot's 3.3 V request alone fails a 1.8 V switch ([history](history.md)),
+so it decides nothing. A meter on a left-slot pin while awake settles it:
+1.8 V means `vccio_sd`. If so, those pads run at 1.8 V in 3.3 V mode while
+awake, which works but is out of spec.
+
+The vendor tree's `vqmmc-supply` on the left controller is removed, since the
+two controllers' requests on one rail lost the boot card on resume
+([history](history.md)).
 
 ---
 

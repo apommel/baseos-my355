@@ -232,9 +232,10 @@ timeout itself is in the kernel's tuning code, out of reach. A fixed phase
 (`rockchip,use-v2-tuning`) would skip tuning altogether but suits only the card
 it was chosen for. All warm reboots, one card.
 
-Slot 1 **cannot follow**: its pins are GPIO2_A3–B0, in I/O domain `vccio4` on a
-fixed 3.3 V rail. Tried on 2026-09-16 — the card accepted the 1.8 V switch, the
-host could not follow, and `mmcblk2` never appeared. It stays at 50 MHz.
+Slot 1 stays at 50 MHz. Its pins are GPIO2_A3–B0, in I/O domain `vccio4`,
+whose rail is unconfirmed ([hardware](hardware.md)). Tried on 2026-09-16, on
+the vendor kernel with both controllers on `vccio_sd`: the card hung in init
+and `mmcblk2` never appeared.
 
 Corroboration from outside this project: the Miyoo Flip mainline port runs
 `sd-uhs-sdr12/25/50/104` with `max-frequency = <150000000>` on this slot, and
