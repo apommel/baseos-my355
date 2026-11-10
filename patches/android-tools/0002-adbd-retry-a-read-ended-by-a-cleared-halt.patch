@@ -1,0 +1,27 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] adbd: retry a read ended by a cleared halt
+
+When the host clears a bulk endpoint's halt, dwc3 gives the read queued on
+it back with EPIPE. adbd took that for a dead link and closed functionfs,
+which unbinds the gadget; usb-gadget-adb bound it again, the host opened
+it again, and adb never connected. adb 37 on macOS does this on every
+open with its default USB backend. Nothing was received, so read again.
+---
+--- a/core/adbd/usb_linux_client.c
++++ b/core/adbd/usb_linux_client.c
+@@ -385,11 +385,15 @@
+ static int bulk_read(int bulk_out, char *buf, size_t length)
+ {
+     size_t count = 0;
++    int stalls = 0;
+     int ret;
+
+     do {
+         ret = adb_read(bulk_out, buf + count, length - count);
+         if (ret < 0) {
++            /* dwc3 ends a queued read with EPIPE when the host clears the halt. */
++            if (errno == EPIPE && count == 0 && stalls++ < 8)
++                continue;
+             if (errno != EINTR) {
+                 D("[ bulk_read failed fd=%d length=%d count=%d ]\n",
+                                            bulk_out, length, count);
