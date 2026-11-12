@@ -1,0 +1,28 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] kmsdrm: keep the surfaces when the mode has not changed
+
+Showing a window runs a fullscreen update even when nothing changes (SDL2
+returned early there), and KMSDRM_SetWindowFullscreen marks the surfaces
+dirty. The first swap then recreates them after the frame was drawn into
+the old ones, so that frame is lost. A program that draws once and waits,
+like minui-presenter in the Developer pak, stays black. Still so in 3.4.20,
+which recreates at the start of the swap but presents the undrawn surface.
+---
+--- a/src/video/kmsdrm/SDL_kmsdrmvideo.c
++++ b/src/video/kmsdrm/SDL_kmsdrmvideo.c
+@@ -1784,6 +1784,15 @@
+ 
+     // If the current window already has surfaces, destroy them before creating other.
+     if (windata->gs) {
++        drmModeModeInfo mode;
++
++        // Same mode: keep them. Recreating shows the console and loses this frame.
++        KMSDRM_GetModeToSet(window, &mode);
++        if (SDL_memcmp(&mode, &dispdata->mode, sizeof(mode)) == 0) {
++            windata->egl_surface_dirty = false;
++            return true;
++        }
++
+         KMSDRM_DestroySurfaces(_this, window);
+     }
+ 
