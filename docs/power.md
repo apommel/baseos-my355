@@ -134,7 +134,7 @@ The RK817's power registers, diffed against a stock dump, now match in every
 sleep enable and voltage. The firmware has nothing further to give: `0x5ec` sets every
 sleep flag stock's BL31 knows but `32K_EXT`, and no 32 kHz clock reaches
 GPIO0_B0 for it (the pin reads a steady level). What still draws is the PMU
-domain, the DDR in self-refresh and the PMIC, as on stock. Left open: a 1 h run of the final state.
+domain, the DDR in self-refresh and the PMIC, as on stock.
 
 A plain `./build.sh` does not rebuild the device tree: two builds shipped
 without the 2026-11-10 change. After a DTS edit, `./build.sh linux-rebuild all`.

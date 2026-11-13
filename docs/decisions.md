@@ -136,9 +136,9 @@ against stock symbol by symbol. SDL2 is sdl2-compat over SDL3.
 
 ## Open
 
-- **spruceOS as a frontend.** Its card would be mounted and its `updater`
-  executed, but whether it finds the userland it expects in this rootfs is
-  unchecked.
+- **spruceOS as a frontend.** It installs and runs, but not everything in it
+  was tried, and its card was never scanned as NextUI's was
+  ([what frontends need](rootfs-interface.md)).
 - **The stock bundle.** The build takes three files from it: `uboot.img` and
   the Bluetooth firmware, but the published bundle still carries `boot.img`
   and the whole harvest. The firmware cannot come from elsewhere yet:

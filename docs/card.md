@@ -49,7 +49,9 @@ mountable filesystems they raced for the one mountpoint stock reads, and the
 installer had to be on every one ([SD boot](boot-chain.md)).
 
 A card first booted by an older release keeps its FAT32 `primary`: an update never
-touches it. Every mount of it accepts either.
+touches it. Every mount of it accepts either. Updating a 1.3.1 card to the
+mainline build works this way: the new root is written, and `primary` and
+`/data` keep the filesystems they had.
 
 Each of the three updatable regions reserves twice what it needs, and only one
 half is ever a partition; the spare is where an update writes (below). Leaving it

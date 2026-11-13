@@ -32,8 +32,11 @@ NextCommander).
 **Not covered:**
 - Rumble never fired in either trace. It is taken from source:
   `PLAT_setRumble` writes `0` or `1` to `gpio20`.
-- PPSSPP, DraStic, Flycast and PortMaster aren't installed on this card.
-  Dolphin is set aside for now.
+- PPSSPP, DraStic, Flycast and PortMaster aren't installed on this card, and
+  not all have a Flip pak on NextUI. Dolphin was not traced, but runs
+  (*GPU drivers*, below).
+- spruceOS: it installs and runs, but was not traced or scanned, and not every
+  feature was tried.
 - The boot-time part of `launch.sh` is taken from its source.
 
 ## Strategy, in order of preference
@@ -106,19 +109,14 @@ constrains the design.
 
 ## Open questions
 
-1. **Which kbase do the blobs accept?** ROCKNIX's `mali_kbase` at the pinned
-   commit is r54p2, UK 11.46. Stock's kbase is UK 11.38, and kbase accepts
-   older minor versions, so g13p0 should negotiate. Still to confirm on
-   hardware, for g13p0 and g29p1.
-2. **What does `/dev/miyooio` do?** That decides between keeping
-   `miyoo_inputd` and a kernel driver named `MIYOO Player1`. Also record the
-   axis ranges of `MIYOO Player1`, since SDL mappings depend on them.
-3. ~~What are stock's input key codes?~~ Read from the stock DTB and copied
-   into `board/my355/linux/dts/rockchip/rk3566-miyoo-flip.dts`: the `gpio-keys-polled` and
-   `hall-mh248` nodes, the LEDs and the backlight table.
-4. **Does any pak or tool name `fcc00000.dwc3` literally?**
-5. **What do Dolphin and any standalone paks installed later touch?** Trace
-   them when they're on the card.
+1. **Does any pak or tool name `fcc00000.dwc3` literally?**
+2. **What do standalone paks installed later touch?** Trace them when
+   they're on the card.
+
+Answered since: ROCKNIX's `mali_kbase` (r54p2) runs libmali g29p1 and
+spruceOS's g2p0; `/dev/miyooio` is replaced by the `miyoo-player1` driver
+(*The gamepad*, below); stock's key codes were read from its DTB into
+`board/my355/linux/dts/rockchip/rk3566-miyoo-flip.dts`.
 
 ## Status
 
@@ -249,7 +247,9 @@ Different from stock, found on the first boots:
     `/data`.
   - PanVK has the G52 behind `PAN_I_WANT_A_BROKEN_VULKAN_DRIVER=1`, set for
     the frontend, and gives Vulkan 1.0; libmali gives 1.3. Both have
-    `VK_KHR_display`. libmali's Wayland and X11 layer is left out.
+    `VK_KHR_display`. libmali's Wayland and X11 layer is left out. Stock
+    had no Vulkan at all. PanVK mostly works, and libmali is the faster of
+    the two: Dolphin runs best on `gpu=mali` with its Vulkan backend.
 
   Both run NextUI, minarch with shaders and N64 (2026-10-27). In game,
   Panfrost drew 2.92 W, as libmali.
@@ -315,11 +315,15 @@ Different from stock, found on the first boots:
   from 2% (levels 1-4 stay at 2%, where the panel still lights), the same as
   stock from 39 up. NextUI's raw values written to `brightness` then give the
   duty it writes to the PWM; on the vendor kernel they come out brighter
-  below 39. Stock-built software asking for 1-38 gets a dimmer panel.
+  below 39. Stock-built software asking for 1-38 gets a dimmer panel, by
+  design: the lowest levels are there to be used.
 - **event0 has three keys.** On stock it also types every game button as a
   keyboard key, so anything reading both devices saw each press twice. It
   keeps menu and volume for keymon, and the game buttons are only on
-  `MIYOO Player1`. Menu is on both, as keymon needs it.
+  `MIYOO Player1`. Menu is on both, as keymon needs it. For software that
+  reads only a keyboard, `keyboard_input=on` in baseos.conf (or the driver's
+  sysfs `keyboard`) adds `MIYOO Player1 Keyboard`, typing stock's codes for
+  every game button but menu; off by default, as it brings the doubles back.
 - **The lid.** `hall-mh248` probes before the PMIC's power key, so it is
   event1 as on stock, and `launch.sh` moves it aside instead of the power key.
   Its `KEY_POWER` comes on every lid move: stock's comes on close with the
@@ -378,6 +382,9 @@ Different from stock, found on the first boots:
   kbase, with no RT threads, ran it at 627 MHz. `CONFIG_UCLAMP_TASK` is built
   in and rcS sets `sched_util_clamp_min_rt_default` to 0, so RT tasks ask for
   the clock their own load needs; stock's kernel had neither.
+- **USB audio.** libmsettings looks for a `USB-Audio` card, and
+  `SND_USB_AUDIO` was not in the config; built in now, as nothing loads a
+  hotplugged device's module. Not tried with a DAC or headset yet.
 - **Battery readings.** The mainline gauge has `current_avg` and
   `voltage_avg`, not `current_now` and `voltage_now`. Nothing stock reads
   them; [power](power.md)'s method uses the averages here.

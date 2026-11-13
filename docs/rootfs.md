@@ -418,9 +418,8 @@ So BaseOS writes nothing to the card beyond staging `.tmp_update`, and anything
 before the hand-off that touches `/userdata` sees the empty root directory —
 `S36load_wifi_modules` refuses to seed it for that reason.
 
-Starting is not running: a spruceOS card would be mounted and its `updater`
-executed, but whether spruceOS finds the userland it expects in this rootfs
-has not been checked.
+A spruceOS card is mounted and run the same way: it installs and runs, though
+not everything in it was tried.
 
 ### Installing onto a fresh card
 
