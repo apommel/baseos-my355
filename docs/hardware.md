@@ -97,7 +97,7 @@ Stock's `runmiyoo.sh` binds `/mnt/sdcard` to the right slot only and power-offs 
 
 Both card rails stay on, asleep too, as on the vendor kernel: mainline cutting
 them at suspend lost the left card on resume ([power](power.md)). `vccio_sd`
-sleeps at 1.8 V.
+is off asleep, as on stock.
 
 **What feeds `vccio4` is not established.** Stock's tree and ours say
 `vcc_3v3`, and the IO-domain driver keeps its pads in 3.3 V mode accordingly;
@@ -108,7 +108,8 @@ Against it:
 - Zetarancio's notes report two 1.8 V cards working together, not reproduced
   here;
 - the left card follows `vccio_sd`'s sleep voltage: 20 resumes of 20 at
-  3.3 V, lost on the nineteenth at 1.8 V and on the third with it off.
+  3.3 V, lost on the nineteenth at 1.8 V and on the third with it off, all with
+  the card rails cut at suspend.
 
 For it, only the 2026-09-16 attempt at SDR104 on the left slot, which failed.
 That ran on the vendor kernel with both controllers on `vccio_sd`, where the
