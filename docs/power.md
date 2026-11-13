@@ -78,9 +78,9 @@ None is kept:
 
 ## Deep sleep
 
-**~15 mA asleep** on mainline since 2026-11-10, from 26.6 mA. Stock sleeps at
+**~12 mA asleep** on mainline since 2026-11-13, from 26.6 mA. Stock sleeps at
 12.6 mA and BaseOS 1.3.1, on the vendor kernel, at 13.2 mA: a full battery now
-lasts ~8 days asleep, where it lasted ~4.7.
+lasts ~10 days asleep, where it lasted ~4.7.
 
 Each point is one RTC-woken deep sleep, unplugged, with WiFi stopped as
 NextUI's `suspend` does, and the RK817 coulomb counter (0x74–0x77, ~20923
@@ -100,11 +100,12 @@ is still unexplained).
 | … with `vdd_logic` held on | 32.6 |
 | … with both card rails held on | 26.0 |
 | … with `vccio_sd` at 1.8 V | 15.0 |
-| … with `vccio_sd` at 1.8 V and both card rails held on: **now** | 15.1 over 1 h |
+| … with `vccio_sd` at 1.8 V and both card rails held on | 15.1 over 1 h, 15.9 over 10 min |
 | … with `vccio_sd` off, as stock | hung on resume, no result |
+| … with `vccio_sd` off and both card rails held on: **now** | 12.5 over 10 min |
 
 **Ruled out:** the sleep firmware (stock's BL31, OP-TEE and DDR blob, mode
-`0x5ec`); the PMIC's sleep enables, which match stock's but for `vccio_sd`; the
+`0x5ec`); the PMIC's sleep enables, which matched stock's but for `vccio_sd`; the
 RK8600 CPU rail, off in sleep; the WiFi chip, cut before the sleep; the second
 card (1.3.1 sleeps with two); the codec; `vdd_logic`, which is cut (holding it
 costs 6 mA); the awake clock, power, pin and GPIO state, diffed against stock
@@ -115,19 +116,25 @@ sleep.
 3.3 V. Awake it is at 1.8 V for the boot card's SDR104, and the IO-domain
 driver sets `vccio3`'s pads to 1.8 V mode (`PMU_GRF_IO_VSEL0` = 0x68). The
 PMIC moves to its sleep voltage on its own, so Linux never sees it, and the
-pads spent every sleep in 1.8 V mode on 3.3 V. Holding 1.8 V saves ~11 mA. The
-mechanism is inferred, not measured; nothing recorded why 3.3 V was chosen.
+pads spent every sleep in 1.8 V mode on 3.3 V. Holding 1.8 V saves ~11 mA, and
+switching it off, as stock, ~3 mA more. The mechanism is inferred, not
+measured; nothing recorded why 3.3 V was chosen.
 
-**Why not off, as stock:** mainline lost the NextUI card on resume. In 15 s
+**Why off needs the card rails on:** mainline lost the NextUI card on resume. In 15 s
 RTC cycles, off failed on the third and 1.8 V on the nineteenth of twenty:
 `Busy; trying anyway`, `Timeout sending command`, `error -95 doing runtime
 resume`, the card back by itself ~48 s later. A 1 h sleep with it off never
 came back. Mainline's MMC core cuts both card rails at suspend, which the
 vendor kernel never does (it leaves their GPIOs unclaimed); held on with
-`regulator-always-on`, 1.8 V passed 40 cycles of 40 with no warning. Why the
-left card follows the boot slot's rail at all is open ([hardware](hardware.md)).
+`regulator-always-on`, 1.8 V passed 40 cycles of 40 with no warning, and off
+20 of 20. Why the left card follows the boot slot's rail at all is open
+([hardware](hardware.md)).
 
-Left open: the ~2 mA to 1.3.1.
+The RK817's power registers, diffed against a stock dump, now match in every
+sleep enable and voltage. Left open: a 1 h run of the final state.
+
+A plain `./build.sh` does not rebuild the device tree: two builds shipped
+without the 2026-11-10 change. After a DTS edit, `./build.sh linux-rebuild all`.
 
 ## The DDR touch boost — removed
 

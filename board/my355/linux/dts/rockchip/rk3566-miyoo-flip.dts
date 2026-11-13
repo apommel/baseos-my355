@@ -621,7 +621,7 @@
 			status = "okay";
 		};
 
-		/* Sleep states are stock's, but vccio_sd: on, for the cards (docs/power.md). */
+		/* Sleep states are stock's (docs/power.md). */
 		regulators {
 			vdd_logic: DCDC_REG1 {
 				regulator-name = "vdd_logic";
@@ -737,10 +737,9 @@
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <3300000>;
 
-				/* 1.8 V, as vccio3's pads are set while awake: 3.3 V cost ~11 mA. */
+				/* Off as on stock: safe only with both card rails held on (docs/power.md). */
 				regulator-state-mem {
-					regulator-on-in-suspend;
-					regulator-suspend-microvolt = <1800000>;
+					regulator-off-in-suspend;
 				};
 			};
 
