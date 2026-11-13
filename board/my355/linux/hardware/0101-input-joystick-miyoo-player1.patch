@@ -20,14 +20,15 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +obj-$(CONFIG_JOYSTICK_MIYOO_PLAYER1) += miyoo-player1.o
 --- a/drivers/input/joystick/miyoo-player1.c
 +++ b/drivers/input/joystick/miyoo-player1.c
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,538 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * MIYOO Player1: the Miyoo Flip's gamepad, as the stock miyoo_inputd presents
 + * it through uinput, so stock-built software sees the same device: name, Xbox
 + * 360 IDs, keys, axes and ranges.
 + *
-+ * Buttons are polled from button-gpios, so they are not also keyboard keys.
++ * Buttons are polled from button-gpios, so they are not also keyboard keys,
++ * unless sysfs keyboard is 1: a second device then types stock's key codes.
 + * Menu stays on event0 (gpio-keys-polled) with volume for keymon, and comes
 + * here through an input handler. The sticks come from the MCU on UART1,
 + * 9600 8N1, in frames FF YL XL YR XR FE.
@@ -36,6 +37,7 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +#include <linux/gpio/consumer.h>
 +#include <linux/input.h>
 +#include <linux/module.h>
++#include <linux/mutex.h>
 +#include <linux/of.h>
 +#include <linux/serdev.h>
 +#include <linux/spinlock.h>
@@ -52,31 +54,33 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +#define POLL_MS		10	/* gpio-keys-polled's interval on stock */
 +
 +/*
-+ * button-gpios order -> Player1 event, in stock's "xbox pad layout". Menu,
-+ * last, is not a GPIO here but event0's KEY_ESC.
++ * button-gpios order -> Player1 event, in stock's "xbox pad layout", and the
++ * key stock's gpio-keys-polled gave that pin. Menu, last, is not a GPIO here
++ * but event0's KEY_ESC, so it is not typed again.
 + */
 +static const struct p1_button {
 +	u16 type;
 +	u16 code;
 +	s16 value;
++	u16 key;
 +} p1_buttons[] = {
-+	{ EV_KEY, BTN_SOUTH,   1 },	/* b */
-+	{ EV_KEY, BTN_EAST,    1 },	/* a */
-+	{ EV_KEY, BTN_WEST,    1 },	/* x, stock's BTN_Y */
-+	{ EV_KEY, BTN_NORTH,   1 },	/* y, stock's BTN_X */
-+	{ EV_KEY, BTN_TL,      1 },
-+	{ EV_KEY, BTN_TR,      1 },
-+	{ EV_KEY, BTN_SELECT,  1 },
-+	{ EV_KEY, BTN_START,   1 },
-+	{ EV_KEY, BTN_THUMBL,  1 },
-+	{ EV_KEY, BTN_THUMBR,  1 },
-+	{ EV_ABS, ABS_Z,     255 },	/* l2 */
-+	{ EV_ABS, ABS_RZ,    255 },	/* r2 */
-+	{ EV_ABS, ABS_HAT0Y,  -1 },	/* up */
-+	{ EV_ABS, ABS_HAT0Y,   1 },	/* down */
-+	{ EV_ABS, ABS_HAT0X,  -1 },	/* left */
-+	{ EV_ABS, ABS_HAT0X,   1 },	/* right */
-+	{ EV_KEY, BTN_MODE,    1 },	/* menu */
++	{ EV_KEY, BTN_SOUTH,   1, KEY_LEFTCTRL },	/* b */
++	{ EV_KEY, BTN_EAST,    1, KEY_SPACE },		/* a */
++	{ EV_KEY, BTN_WEST,    1, KEY_LEFTSHIFT },	/* x, stock's BTN_Y */
++	{ EV_KEY, BTN_NORTH,   1, KEY_LEFTALT },	/* y, stock's BTN_X */
++	{ EV_KEY, BTN_TL,      1, KEY_TAB },
++	{ EV_KEY, BTN_TR,      1, KEY_BACKSPACE },
++	{ EV_KEY, BTN_SELECT,  1, KEY_RIGHTCTRL },
++	{ EV_KEY, BTN_START,   1, KEY_ENTER },
++	{ EV_KEY, BTN_THUMBL,  1, KEY_RIGHTALT },
++	{ EV_KEY, BTN_THUMBR,  1, KEY_RIGHTSHIFT },
++	{ EV_ABS, ABS_Z,     255, KEY_PAGEUP },		/* l2 */
++	{ EV_ABS, ABS_RZ,    255, KEY_PAGEDOWN },	/* r2 */
++	{ EV_ABS, ABS_HAT0Y,  -1, KEY_UP },
++	{ EV_ABS, ABS_HAT0Y,   1, KEY_DOWN },
++	{ EV_ABS, ABS_HAT0X,  -1, KEY_LEFT },
++	{ EV_ABS, ABS_HAT0X,   1, KEY_RIGHT },
++	{ EV_KEY, BTN_MODE,    1, KEY_RESERVED },	/* menu */
 +};
 +#define P1_GPIOS	(ARRAY_SIZE(p1_buttons) - 1)
 +#define P1_MENU		P1_GPIOS
@@ -87,6 +91,8 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +
 +struct p1 {
 +	struct input_dev *input;
++	struct input_dev *kbd;		/* NULL unless sysfs keyboard is 1 */
++	struct mutex kbd_lock;		/* kbd */
 +	struct input_handler handler;
 +	struct gpio_descs *gpios;
 +	spinlock_t lock;		/* cal, raw */
@@ -139,6 +145,14 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +	input_report_abs(input, ABS_Z, z);
 +	input_report_abs(input, ABS_RZ, rz);
 +	input_sync(input);
++
++	mutex_lock(&p1->kbd_lock);
++	if (p1->kbd) {
++		for (i = 0; i < P1_GPIOS; i++)
++			input_report_key(p1->kbd, p1_buttons[i].key, held & BIT(i));
++		input_sync(p1->kbd);
++	}
++	mutex_unlock(&p1->kbd_lock);
 +}
 +
 +/* Under event0's event_lock: only note menu, for the next poll. */
@@ -349,14 +363,72 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +	return sysfs_emit(buf, "%u %u %u %u\n", raw[1], raw[0], raw[3], raw[2]);
 +}
 +
++static ssize_t keyboard_show(struct device *dev, struct device_attribute *attr,
++			     char *buf)
++{
++	struct p1 *p1 = dev_get_drvdata(dev);
++	bool on;
++
++	mutex_lock(&p1->kbd_lock);
++	on = p1->kbd;
++	mutex_unlock(&p1->kbd_lock);
++	return sysfs_emit(buf, "%d\n", on);
++}
++
++/*
++ * For software that only reads a keyboard. Off by default: anything reading
++ * both devices sees each press twice, as on stock.
++ */
++static ssize_t keyboard_store(struct device *dev, struct device_attribute *attr,
++			      const char *buf, size_t count)
++{
++	struct p1 *p1 = dev_get_drvdata(dev);
++	struct input_dev *kbd;
++	bool on;
++	int i, ret;
++
++	ret = kstrtobool(buf, &on);
++	if (ret)
++		return ret;
++
++	mutex_lock(&p1->kbd_lock);
++	if (on && !p1->kbd) {
++		kbd = input_allocate_device();
++		if (!kbd) {
++			ret = -ENOMEM;
++			goto out;
++		}
++		kbd->name = "MIYOO Player1 Keyboard";
++		kbd->id.bustype = BUS_HOST;
++		kbd->dev.parent = dev;
++		__set_bit(EV_REP, kbd->evbit);	/* stock's node has autorepeat */
++		for (i = 0; i < P1_GPIOS; i++)
++			input_set_capability(kbd, EV_KEY, p1_buttons[i].key);
++		ret = input_register_device(kbd);
++		if (ret) {
++			input_free_device(kbd);
++			goto out;
++		}
++		p1->kbd = kbd;
++	} else if (!on && p1->kbd) {
++		input_unregister_device(p1->kbd);
++		p1->kbd = NULL;
++	}
++out:
++	mutex_unlock(&p1->kbd_lock);
++	return ret ?: count;
++}
++
 +static DEVICE_ATTR_RW(calibration_left);
 +static DEVICE_ATTR_RW(calibration_right);
 +static DEVICE_ATTR_RO(raw);
++static DEVICE_ATTR_RW(keyboard);
 +
 +static struct attribute *p1_attrs[] = {
 +	&dev_attr_calibration_left.attr,
 +	&dev_attr_calibration_right.attr,
 +	&dev_attr_raw.attr,
++	&dev_attr_keyboard.attr,
 +	NULL
 +};
 +ATTRIBUTE_GROUPS(p1);
@@ -372,6 +444,7 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +	if (!p1)
 +		return -ENOMEM;
 +	spin_lock_init(&p1->lock);
++	mutex_init(&p1->kbd_lock);
 +	for (i = 0; i < 4; i++)
 +		p1->cal[i / 2][i % 2] = p1_cal_default;
 +	for (i = 0; i < 4; i++)
@@ -445,6 +518,11 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +	struct p1 *p1 = serdev_device_get_drvdata(serdev);
 +
 +	input_unregister_handler(&p1->handler);
++	mutex_lock(&p1->kbd_lock);
++	if (p1->kbd)
++		input_unregister_device(p1->kbd);
++	p1->kbd = NULL;
++	mutex_unlock(&p1->kbd_lock);
 +}
 +
 +static const struct of_device_id p1_of_match[] = {

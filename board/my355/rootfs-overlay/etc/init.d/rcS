@@ -148,6 +148,13 @@ fi
 # libmali or Mesa, from baseos.conf, before the frontend starts.
 /usr/sbin/baseos-gpu
 
+# keyboard_input=on: the pad also types stock's keys. Here, before the
+# frontend, as SDL only enumerates keyboards at start.
+. /usr/share/baseos/conf.sh
+conf_get keyboard_input
+[ "$CONF_VALUE" = on ] &&
+	echo 1 > /sys/bus/serial/drivers/miyoo-player1/serial0-0/keyboard
+
 mark /run/boot-update-start
 # A *.bosupd on either card writes the reserved half of each region, verifies it
 # and flips the GPT. An ordinary boot costs a failed glob.
