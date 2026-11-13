@@ -115,6 +115,11 @@ ssh_password=a-password
 - **`ssh_password`**: the password for `ssh root@<address>`. Defaults to `root`
   if omitted or empty. It is stored as plain text on the card, so don't reuse an
   important password. Write it without quotes; surrounding spaces are trimmed.
+- **`keyboard_input`**: `on` also sends each button as the keyboard key stock
+  firmware used, for apps that only read a keyboard. Defaults to `off`: an app
+  that reads both sees every press twice. A launch script can switch it for one
+  app instead, with `echo 1 >` (or `0`)
+  `/sys/bus/serial/drivers/miyoo-player1/serial0-0/keyboard`.
 
 Omitted settings use their defaults. Lines starting with `#` are comments; `#`
 within an SSH password is part of the password.

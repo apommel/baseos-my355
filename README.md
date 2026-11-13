@@ -9,7 +9,7 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 
 ## Features
 
-- **Fast boot.** NextUI is on screen about 3 s after power-on, instead of 31.5 s.
+- **Fast boot.** NextUI is on screen about 2.4 s after power-on, instead of 31.5 s.
 - **Stock system untouched.** The only change to internal storage is a small patch
   that makes the Flip boot from the SD card first. The original is backed up.
 - **Easy install.** Put the image on a card and boot: it sets itself up.
@@ -26,12 +26,12 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 | power-on → | stock | **BaseOS** |
 |---|---|---|
 | the kernel's first line | 4.30 s | **0.59 s** |
-| frontend starts | 15.79 s | **1.27–1.30 s** |
-| `nextui.elf` starts | — | **2.21–2.27 s** |
-| NextUI's first frame | 31.50 s | **2.57–2.67 s** |
+| frontend starts | 15.79 s | **1.31–1.34 s** |
+| `nextui.elf` starts | — | **1.97–2.04 s** |
+| NextUI's first frame | 31.50 s | **2.34–2.39 s** |
 
 Stock measured with USB unplugged; BaseOS over warm reboots by adb, on the
-default `gpu=mali`. With `gpu=panfrost` the first frame is at 2.34–2.39 s.
+default `gpu=panfrost`. With `gpu=mali` the first frame is at 2.57–2.67 s.
 
 Where the time is saved:
 
@@ -55,7 +55,7 @@ are kept unchanged. The vendor userland is replaced by a BusyBox init, plus the
 parts of the stock libraries that frontends need. Stock-built frontends run
 unmodified: the kernel presents the interfaces they expect from the vendor
 kernel ([docs/mainline-compat.md](docs/mainline-compat.md)). The GPU driver is
-Rockchip's libmali or Mesa's Panfrost, picked in `baseos.conf`.
+Mesa's Panfrost, the default, or Rockchip's libmali, picked in `baseos.conf`.
 
 ## Building
 
