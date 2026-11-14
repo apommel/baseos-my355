@@ -303,9 +303,12 @@ Different from stock, found on the first boots:
   as a serdev, so there is no `/dev/ttyS1`. It registers last, after every
   other input device. `miyoo_inputd` is a shim that hands the driver
   `/userdata/joypad.config` and `joypad_right.config` (sysfs
-  `calibration_left`, `calibration_right`, same format) and idles. Turbo
-  (`/tmp/miyoo_inputd/turbo_*`) is not carried over, and Joe's Calibrage, which
-  reads `/dev/ttyS1`, would need the driver's `raw` attribute instead.
+  `calibration_left`, `calibration_right`, same format) and stays. Turbo is
+  the driver's too: sysfs `turbo` lists the buttons that repeat while held
+  (`a b x y l r l2 r2`, 30 ms down and 30 ms up), and the shim keeps it to
+  the files NextUI makes for the daemon, `/tmp/miyoo_inputd/turbo_<button>`
+  under `enable_turbo_input`. Stock's rate was not measured. Joe's Calibrage,
+  which reads `/dev/ttyS1`, would need the driver's `raw` attribute instead.
 - **Backlight hand-over.** An older `launch.sh` read the duty from
   `/sys/kernel/debug/pwm` in the vendor format, which mainline's does not
   match. The current NextUI reads nothing there, so `rcS` no longer mounts

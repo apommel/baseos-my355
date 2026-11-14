@@ -20,7 +20,7 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +obj-$(CONFIG_JOYSTICK_MIYOO_PLAYER1) += miyoo-player1.o
 --- a/drivers/input/joystick/miyoo-player1.c
 +++ b/drivers/input/joystick/miyoo-player1.c
-@@ -0,0 +1,538 @@
+@@ -0,0 +1,601 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * MIYOO Player1: the Miyoo Flip's gamepad, as the stock miyoo_inputd presents
@@ -33,6 +33,7 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 + * here through an input handler. The sticks come from the MCU on UART1,
 + * 9600 8N1, in frames FF YL XL YR XR FE.
 + * Calibration takes the stock /userdata/joypad.config format through sysfs.
++ * sysfs turbo lists the buttons that repeat while held, as miyoo_inputd's.
 + */
 +#include <linux/gpio/consumer.h>
 +#include <linux/input.h>
@@ -52,6 +53,8 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +#define DEAD_ZONE	(AXIS_CLAMP >> 3)
 +#define REPORT_STEP	(AXIS_CLAMP >> 8)
 +#define POLL_MS		10	/* gpio-keys-polled's interval on stock */
++/* Polls a turbo button stays down, then up: each longer than a 60 Hz frame. */
++#define TURBO_POLLS	3
 +
 +/*
 + * button-gpios order -> Player1 event, in stock's "xbox pad layout", and the
@@ -85,6 +88,15 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +#define P1_GPIOS	(ARRAY_SIZE(p1_buttons) - 1)
 +#define P1_MENU		P1_GPIOS
 +
++/* miyoo_inputd's /tmp/miyoo_inputd/turbo_<name>, and its p1_buttons index. */
++static const struct {
++	const char *name;
++	int button;
++} p1_turbo[] = {
++	{ "a", 1 }, { "b", 0 }, { "x", 2 }, { "y", 3 },
++	{ "l", 4 }, { "r", 5 }, { "l2", 10 }, { "r2", 11 },
++};
++
 +struct p1_cal {
 +	int min, zero, max;
 +};
@@ -98,6 +110,8 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +	spinlock_t lock;		/* cal, raw */
 +	unsigned long menu;		/* bit 0: event0's KEY_ESC held */
 +	unsigned long held;		/* bit n: p1_buttons[n], as last reported */
++	unsigned long turbo;		/* bit n: p1_buttons[n] repeats while held */
++	unsigned int turbo_tick;	/* polls into the current down-up cycle */
 +	struct p1_cal cal[2][2];	/* [left, right][x, y] */
 +	u8 raw[4];			/* YL XL YR XR */
 +	int last[4];			/* X Y RX RY, as last reported */
@@ -111,7 +125,7 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +{
 +	struct p1 *p1 = input_get_drvdata(input);
 +	int hat_x = 0, hat_y = 0, z = 0, rz = 0;
-+	unsigned long held = 0;
++	unsigned long held = 0, turbo;
 +	int i;
 +
 +	if (gpiod_get_array_value_cansleep(P1_GPIOS, p1->gpios->desc,
@@ -119,6 +133,13 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +		return;
 +	if (test_bit(0, &p1->menu))
 +		held |= BIT(P1_MENU);
++	turbo = READ_ONCE(p1->turbo);
++	if (!(held & turbo))
++		p1->turbo_tick = 0;
++	else if (p1->turbo_tick++ >= TURBO_POLLS)
++		held &= ~turbo;
++	if (p1->turbo_tick >= 2 * TURBO_POLLS)
++		p1->turbo_tick = 0;
 +	if (held == p1->held)
 +		return;
 +	p1->held = held;
@@ -419,16 +440,58 @@ Subject: [PATCH] Input: joystick: Miyoo Flip gamepad
 +	return ret ?: count;
 +}
 +
++static ssize_t turbo_show(struct device *dev, struct device_attribute *attr,
++			  char *buf)
++{
++	struct p1 *p1 = dev_get_drvdata(dev);
++	unsigned long turbo = READ_ONCE(p1->turbo);
++	int i, len = 0;
++
++	for (i = 0; i < ARRAY_SIZE(p1_turbo); i++)
++		if (turbo & BIT(p1_turbo[i].button))
++			len += sysfs_emit_at(buf, len, "%s ", p1_turbo[i].name);
++	if (len)
++		len--;
++	return len + sysfs_emit_at(buf, len, "\n");
++}
++
++/* The whole list at once, by miyoo_inputd's names: "a l2", or empty for none. */
++static ssize_t turbo_store(struct device *dev, struct device_attribute *attr,
++			   const char *buf, size_t count)
++{
++	struct p1 *p1 = dev_get_drvdata(dev);
++	unsigned long turbo = 0;
++	char names[64], *p = names, *name;
++	int i;
++
++	if (strscpy(names, buf, sizeof(names)) < 0)
++		return -EINVAL;
++	while ((name = strsep(&p, " \n")) != NULL) {
++		if (!*name)
++			continue;
++		for (i = 0; i < ARRAY_SIZE(p1_turbo); i++)
++			if (!strcmp(name, p1_turbo[i].name))
++				break;
++		if (i == ARRAY_SIZE(p1_turbo))
++			return -EINVAL;
++		turbo |= BIT(p1_turbo[i].button);
++	}
++	WRITE_ONCE(p1->turbo, turbo);
++	return count;
++}
++
 +static DEVICE_ATTR_RW(calibration_left);
 +static DEVICE_ATTR_RW(calibration_right);
 +static DEVICE_ATTR_RO(raw);
 +static DEVICE_ATTR_RW(keyboard);
++static DEVICE_ATTR_RW(turbo);
 +
 +static struct attribute *p1_attrs[] = {
 +	&dev_attr_calibration_left.attr,
 +	&dev_attr_calibration_right.attr,
 +	&dev_attr_raw.attr,
 +	&dev_attr_keyboard.attr,
++	&dev_attr_turbo.attr,
 +	NULL
 +};
 +ATTRIBUTE_GROUPS(p1);

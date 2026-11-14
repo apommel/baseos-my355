@@ -1,7 +1,8 @@
 #!/bin/sh
 # Stands in for the stock daemon frontends start: MIYOO Player1 is
 # the kernel's miyoo-player1 driver. Like the daemon at start, it hands over the
-# stock calibration files, then idles so the frontend still finds it running.
+# stock calibration files, then stays so the frontend still finds it running,
+# passing on the daemon's turbo files: turbo_<button>, under enable_turbo_input.
 for n in /sys/class/input/input*/name; do
 	[ "$(cat "$n" 2>/dev/null)" = "MIYOO Player1" ] && d=${n%/name}/device
 done
@@ -9,4 +10,13 @@ if [ -n "$d" ]; then
 	[ -f /userdata/joypad.config ] && cat /userdata/joypad.config > "$d/calibration_left"
 	[ -f /userdata/joypad_right.config ] && cat /userdata/joypad_right.config > "$d/calibration_right"
 fi
-exec /bin/sleep 2147483647
+[ -n "$d" ] || exec /bin/sleep 2147483647
+
+T=/tmp/miyoo_inputd
+turbo() {
+	[ -e $T/enable_turbo_input ] || { echo > "$d/turbo"; return; }
+	echo $(cd $T && ls | sed -n 's/^turbo_//p') > "$d/turbo"
+}
+mkdir -p $T
+turbo
+inotifyd - $T:nd | while read -r _; do turbo; done
