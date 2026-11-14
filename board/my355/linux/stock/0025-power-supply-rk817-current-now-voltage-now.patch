@@ -1,0 +1,32 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] power: supply: rk817: current_now and voltage_now
+
+The vendor gauge reports current_now and voltage_now; this one has the same
+readings as current_avg and voltage_avg, which battery tools written for the
+vendor kernel do not look for. Report them under both names.
+
+---
+--- a/drivers/power/supply/rk817_charger.c
++++ b/drivers/power/supply/rk817_charger.c
+@@ -516,9 +516,11 @@
+ 			val->intval = 0;
+ 		break;
+ 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
++	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+ 		val->intval = charger->volt_avg_uv;
+ 		break;
+ 	case POWER_SUPPLY_PROP_CURRENT_AVG:
++	case POWER_SUPPLY_PROP_CURRENT_NOW:
+ 		val->intval = charger->cur_avg_ua;
+ 		break;
+ 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
+@@ -664,6 +666,9 @@
+ 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
+ 	POWER_SUPPLY_PROP_CAPACITY,
+ 	POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
++	/* The vendor gauge's names, for the same averaged readings. */
++	POWER_SUPPLY_PROP_VOLTAGE_NOW,
++	POWER_SUPPLY_PROP_CURRENT_NOW,
+ };
+ 
+ static enum power_supply_property rk817_chg_props[] = {
