@@ -386,8 +386,10 @@ Different from stock, found on the first boots:
   `SND_USB_AUDIO` was not in the config; built in now, as nothing loads a
   hotplugged device's module. Not tried with a DAC or headset yet.
 - **Battery readings.** The mainline gauge has `current_avg` and
-  `voltage_avg`, not `current_now` and `voltage_now`. Nothing stock reads
-  them; [power](power.md)'s method uses the averages here.
+  `voltage_avg`, not the vendor gauge's `current_now` and `voltage_now`.
+  Nothing stock reads them, but battery tools written for the vendor kernel
+  may: `stock/0025` reports the same readings under both names (2026-11-13).
+  [power](power.md)'s method uses the averages here.
 
 Against main, 2026-10-26, warm reboots and gambatte on battery:
 
