@@ -1,7 +1,8 @@
-BaseOS for the Miyoo Flip
-=========================
+FlipBase for the Miyoo Flip
+===========================
 
-Derived from BaseOS for Allwinner H700 handhelds by Prashant Vaibhav:
+Called BaseOS until it moved to mainline Linux; renamed FlipBase as it is now an
+independent project. Derived from BaseOS for Allwinner H700 handhelds by Prashant Vaibhav:
 
     https://github.com/pvaibhav/BaseOS
 
@@ -19,19 +20,19 @@ Files that remain upstream's work, unmodified or nearly so:
                                 three slotted regions and header-derived geometry
     src/gpt.h                   the CRC and entry helpers both of them share
     tools/mkupdate.py           update payload builder; extended to three regions
-    board/my355/rootfs-overlay/usr/sbin/baseos-update
+    board/my355/rootfs-overlay/usr/sbin/flipbase-update
                                 the update engine, adapted to this layout
     flash-card.sh               macOS card writer; reduced to one target, and its
                                 disk guard rekeyed on removable and virtual media
 
 Taken later, from upstream commit 7dec5cb (2026-09-18):
 
-    board/my355/rootfs-overlay/usr/sbin/baseos-config
-                                the baseos.conf parser; reduced to hostname and
+    board/my355/rootfs-overlay/usr/sbin/flipbase-config
+                                the flipbase.conf parser; reduced to hostname and
                                 ssh_password, with a fixed default hostname
-    board/my355/assets/baseos.conf
+    board/my355/assets/flipbase.conf
                                 its template
-    tests/test-baseos-config.sh its tests, adapted to the above
+    tests/test-flipbase-config.sh its tests, adapted to the above
 
 board/my355/assets/boot.ttf is licensed under the SIL Open Font License; see
 board/my355/assets/OFL.txt.
@@ -42,7 +43,7 @@ rootfs, overlay and documentation — is new in this repository.
 VENDOR FIRMWARE
 ---------------
 
-BaseOS boots the vendor's BL31 and OP-TEE, and loads the vendor's Bluetooth
+FlipBase boots the vendor's BL31 and OP-TEE, and loads the vendor's Bluetooth
 firmware. Both come from the stock firmware:
 
     uboot.img           Miyoo's Rockchip U-Boot FIT, whose BL31, OP-TEE and

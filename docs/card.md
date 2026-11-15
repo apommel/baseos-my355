@@ -43,7 +43,7 @@ entry 5  primary 2572288 .. 2703359    64 MiB   exFAT, the only visible volume
 `primary` ships at 64 MiB, empty, and is grown to fill the card on the first boot
 (below). It is exFAT, which stock's 5.10 kernel cannot mount and has no FUSE helper
 for, and the root is EROFS, which it cannot mount either. So `/data` is the one
-filesystem stock sees on a BaseOS card, and the only one that carries
+filesystem stock sees on a FlipBase card, and the only one that carries
 `miyoo355_fw.img`, the preloader installer stock picks up off the card. With two
 mountable filesystems they raced for the one mountpoint stock reads, and the
 installer had to be on every one ([SD boot](boot-chain.md)).
@@ -90,9 +90,9 @@ to 32 GiB, 128 KiB above.
 
 Nothing on `primary` is kept: it ships empty, stock cannot write to it, and files
 go on it only after the first boot ([install](../INSTALL.md)). The format writes
-`README.txt` and `baseos.conf`, and the preloader installer's
+`README.txt` and `flipbase.conf`, and the preloader installer's
 `mtd5-original-<hash>.img`, the user's only copy of their original preloader, and
-`baseos-preloader.log` move to it from `/data`, where stock left them. Each is
+`flipbase-preloader.log` move to it from `/data`, where stock left them. Each is
 deleted from `/data` only once its copy is written and synced. `/data/expand-grown`
 marks the grown table and `/data/expanded` the end, so a power cut leaves work the
 next boot redoes. A card that already fills the disk without that mark is marked
@@ -104,11 +104,11 @@ macOS mounts the result.
 
 ## Updates
 
-`tools/mkupdate.py` turns the composed image into `baseos-my355-<version>.bosupd`:
+`tools/mkupdate.py` turns the composed image into `flipbase-my355-<version>.bosupd`:
 an uncompressed tar of a manifest and one gzipped slot image per region, ~73 MB.
 Users copy it to the root of either card and power on.
 
-`baseos-update apply` runs from `rcS` just after the card mount:
+`flipbase-update apply` runs from `rcS` just after the card mount:
 
 ```
 1  read every *.bosupd's manifest — on the frontend card, then on this card's own
@@ -152,9 +152,9 @@ Nothing in the boot chain references an address, which is what makes a GPT write
 enough to select all three: the SPL finds `uboot` by name, U-Boot finds
 `boot` by name, and `root=/dev/mmcblk1p3` names an entry number.
 
-**Rollback.** `rcS` runs `baseos-update boot-check`, which counts boots while a
+**Rollback.** `rcS` runs `flipbase-update boot-check`, which counts boots while a
 trial is open and restores the previous halves on the third; `frontend-session` runs
-`baseos-update confirm` as it starts, which ends the trial and deletes the
+`flipbase-update confirm` as it starts, which ends the trial and deletes the
 payload; one that rolled back stays, for `status` to explain. Confirming on session
 start rather than on frontend hand-off is deliberate — a card with no frontend is
 a healthy OS, and keying the trial later would make that look like a failed update
@@ -165,7 +165,7 @@ There is deliberately no signing key: it would be a single point of failure for
 every update, and these images carry no secrets. Integrity is the SHA-256 per
 region, verified by reading back what was written.
 
-`baseos-update status` prints what is installed and the verdict for every payload
+`flipbase-update status` prints what is installed and the verdict for every payload
 it can see — the apply path is silent about the ones it skips, since it runs on
 every boot.
 
@@ -202,7 +202,7 @@ The vendor Android boot image this replaced, and what it took to edit it, is in
 
 The root is EROFS (lz4hc, 16 KiB clusters; [rootfs](rootfs.md)), which stock
 does not mount. `/data` is ext4 with `^orphan_file` only: the stock 5.10.160 kernel has no `orphan_file` (5.15+), and
-reading a BaseOS card from stock, in the left slot, is how a failed boot is
+reading a FlipBase card from stock, in the left slot, is how a failed boot is
 debugged ([diagnostics](diagnostics.md)). `metadata_csum`, `metadata_csum_seed`
 and `64bit` are all fine there. `primary` is exFAT, which stock does not mount
 either, so `/data` is the one filesystem stock sees (above). exFAT also lifts
@@ -225,7 +225,7 @@ Flashing, on macOS:
 ./flash-card.sh diskN
 ```
 
-It writes `work/images/baseos-my355.img` to the raw node, and refuses before
+It writes `work/images/flipbase-my355.img` to the raw node, and refuses before
 writing anything unless the disk is physical **removable** media at least the
 size of the image: every SSD, internal or external, reports itself `Fixed`, and
 a mounted disk image reports `Virtual`. It then asks for the disk name typed

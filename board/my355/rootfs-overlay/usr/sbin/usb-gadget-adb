@@ -1,5 +1,5 @@
 #!/bin/sh
-# Bring up the BaseOS USB gadget so adb works over the USB-C port.
+# Bring up the FlipBase USB gadget so adb works over the USB-C port.
 #
 # Reproduces the configfs gadget stock builds with its 700-line vendor
 # usbdevice script, reduced to what adb actually needs. The shape was read off
@@ -30,7 +30,7 @@ export USB_FUNCS="${USB_FUNCS:-adb}"
 export HOME=/
 export PATH=/usr/bin:/usr/sbin:/bin:/sbin
 
-. /usr/share/baseos/log.sh
+. /usr/share/flipbase/log.sh
 
 CONFIGFS=/sys/kernel/config
 G="$CONFIGFS/usb_gadget/rockchip"
@@ -77,7 +77,7 @@ log "functionfs mounted: $(ls "$FFS" 2>/dev/null | tr '\n' ' ')"
 # adbd writes the descriptors into functionfs; give it a bounded moment to do so.
 # Its own stream goes to /data only: it runs for the whole session, and the
 # card's copy of the log is on removable FAT.
-"$ADBD" >>"$BASEOS_LOG" 2>&1 &
+"$ADBD" >>"$FLIPBASE_LOG" 2>&1 &
 log "adbd started (pid $!)"
 i=0
 while [ "$i" -lt 100 ]; do

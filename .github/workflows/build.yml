@@ -48,7 +48,7 @@ jobs:
           restore-keys: buildroot-
 
       - name: Build
-        run: BASEOS_BUILD_DIR="$RUNNER_TEMP/buildroot" ./build.sh
+        run: FLIPBASE_BUILD_DIR="$RUNNER_TEMP/buildroot" ./build.sh
 
       - name: Tests
         run: for t in tests/test-*.sh; do "$t" || exit 1; done
@@ -67,7 +67,7 @@ jobs:
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: baseos-my355
+          name: flipbase-my355
           path: |
             work/images/*.img.zip
             work/images/*.bosupd
@@ -80,8 +80,8 @@ jobs:
         run: |
           v="$(tr -d ' \n' < VERSION)"
           gh release create "$GITHUB_REF_NAME" --draft \
-            --title "Miyoo Flip BaseOS $GITHUB_REF_NAME" \
+            --title "FlipBase $GITHUB_REF_NAME for the Miyoo Flip" \
             --notes "Read the installation instructions in [INSTALL.md](https://github.com/$GITHUB_REPOSITORY/blob/main/INSTALL.md)." \
-            "work/images/baseos-my355-$v.img.zip" \
-            "work/images/baseos-my355-$v.bosupd" \
+            "work/images/flipbase-my355-$v.img.zip" \
+            "work/images/flipbase-my355-$v.bosupd" \
             work/images/SHA256SUMS

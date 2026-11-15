@@ -3,12 +3,12 @@
 #
 # Budget: well under a second on a normal boot. Nothing sleeps; anything slow
 # runs in the background. The only module loaded here is the GPU driver
-# (baseos-gpu, below); WiFi and Bluetooth load with their radio.
+# (flipbase-gpu, below); WiFi and Bluetooth load with their radio.
 #
 # Boot forensics land in /run/boot-* and one log on /data, because this device
 # has neither a UART attached nor a framebuffer console — see docs/diagnostics.md.
 
-. /usr/share/baseos/log.sh
+. /usr/share/flipbase/log.sh
 
 /bin/mount -t proc  -o nodev,noexec,nosuid proc /proc
 /bin/mount -t sysfs -o nodev,noexec,nosuid sys  /sys
@@ -36,7 +36,7 @@ printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
 		/bin/usleep 10000
 		n=$((n + 1))
 	done
-	log "$(/usr/sbin/baseos-bootinfo startup)"
+	log "$(/usr/sbin/flipbase-bootinfo startup)"
 } &
 echo 0 > /sys/class/backlight/backlight/bl_power 2>/dev/null
 mark /run/boot-backlight
@@ -55,6 +55,8 @@ if ! /bin/mount -t ext4 -o rw,noatime /dev/mmcblk1p4 /data 2>/dev/null; then
 	/bin/mount -t tmpfs tmpfs /data
 fi
 mark /run/boot-data-mounted
+# Units updated from BaseOS keep their log under the new name.
+[ -f /data/baseos.log ] && [ ! -e /data/flipbase.log ] && /bin/mv /data/baseos.log /data/flipbase.log
 
 # The previous boot's ramoops, kept when it oopsed or never reached rcK; a clean
 # reboot leaves a console record too, which is dropped.
@@ -77,10 +79,10 @@ echo 0 > /proc/sys/kernel/sched_util_clamp_min_rt_default
 
 # A freshly updated set of slots is on trial until a frontend session starts.
 # Count the boots that never get that far and restore the previous ones if this
-# set cannot. The builtin test is baseos-update's $STATE: without it the script
+# set cannot. The builtin test is flipbase-update's $STATE: without it the script
 # is a no-op that still costs 8 ms to start.
-[ -f /data/update/state ] && [ -x /usr/sbin/baseos-update ] && \
-	/usr/sbin/baseos-update boot-check
+[ -f /data/update/state ] && [ -x /usr/sbin/flipbase-update ] && \
+	/usr/sbin/flipbase-update boot-check
 
 # Stable across boots, generated once. /etc/machine-id is a baked symlink, so
 # nothing here writes to the root filesystem.
@@ -126,7 +128,7 @@ mark /run/boot-dbus-start
 # test is a builtin, so a normal boot does not even spawn the script.
 [ -e /data/expanded ] || /usr/sbin/expand-storage
 
-# The frontend card. The right slot holds BaseOS (it is the only slot the SPL
+# The frontend card. The right slot holds FlipBase (it is the only slot the SPL
 # can boot from), so a NextUI card goes in the LEFT slot and appears as
 # mmcblk2p1. Falling back to this card's own volume keeps a single-card
 # setup working. NextUI itself is slot-agnostic: nothing in its scripts names a
@@ -134,23 +136,38 @@ mark /run/boot-dbus-start
 # Mount point and the /mnt/sdcard alias are baked into the image.
 /usr/sbin/mount-frontend
 
-# This card's own volume (FAT32 on cards from older releases), for baseos.conf
+# This card's own volume (FAT32 on cards from older releases), for flipbase.conf
 # and payloads. Linked, not copied: it may hold a cleartext password.
-own=
+own= conf_dir=
 if grep -q '^/dev/mmcblk1p5 /mnt/SDCARD ' /proc/mounts; then
-	/bin/ln -s /mnt/SDCARD/baseos.conf /run/baseos.conf
-elif /bin/mkdir -p /tmp/.baseos-own &&
-	/bin/mount -t exfat,vfat -o ro /dev/mmcblk1p5 /tmp/.baseos-own 2>/dev/null; then
-	own=/tmp/.baseos-own
-	/bin/ln -s $own/baseos.conf /run/baseos.conf
+	conf_dir=/mnt/SDCARD
+elif /bin/mkdir -p /tmp/.flipbase-own &&
+	/bin/mount -t exfat,vfat -o ro /dev/mmcblk1p5 /tmp/.flipbase-own 2>/dev/null; then
+	own=/tmp/.flipbase-own
+	conf_dir=$own
+fi
+if [ -n "$conf_dir" ]; then
+	conf=$conf_dir/flipbase.conf
+	# Cards from BaseOS releases: rename baseos.conf once; if that fails, read it
+	# where it is. Builtin tests only, so an ordinary boot forks nothing here.
+	if [ -f $conf_dir/baseos.conf ] && [ ! -e $conf ]; then
+		[ -n "$own" ] && /bin/mount -o remount,rw $own 2>/dev/null
+		if /bin/mv $conf_dir/baseos.conf $conf 2>/dev/null; then
+			log "renamed baseos.conf to flipbase.conf"
+		else
+			conf=$conf_dir/baseos.conf
+		fi
+		[ -n "$own" ] && /bin/mount -o remount,ro $own 2>/dev/null
+	fi
+	/bin/ln -s $conf /run/flipbase.conf
 fi
 
-# libmali or Mesa, from baseos.conf, before the frontend starts.
-/usr/sbin/baseos-gpu
+# libmali or Mesa, from flipbase.conf, before the frontend starts.
+/usr/sbin/flipbase-gpu
 
 # keyboard_input=on: the pad also types stock's keys. Here, before the
 # frontend, as SDL only enumerates keyboards at start.
-. /usr/share/baseos/conf.sh
+. /usr/share/flipbase/conf.sh
 conf_get keyboard_input
 [ "$CONF_VALUE" = on ] &&
 	echo 1 > /sys/bus/serial/drivers/miyoo-player1/serial0-0/keyboard
@@ -158,7 +175,7 @@ conf_get keyboard_input
 mark /run/boot-update-start
 # A *.bosupd on either card writes the reserved half of each region, verifies it
 # and flips the GPT. An ordinary boot costs a failed glob.
-[ -x /usr/sbin/baseos-update ] && /usr/sbin/baseos-update apply
+[ -x /usr/sbin/flipbase-update ] && /usr/sbin/flipbase-update apply
 
 # Settings, SSH and adb over USB, backgrounded so they never serialise boot.
 {
@@ -171,10 +188,10 @@ mark /run/boot-rcS-done
 # Boot record: a block rather than a line, so it is assembled once and appended
 # to each copy of the log directly. Backgrounded: no write on the hand-off path.
 {
-	. /etc/baseos-release 2>/dev/null
+	. /etc/flipbase-release 2>/dev/null
 	{
 		echo "boot $(/bin/date 2>/dev/null)"
-		echo "  version   $BASEOS_VERSION ($BASEOS_BUILD)"
+		echo "  version   $FLIPBASE_VERSION ($FLIPBASE_BUILD)"
 		echo "  rcS-start $(/bin/cat /run/boot-rcS-start 2>/dev/null)"
 		echo "  data-mnt  $(/bin/cat /run/boot-data-mounted 2>/dev/null)"
 		echo "  dbus      $(/bin/cat /run/boot-dbus-start 2>/dev/null)"

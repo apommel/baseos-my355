@@ -4,7 +4,7 @@ Where the time goes from power-on, what each change was worth, and what is left.
 Superseded tables and the measurements that led here are in
 [history](history.md).
 
-Measured on the vendor 5.10 kernel, which BaseOS booted until 1.3.0. The
+Measured on the vendor 5.10 kernel, which FlipBase booted until 1.3.0. The
 mainline kernel's figures, against these, are in
 [mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.01–1.05 s,
 hands off at 1.29–1.35 s, shows the logo at 1.27–1.31 s and starts `nextui.elf`
@@ -13,7 +13,7 @@ the SD and `rcS` findings carry over.
 
 Figures are cold boots on hardware with **USB unplugged at power-on** — a
 cable makes U-Boot check the charger first, and that lands in
-the arch counter — unless marked *warm* (a reboot from BaseOS).
+the arch counter — unless marked *warm* (a reboot from FlipBase).
 
 ## Where a boot goes today
 
@@ -34,9 +34,9 @@ boots on 2026-10-07, after the top USB port's OHCI came back (+0.05 s).
 | **frontend hand-off — `exec updater`** | **1.99 s** | `/run/boot-frontend-exec` |
 | boot logo on the panel | 2.00–2.01 s | `dw_mipi_dsi_bridge_enable` |
 | `nextui.elf` start | **2.40–2.42 s** | `/proc/<pid>/stat` |
-| **first NextUI frame** | **2.93–2.98 s** | `baseos-frameprobe` (`--diag`) |
+| **first NextUI frame** | **2.93–2.98 s** | `flipbase-frameprobe` (`--diag`) |
 
-`baseos-bootinfo timeline` prints these for any boot; the first frame needs a
+`flipbase-bootinfo timeline` prints these for any boot; the first frame needs a
 `./build.sh --diag` rootfs ([U-Boot](uboot.md), *Measuring it*).
 
 On the vendor U-Boot (as released in 0.6.0):
@@ -77,12 +77,12 @@ later, each at its own point:
 
 `rcS` drops breadcrumbs in `/run/boot-*` at each stage, and `frontend-session`
 writes `/run/boot-frontend-exec` on its first start; both are `mark()` from
-`/usr/share/baseos/log.sh`, uptime readings taken with shell builtins, so they
+`/usr/share/flipbase/log.sh`, uptime readings taken with shell builtins, so they
 cost no fork. Process `starttime` (`/proc/<pid>/stat` field 22, USER_HZ = 100)
 is on the uptime clock too.
 
 Once the logo is up and the frontend has its hand-off, `rcS` logs one line per
-boot to `baseos.log`, on `/data` and the card:
+boot to `flipbase.log`, on `/data` and the card:
 
 ```
 Startup: 0.70 s before Linux, 0.69 s Linux to frontend, 1.40 s total; logo on screen at 1.39 s
@@ -90,7 +90,7 @@ Startup: 0.70 s before Linux, 0.69 s Linux to frontend, 1.40 s total; logo on sc
 
 The first three are upstream BaseOS's, computed the same way, so they compare
 directly with its H700 figures. It calls the hand-off "menu", although it is
-not. `baseos-bootinfo timeline` has the rest:
+not. `flipbase-bootinfo timeline` has the rest:
 
 ```
 uboot 0.620  printk 0.620  init 1.113  backlight 1.23  handoff 1.41  logo 1.39  nextui 2.35  frame -  (card 88 ms)
@@ -106,7 +106,7 @@ cold and warm apart.
 | `backlight` | `rcS` lights the backlight; the panel shows nothing yet | 1.13–1.16 s |
 | `logo` | `fbsplash` returns: its pan is a blocking commit, so the first modeset and the panel's power-up are behind it, and the logo is on the glass | 1.27–1.31 s |
 | `nextui` | `nextui.elf` starts | 2.27–2.35 s |
-| `frame` | NextUI's first framebuffer on the panel (`--diag`, `baseos-frameprobe`) | — |
+| `frame` | NextUI's first framebuffer on the panel (`--diag`, `flipbase-frameprobe`) | — |
 
 Nothing marks the menu. NextUI's first frame precedes a working menu, so
 `frame` is a lower bound for it, not the moment the user can use it.
@@ -160,7 +160,7 @@ likely does the same.
 | USB probes held back until `rcS` | ~0.3 s on half the boots | the WiFi chip's probe no longer delays the root mount; below |
 | SDR104 tuning in 10° steps | ~0.12 s on half the boots | a tuning read on the edge of the card's bad window waits out a 113 ms timeout in 6 of 22 boots, not 13 of 16; below |
 | Tuning data timeout 15 ms (`0046`) | ~0.1 s on half the boots | the read on the bad window's edge waits 15 ms instead of the controller's 112 ms maximum: card init 80–112 ms instead of 80–214, six boots (2026-10-28) |
-| EROFS root, GPU library read ahead | ~0.45 s | libmali's 19 MB, faulted in one page at a time by the first NextUI program, are already cached: `baseos-gpu` reads the library at idle I/O priority while boot goes on. First frame 2.57–2.67 s instead of 3.01–3.14 on mali, six boots ([rootfs](rootfs.md), 2026-10-30) |
+| EROFS root, GPU library read ahead | ~0.45 s | libmali's 19 MB, faulted in one page at a time by the first NextUI program, are already cached: `flipbase-gpu` reads the library at idle I/O priority while boot goes on. First frame 2.57–2.67 s instead of 3.01–3.14 on mali, six boots ([rootfs](rootfs.md), 2026-10-30) |
 | `quiet` + `performance` governor | ~0.1 s | full speed from cpufreq's probe until the frontend picks its own |
 | `rcS` trimming + clean shutdown | ~30 ms, plus up to 0.2 s of journal replay | see below |
 
@@ -174,7 +174,7 @@ time:
 | `tracer_init_tracefs` | **0.383 s** | **yes** — tracefs is never mounted and nothing reads it |
 | `rk3x_i2c_driver_init` | 0.146 s | no — only the PMIC and muic buses are enabled already |
 | `ohci_platform_init` | 0.118 s | **no** — the top USB-C port is EHCI `fd800000`, and its OHCI companion takes full- and low-speed devices: gamepads, keyboards, mice. The WiFi chip's companion `usb@fd8c0000` serves nothing and is disabled in the DTB, halving the cost to ~0.06 s ([history](history.md), 2026-10-07) |
-| `alpu_init` | 0.112 s | **yes** — the anti-clone chip; nothing on BaseOS or NextUI uses it |
+| `alpu_init` | 0.112 s | **yes** — the anti-clone chip; nothing on FlipBase or NextUI uses it |
 | `deferred_probe_initcall` | 0.063 s | — |
 | `ehci_platform_init` | 0.033 s | no — the RTL8733BU WiFi/BT chip attaches here |
 
@@ -250,9 +250,9 @@ that would do nothing), `dbus-daemon --system` moved to the background with
 `frontend-session` waiting on its socket before handing off, the random seed
 moved to the background, and the machine-id is copied with shell builtins.
 
-`baseos-update apply` is now the largest item left in `rcS`, at 20–30 ms: it
+`flipbase-update apply` is now the largest item left in `rcS`, at 20–30 ms: it
 mounts this card's own FAT volume read-only on every boot to look for a payload.
-(Later `rcS` mounted it once for `baseos-gpu`, `apply` and the settings, and
+(Later `rcS` mounted it once for `flipbase-gpu`, `apply` and the settings, and
 unmounted it in the background: ~15 ms off `rcS`, spent again when the volume
 became exFAT, whose mount reads its allocation bitmap.)
 
@@ -321,7 +321,7 @@ for them, and the Status LED hook is ~40 forks of `sed`, `tr` and `grep`.
   try, the card is found at 0.32 s of kernel time instead of 0.50, and
   `Run /init` is 0.99 s on 14 boots of 15. On top of 400 kHz, ten warm
   reboots: hand-off 1.26–1.30 s, `nextui.elf` 2.20–2.31 s, ~60 ms; but the logo
-  1.30–1.34 s, 20–30 ms later, fbsplash now running alongside `baseos-gpu`'s
+  1.30–1.34 s, 20–30 ms later, fbsplash now running alongside `flipbase-gpu`'s
   `mali_kbase` load and libmali prefetch. It patches three mainline drivers,
   and it moves the power key ahead of the lid at event1, which the lid driver
   linked first in its Makefile puts back. Not worth carrying for 60 ms.
@@ -392,12 +392,12 @@ means.
 | NextUI `launch.sh` prologue | **12.45 s** | 28.39 |
 | `nextui.elf` init → first frame | 3.11 s | **31.50** |
 
-The 9.9 s of vendor userland is the part BaseOS deletes: `mount -a` over SPI
+The 9.9 s of vendor userland is the part FlipBase deletes: `mount -a` over SPI
 NAND, `udevadm settle --timeout=30`, then eight serialised `S*` scripts.
 
 ### The `launch.sh` prologue: 12.45 s on stock, 0.89 s here
 
-That single line is a bigger saving than the whole vendor userland BaseOS
+That single line is a bigger saving than the whole vendor userland FlipBase
 deletes, from a script we neither own nor changed. Instrumented on stock, it is
 **the cost of loading the vendor graphics stack off SPI NAND**.
 
@@ -410,7 +410,7 @@ block, with the whole cohort blocked behind the same misses. That is why the
 mtimes showed every one of them stalling for the same ~11 s, and why swapping
 which binary goes first would just move the bill.
 
-BaseOS paid the same cost against different storage. The harvested vendor
+FlipBase paid the same cost against different storage. The harvested vendor
 libraries were in an ext4 rootfs on the boot card, uncompressed, at SDR104 — so
 the same work took 0.89 s. Corroboration from within this port: raising that
 card from SDR25 to SDR104 moved `nextui.elf`'s start by 0.48 s and its init by
@@ -422,7 +422,7 @@ as a candidate by measuring it at "0.60 s cold, 0.04 s warm". Those readings wer
 taken post-hoc on a running device, where the squashfs pages were already
 resident — a warm measurement of the one thing that is only expensive cold.
 
-So of the 25.8 s saved to a first frame, the part BaseOS removes outright is the
+So of the 25.8 s saved to a first frame, the part FlipBase removes outright is the
 9.9 s of vendor userland; the rest is the same work done against faster storage,
 which is a consequence of where the harvest lived rather than of deleting
 anything. The claim that rests on nothing but our own code is the hand-off

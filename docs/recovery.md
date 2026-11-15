@@ -4,7 +4,7 @@ How to back up internal flash, how to put it back, and what the ways back to a
 fully stock device are. Read this before writing anything to `mtd5` — it is the
 one region where a mistake costs a USB recovery.
 
-Installing BaseOS changes exactly one thing in internal storage: the 2 MiB
+Installing FlipBase changes exactly one thing in internal storage: the 2 MiB
 preloader in `mtd5` ([boot chain](boot-chain.md)). The card installer copies your
 original to the card before it erases anything, so the file named below is
 normally already in your hands.
@@ -44,7 +44,7 @@ md5sum /dev/mtd5ro          # must equal the image — check BEFORE rebooting
 ```
 
 The file to write is your own backup, or the `mtd5-original-<hash>.img` the card
-installer left: on the card's BASEOS volume once BaseOS has booted, on its `/data`
+installer left: on the card's FLIPBASE volume once FlipBase has booted, on its `/data`
 before. Stage it in `/tmp` (tmpfs) and check
 its md5 there first, so a failed write never needs a host transfer to retry.
 While the device is still booted the write can be repeated indefinitely, so the

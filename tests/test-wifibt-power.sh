@@ -9,8 +9,8 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 echo "== wifibt-power =="
 docker run --rm \
   -v "$HERE/board/my355/rootfs-overlay":/overlay:ro alpine:3.20 sh -euc '
-  mkdir -p /usr/share/baseos /data /stub
-  cp /overlay/usr/share/baseos/log.sh /usr/share/baseos/
+  mkdir -p /usr/share/flipbase /data /stub
+  cp /overlay/usr/share/flipbase/log.sh /usr/share/flipbase/
   export WIFIBT_SYS=/t/sys WIFIBT_RUN=/t/run WIFIBT_MODULES=/t/modules
   CHIP=/t/sys/bus/usb/devices/3-1 RK=/t/sys/class/rkwifi
   # Found by its ID, beside another device the chip must not be taken for.

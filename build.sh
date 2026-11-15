@@ -1,19 +1,19 @@
 #!/bin/sh
-# Builds BaseOS for the Miyoo Flip with Buildroot, in Docker (docs/rootfs.md).
+# Builds FlipBase for the Miyoo Flip with Buildroot, in Docker (docs/rootfs.md).
 #
 # Usage: ./build.sh [--diag] [--clean] [make target ...]
 #   --diag   boot-timing and console aids, not for release (docs/diagnostics.md)
 #   --clean  start from an empty output directory
 #   e.g. ./build.sh linux-rebuild all, or ./build.sh sdk
 #
-# Writes work/images: baseos-my355-<version>.img.zip for a new card, .bosupd
+# Writes work/images: flipbase-my355-<version>.img.zip for a new card, .bosupd
 # to update one, SHA256SUMS, and Buildroot's own images. The output tree and
 # ccache live in a Docker volume, downloads in work/dl. The first build takes
 # a few hours; later ones rebuild what changed.
 #
 # STOCK_FIRMWARE=<dir> takes uboot.img and stock-harvest.tar from a dump of
 # your own instead of the published bundle (CONTRIBUTING.md).
-# BASEOS_BUILD_DIR=<absolute dir> keeps the output tree and ccache there
+# FLIPBASE_BUILD_DIR=<absolute dir> keeps the output tree and ccache there
 # instead of the Docker volume, so CI can cache them.
 set -eu
 
@@ -39,7 +39,7 @@ while :; do
   esac
 done
 # src/ is a local package, which Buildroot does not watch for changes.
-TARGETS="${*:-baseos-tools-rebuild all}"
+TARGETS="${*:-flipbase-tools-rebuild all}"
 STOCK_MOUNT=
 if [ -n "${STOCK_FIRMWARE:-}" ]; then
   STOCK_MOUNT="-v $(cd "$STOCK_FIRMWARE" && pwd):/stock:ro"
@@ -66,19 +66,19 @@ if [ "$(sha256 "$LIBMALI/$LIBMALI_BLOB" 2>/dev/null)" != "$LIBMALI_SHA256" ]; th
   [ "$(sha256 "$LIBMALI/$LIBMALI_BLOB")" = "$LIBMALI_SHA256" ] || { echo "libmali: bad sha256" >&2; exit 1; }
 fi
 
-BASEOS_VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
-# baseos-update compares plain x.y.z.
-echo "$BASEOS_VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' ||
-  { echo "VERSION must be x.y.z, not '$BASEOS_VERSION'" >&2; exit 1; }
-BASEOS_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
+FLIPBASE_VERSION="$(tr -d ' \n' < "$HERE/VERSION")"
+# flipbase-update compares plain x.y.z.
+echo "$FLIPBASE_VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' ||
+  { echo "VERSION must be x.y.z, not '$FLIPBASE_VERSION'" >&2; exit 1; }
+FLIPBASE_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
 
-echo "== BaseOS $BASEOS_VERSION ($BASEOS_BUILD): make $TARGETS, log in work/build.log =="
+echo "== FlipBase $FLIPBASE_VERSION ($FLIPBASE_BUILD): make $TARGETS, log in work/build.log =="
 docker run --rm --platform linux/arm64 \
-  -v "${BASEOS_BUILD_DIR:-baseos-buildroot}":/build -v "$DL":/dl -v "$IMAGES":/images \
-  -v "$HERE":/baseos:ro -v "$LIBMALI":/src/libmali:ro $STOCK_MOUNT \
+  -v "${FLIPBASE_BUILD_DIR:-flipbase-buildroot}":/build -v "$DL":/dl -v "$IMAGES":/images \
+  -v "$HERE":/flipbase:ro -v "$LIBMALI":/src/libmali:ro $STOCK_MOUNT \
   -e BR_VERSION="$BR_VERSION" -e TARGETS="$TARGETS" -e O="/build/$OUTPUT" \
   -e DIAG="$DIAG" -e CLEAN="$CLEAN" \
-  -e BASEOS_VERSION="$BASEOS_VERSION" -e BASEOS_BUILD="$BASEOS_BUILD" \
+  -e FLIPBASE_VERSION="$FLIPBASE_VERSION" -e FLIPBASE_BUILD="$FLIPBASE_BUILD" \
   debian:trixie-slim sh -euc '
   export DEBIAN_FRONTEND=noninteractive FORCE_UNSAFE_CONFIGURE=1
   apt-get -qq update >/dev/null
@@ -88,11 +88,11 @@ docker run --rm --platform linux/arm64 \
   B=/build/buildroot-$BR_VERSION
   [ -d "$B" ] || tar -xJf /dl/buildroot-$BR_VERSION.tar.xz -C /build
   [ "$CLEAN" = 0 ] || rm -rf "$O"
-  cat /baseos/configs/baseos_my355_defconfig > /tmp/defconfig
-  [ "$DIAG" = 0 ] || cat /baseos/board/my355/diag/defconfig.fragment >> /tmp/defconfig
-  make -C "$B" O="$O" BR2_EXTERNAL=/baseos BR2_DEFCONFIG=/tmp/defconfig defconfig >/dev/null
+  cat /flipbase/configs/flipbase_my355_defconfig > /tmp/defconfig
+  [ "$DIAG" = 0 ] || cat /flipbase/board/my355/diag/defconfig.fragment >> /tmp/defconfig
+  make -C "$B" O="$O" BR2_EXTERNAL=/flipbase BR2_DEFCONFIG=/tmp/defconfig defconfig >/dev/null
   # shellcheck disable=SC2086
-  make -C "$B" O="$O" BR2_SDK_PREFIX=baseos-my355-sdk $TARGETS >/images/build.log 2>&1 ||
+  make -C "$B" O="$O" BR2_SDK_PREFIX=flipbase-my355-sdk $TARGETS >/images/build.log 2>&1 ||
     { tail -40 /images/build.log >&2; exit 1; }
   rm -rf /images/*.img /images/*.bosupd /images/*.zip
   cp -r --sparse=never "$O"/images/. /images/

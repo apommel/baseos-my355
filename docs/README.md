@@ -1,7 +1,7 @@
-# BaseOS for the Miyoo Flip — how it works
+# FlipBase for the Miyoo Flip — how it works
 
 Reference docs for the port: Rockchip RK3566, `MIYOO RK3566 355 V10 Board`,
-NextUI platform id **`my355`**. For installing BaseOS, see
+NextUI platform id **`my355`**. For installing FlipBase, see
 [INSTALL.md](../INSTALL.md); for building it, [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Everything here was observed on hardware unless it says *inferred* (read out of a
@@ -36,7 +36,7 @@ not deleted, in [history](history.md).
 | | |
 |---|---|
 | [decisions](decisions.md) | The choices the port rests on, and what is still open. |
-| [U-Boot](uboot.md) | Tuning the vendor one (tried, 22 ms), and the mainline one BaseOS boots. |
+| [U-Boot](uboot.md) | Tuning the vendor one (tried, 22 ms), and the mainline one FlipBase boots. |
 | [history](history.md) | Experiments, SPL disassembly, superseded measurements, every retracted theory. |
 
 ## The short version
@@ -46,9 +46,9 @@ changes that: its SPL device tree has an empty `/pinctrl` node, so the SD pins
 are never muxed. A preloader with a working `/pinctrl` can, and it looks up a GPT
 partition named `uboot` and reads a U-Boot FIT from its first sector.
 
-So BaseOS patches **2 MiB of internal NAND** — the user's own preloader, in
+So FlipBase patches **2 MiB of internal NAND** — the user's own preloader, in
 place, from a card, with a backup written first — and leaves the stock U-Boot in
-NAND, the kernel and the stock rootfs untouched. Card in: BaseOS. Card out:
+NAND, the kernel and the stock rootfs untouched. Card in: FlipBase. Card out:
 stock, exactly as before.
 
 From there the card supplies a mainline U-Boot, a mainline kernel that presents

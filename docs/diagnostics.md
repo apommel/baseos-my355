@@ -21,7 +21,7 @@ Ordered by how early they fire.
 |---|---|---|
 | **boot logo** | `rcS` is running | `fbsplash`, from ~1.4 s |
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
-| **the log** | how far init got, and what each step did | one file, `/data/baseos.log`, copied to `baseos.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
+| **the log** | how far init got, and what each step did | one file, `/data/flipbase.log`, copied to `flipbase.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |
 | **crash record** | the previous boot panicked or never reached `rcK` | `rcS` copies `ramoops` to `/data/pstore/<date>/` and logs `pstore:`. A panic leaves the whole kernel log; any other reset only the console record, which `quiet` limits to warnings and errors. It survives a warm reset, a watchdog reset included, but not a long press |
 
@@ -39,7 +39,7 @@ if a future bring-up needs it again — see [history](history.md).
 
 ## Reading the card afterwards
 
-The decisive trick. Put the BaseOS card in the **left slot**: it is not in
+The decisive trick. Put the FlipBase card in the **left slot**: it is not in
 the SPL boot order, so the device boots **stock** from NAND instead,
 and stock's kernel auto-mounts the card's ext4 `/data` under `/media/` (not the
 exFAT volume, which it cannot read; an older card's FAT32 one too).
@@ -47,7 +47,7 @@ Everything the failed boot wrote is then readable over adb.
 
 ```sh
 adb shell "grep mmcblk2 /proc/mounts"                    # find the mounts
-adb shell "cat /media/sdcardN/baseos.log"                # how far init got
+adb shell "cat /media/sdcardN/flipbase.log"                # how far init got
 adb shell "dumpe2fs -h /dev/mmcblk2p4 | grep -E 'Last mount time|Mount count'"
 ```
 
@@ -87,7 +87,7 @@ at power-on only matters for timing boots.
 
 **U-Boot's console output** is recorded and written to the last 64 KiB of the
 active `boot` partition just before hand-off, and again if the hand-off fails.
-On BaseOS, `baseos-bootinfo log`. After a failed boot, from stock with the card in
+On FlipBase, `flipbase-bootinfo log`. After a failed boot, from stock with the card in
 the left slot:
 
 ```sh
@@ -116,7 +116,7 @@ save then captures its error. Before the save, the debug script also logs
 `mmc info` and `SDMMC0_CON0/1`, the card's drive and sample phases; `Bus Speed`
 there is what U-Boot asked for, which until patch `0004` was twice what the card
 got ([U-Boot](uboot.md)). `my355 fg:` records the battery state it found and
-handed on. `baseos-bootinfo` alone prints U-Boot's bootstage timings on any
+handed on. `flipbase-bootinfo` alone prints U-Boot's bootstage timings on any
 mainline boot that reached userspace.
 
 ## Failure signatures, on the vendor U-Boot

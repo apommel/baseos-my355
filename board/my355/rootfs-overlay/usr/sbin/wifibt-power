@@ -12,7 +12,7 @@
 # start insmods rtk_btusb when it is not loaded — which is why the module is
 # unloaded before the cut, and the cut refused if it will not go.
 
-. /usr/share/baseos/log.sh
+. /usr/share/flipbase/log.sh
 
 SYS=${WIFIBT_SYS:-/sys}
 RUN=${WIFIBT_RUN:-/run/wifibt}

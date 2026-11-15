@@ -1,5 +1,5 @@
 // wifibtd — tell wifibt-power when Bluetooth comes on or goes off. NextUI's
-// bt_init.sh never calls into BaseOS before it waits for hci0, so the chip
+// bt_init.sh never calls into FlipBase before it waits for hci0, so the chip
 // cannot be powered from a hook; instead:
 //
 //   rtk_btusb loading (bt_init.sh start insmods it when absent)  -> want bt

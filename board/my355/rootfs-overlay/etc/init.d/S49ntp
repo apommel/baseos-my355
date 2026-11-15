@@ -21,7 +21,7 @@ case "$1" in
 	running && exit 0
 	set -- ; for s in $SERVERS; do set -- "$@" -p "$s"; done
 	# No -n: ntpd forks into its own session, so it outlives this shell.
-	"$DAEMON" -S /usr/sbin/baseos-ntp-hook "$@" >/dev/null 2>&1
+	"$DAEMON" -S /usr/sbin/flipbase-ntp-hook "$@" >/dev/null 2>&1
 	;;
   stop)
 	# SIGKILL: while ntpd retries a peer it cannot resolve, musl's resolver

@@ -7,7 +7,7 @@
 # frontend installed on the boot card. Exits 0 once something is mounted.
 
 SDCARD=/mnt/SDCARD
-. /usr/share/baseos/log.sh
+. /usr/share/flipbase/log.sh
 
 has_frontend() {
 	[ -f "$SDCARD/.tmp_update/updater" ] || [ -f "$SDCARD/MinUI.zip" ] ||
@@ -18,10 +18,10 @@ has_frontend() {
 repair() {
 	fsck=fsck.fat; [ "$2" = exfat ] && fsck=fsck.exfat
 	log "$1 was not cleanly unmounted, repairing"
-	[ -x /usr/bin/baseos-splash ] &&
-		/usr/bin/baseos-splash --important -1 "REPAIRING SD CARD" 2>/dev/null
+	[ -x /usr/bin/flipbase-splash ] &&
+		/usr/bin/flipbase-splash --important -1 "REPAIRING SD CARD" 2>/dev/null
 	# 1: errors corrected.
-	if /usr/sbin/$fsck -a "$1" >> "$BASEOS_LOG" 2>&1 || [ $? -eq 1 ]; then
+	if /usr/sbin/$fsck -a "$1" >> "$FLIPBASE_LOG" 2>&1 || [ $? -eq 1 ]; then
 		log "$1 repaired"
 	else
 		log "$fsck failed on $1, mounting as it is"

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Write the built image to an SD card, on macOS.
 # Usage: ./flash-card.sh          list the candidate disks
-#        ./flash-card.sh diskN    write work/images/baseos-my355.img to diskN
+#        ./flash-card.sh diskN    write work/images/flipbase-my355.img to diskN
 #
 # Refuses anything that is not physical removable media — an SD slot or card
 # reader — or is smaller than the image, and asks for the disk name to be typed
@@ -9,7 +9,7 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-IMG="$HERE/work/images/baseos-my355.img"
+IMG="$HERE/work/images/flipbase-my355.img"
 
 command -v diskutil >/dev/null 2>&1 || {
   echo "flash-card.sh is macOS-only; use any image writer (INSTALL.md)" >&2; exit 1; }

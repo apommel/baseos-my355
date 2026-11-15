@@ -1,6 +1,6 @@
-# BaseOS Install Guide (Miyoo Flip)
+# FlipBase Install Guide (Miyoo Flip)
 
-BaseOS boots your Miyoo Flip from the SD card and hands off to NextUI. It does not
+FlipBase boots your Miyoo Flip from the SD card and hands off to NextUI. It does not
 replace the stock system. Take the card out and the Flip boots stock again, exactly as
 before.
 
@@ -11,7 +11,7 @@ backed up to the card before anything is written.
 
 ## Before you start
 
-Installing BaseOS writes to the device's internal storage. That carries real risk.
+Installing FlipBase writes to the device's internal storage. That carries real risk.
 
 The change is small and deliberately conservative. It touches 2 MiB, the preloader
 only, and leaves the stock system, its kernel and its bootloader alone. The installer
@@ -30,16 +30,16 @@ looks like if you need it.
 ## What you need
 
 - A Miyoo Flip
-- An SD card of 4GB or larger for BaseOS
+- An SD card of 4GB or larger for FlipBase
 - A computer with an SD card reader
 - Raspberry Pi Imager, balenaEtcher, [Flash Tool](https://github.com/pvaibhav/FlashTool/)
 for Mac users, or any tool that writes a disk image
 - A second SD card with NextUI on it (see below)
 - At least 25% battery, or the Flip on its charger
 
-## How to install BaseOS?
+## How to install FlipBase?
 
-1. Download **baseos-my355-\<version\>.img.zip** from the releases page.
+1. Download **flipbase-my355-\<version\>.img.zip** from the releases page.
 2. Use Raspberry Pi Imager to burn the image to an empty SD card. Choose
    **Use Custom** and select the .zip file; there is no need to unzip it first.
 3. Put the card in the **right-hand SD slot**. This is the only slot the Flip can boot
@@ -50,47 +50,47 @@ The stock system will start as usual, and after a few seconds a **firmware updat
 progress bar will appear. This is the preloader patch. Please be patient and do not
 power the device off while it runs. It takes about four seconds.
 
-The Flip will then reboot by itself and come up in BaseOS. On that first boot it
-takes a second to expand the card's BASEOS volume to the full size of the card, and
+The Flip will then reboot by itself and come up in FlipBase. On that first boot it
+takes a second to expand the card's FLIPBASE volume to the full size of the card, and
 shows **EXPANDING STORAGE** while it does.
 
-This only happens once. From then on the Flip boots straight to BaseOS whenever the
+This only happens once. From then on the Flip boots straight to FlipBase whenever the
 card is in the right-hand slot, and boots stock whenever it is not.
 
-The installer leaves two files, which BaseOS moves to the card's BASEOS volume on that
+The installer leaves two files, which FlipBase moves to the card's FLIPBASE volume on that
 first boot, where you can read them from your computer:
 
-- **baseos-preloader.log**, a record of what was done
+- **flipbase-preloader.log**, a record of what was done
 - **mtd5-original-\<hash\>.img**, a copy of your own original preloader
 
 Keep the second one. It is the way back if you ever want to undo the change.
 
-If your Flip already runs GammaLoader, nothing will happen at all. BaseOS will simply
+If your Flip already runs GammaLoader, nothing will happen at all. FlipBase will simply
 boot from the card, and your existing preloader is left alone.
 
 ## How to install NextUI?
 
-BaseOS needs a frontend. Put NextUI on a **second SD card** and insert it in the
-**left-hand slot**. BaseOS will find it and start it automatically.
+FlipBase needs a frontend. Put NextUI on a **second SD card** and insert it in the
+**left-hand slot**. FlipBase will find it and start it automatically.
 
 If you already use NextUI on your Flip, use that exact card. Move it from the
 right-hand slot to the left-hand slot and you are done. Your settings, saves and ROMs
 all carry over untouched, and nothing needs to be reinstalled.
 
 A brand-new card works too: format it FAT32, unzip a NextUI `base` (or `all`) release
-onto it, and put it in the left-hand slot. BaseOS installs it on the next boot, NextUI's
+onto it, and put it in the left-hand slot. FlipBase installs it on the next boot, NextUI's
 own progress screen and all. It does not need to have been started on stock first.
 
 You're done, enjoy!
 
 ### Advanced: one card for both
 
-BaseOS and NextUI can share one card, leaving the left-hand slot free. Two cards is
+FlipBase and NextUI can share one card, leaving the left-hand slot free. Two cards is
 still the recommended setup: your games and saves stay on a card you can pull out,
 reformat or replace without touching the one that boots the device.
 
 **After** the first boot — it formats the volume, erasing anything copied before — put the card in your
-computer and unzip a NextUI `base` (or `all`) release onto the BASEOS volume, next to
+computer and unzip a NextUI `base` (or `all`) release onto the FLIPBASE volume, next to
 `README.txt`. Put the card back in the right-hand slot and power on; NextUI installs
 itself as it would on any other card.
 
@@ -99,10 +99,11 @@ occasional second card works, and an empty one changes nothing.
 
 ## Settings
 
-Edit `baseos.conf` at the root of the BASEOS volume on the BaseOS card, then
+Edit `flipbase.conf` at the root of the FLIPBASE volume on the FlipBase card, then
 restart. The first boot puts a commented-out copy there; if it is missing, create
-it. Settings stay on the BaseOS card whichever card holds NextUI, and survive BaseOS
-updates.
+it. On a card from a BaseOS release the volume is still labelled BASEOS, and its
+`baseos.conf` is renamed to `flipbase.conf` on the first FlipBase boot. Settings
+stay on the FlipBase card whichever card holds NextUI, and survive FlipBase updates.
 
 ```ini
 hostname=my-flip
@@ -124,13 +125,13 @@ ssh_password=a-password
 Omitted settings use their defaults. Lines starting with `#` are comments; `#`
 within an SSH password is part of the password.
 
-## How to update BaseOS?
+## How to update FlipBase?
 
-To update BaseOS, you can simply re-flash the SD card. The `.bosupd` file can also be
+To update FlipBase, you can simply re-flash the SD card. The `.bosupd` file can also be
 used to update only the OS without re-flashing the card. This can be of interest if
 you are using a one-card setup and do not want to overwrite your front-end data.
 
-Download `baseos-my355-<version>.bosupd` and copy it to the root of either card,
+Download `flipbase-my355-<version>.bosupd` and copy it to the root of either card,
 then power on. The screen shows **UPDATING SYSTEM** with a progress bar for about a
 minute and the Flip reboots into the new version. Once it has started, the `.bosupd`
 file is deleted.
@@ -142,7 +143,7 @@ tries.
 
 You can leave the file on the card — it is applied once and then ignored, as is
 an older version. To install it anyway, rename it to start with `force-`
-(`force-baseos-my355-1.2.0.bosupd`): it is applied on the next boot, then deleted.
+(`force-flipbase-my355-1.2.0.bosupd`): it is applied on the next boot, then deleted.
 
 ## If something goes wrong
 
@@ -155,9 +156,9 @@ The cases below are the ones that have actually been seen. This is new software 
 device with more than one firmware version in circulation, so you may hit something
 that is not on this list. If you do, power off, take the card out, and start the Flip
 without it — if stock comes up, nothing is lost and you can try again. Keep
-**baseos-preloader.log** and the **mtd5-original** file; between them they say what
-happened and hold the way back. Until BaseOS has booted once they are on the card's
-data partition rather than on BASEOS: Linux reads it, Windows and macOS do not.
+**flipbase-preloader.log** and the **mtd5-original** file; between them they say what
+happened and hold the way back. Until FlipBase has booted once they are on the card's
+data partition rather than on FLIPBASE: Linux reads it, Windows and macOS do not.
 
 ### The Flip boots to stock and no update bar appears
 
@@ -167,26 +168,26 @@ different SD card if you have one.
 
 ### The update ran, but the Flip came back to stock
 
-Read **baseos-preloader.log**. BaseOS has not booted yet, so it is on the card's data
+Read **flipbase-preloader.log**. FlipBase has not booted yet, so it is on the card's data
 partition, which a Linux computer can read. On Windows or macOS, try the cases below in
 turn instead.
 
 - If it says **move the card to the right-hand slot**, the card was in the left-hand
   slot. The patch worked. Move the card over and power on.
 - If it says **not patched**, nothing was written, because the preloader was already
-  patched or is GammaLoader's. In that case check that you wrote a full BaseOS image to
+  patched or is GammaLoader's. In that case check that you wrote a full FlipBase image to
   the card rather than only copying files onto it.
 
-### BaseOS shows INSERT SD CARD, or ADD FRONTEND TO SD CARD
+### FlipBase shows INSERT SD CARD, or ADD FRONTEND TO SD CARD
 
-BaseOS is running and has no frontend to hand off to. The first message means the
+FlipBase is running and has no frontend to hand off to. The first message means the
 left-hand slot is empty, the second that the card in it carries no frontend. Put
 NextUI on a card in the left-hand slot, as above.
 
 ### You copied a .bosupd and nothing happened
 
 Updates are skipped in silence, because the check runs on every boot. To see why, run
-`baseos-update status` over adb: it lists every payload it can find with the verdict
+`flipbase-update status` over adb: it lists every payload it can find with the verdict
 for each — most often the file is older than what is already installed, or it has been
 applied before. Renaming it to start with `force-` installs it anyway.
 

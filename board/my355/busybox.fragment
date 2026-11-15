@@ -5,7 +5,7 @@ CONFIG_STATIC=y
 # rcS's `swapon -p 100`: without it the call fails and zram0 never swaps.
 CONFIG_FEATURE_SWAPON_PRI=y
 
-# The rest of the applets earlier BaseOS shipped (Alpine's busybox-static), as
+# The rest of the applets earlier releases shipped (Alpine's busybox-static), as
 # card scripts may call any of them.
 CONFIG_ACPID=y
 CONFIG_ADD_SHELL=y

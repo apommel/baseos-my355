@@ -3,10 +3,10 @@
 **Part 1**: tuning the vendor U-Boot — tried, measured at 22 ms, code removed.
 **Part 2**: replacing it — evaluated 2026-08-22 and shelved. **Part 3**: replacing
 it after all — a first build booted on 2026-09-05; this one is rebuilt from what
-that taught, and is what BaseOS boots since 0.7.0. The decision is in
+that taught, and is what FlipBase boots since 0.7.0. The decision is in
 [decisions](decisions.md); what each is worth is in [boot time](boot-time.md).
 
-Part 3 was developed and measured under the vendor 5.10 kernel, which BaseOS
+Part 3 was developed and measured under the vendor 5.10 kernel, which FlipBase
 booted until 1.3.0. U-Boot itself did not change with the move to a mainline
 kernel; what the vendor kernel needed from it, and the vendor path's
 comparisons, are kept as they were measured.
@@ -60,7 +60,7 @@ Two things were found along the way and kept.
 **The `.hdmi` device tree — a bug, now fixed.** The resource image holds
 `rk-kernel.dtb` *and* `rk-kernel.dtb.hdmi`; U-Boot selects the second when Miyoo's
 `g_miyoo_use_hdmi` is set. Only the first was ever patched, so the variant still
-carried the stock `root=/dev/mtdblock3 rootfstype=squashfs` — **BaseOS would not
+carried the stock `root=/dev/mtdblock3 rootfstype=squashfs` — **FlipBase would not
 have booted on that path.** `setargs` now patches every `rk-kernel.dtb*` entry and
 asserts `root=` on each. The variant itself differs in only three properties —
 the DSI endpoint `disabled`, `vcc3v3-lcd0-n` switched to `regulator-boot-off`,
@@ -177,7 +177,7 @@ BSP kernel with no published source, on a device with no console.
 > from 1.4 s on mainline.
 
 Lean U-Boot + stock DTB + **no video at all**, drawing the splash from the kernel
-side with the `baseos-splash` fbsplash the rootfs already ships. Cost is cosmetic
+side with the `flipbase-splash` fbsplash the rootfs already ships. Cost is cosmetic
 and bounded: the logo appears at ~2.9 s instead of ~1.0 s while the whole boot drops
 to ~6.0 s.
 
@@ -334,7 +334,7 @@ is the root being mounted `rw` at the time (it is read-only since, see
 [rootfs](rootfs.md)), not U-Boot. One of
 the five early-cache boots lost 0.42 s the same way, in the kernel, with U-Boot
 unchanged; its log was gone before either cause could be checked, and
-`baseos-bootinfo timeline` now reports both. The five early-cache boots, as
+`flipbase-bootinfo timeline` now reports both. The five early-cache boots, as
 `timeline` printed them before it gained the logo and panel columns (the third
 is the outlier):
 
@@ -835,7 +835,7 @@ same without the screen:
 - **The charge current.** The PMIC powers on limiting its input to 450 mA, so
   the first charge-mode session measured ~340 mA reaching the battery once the
   SoC had taken its share: 113 mAh in 20 minutes (2026-09-22). The kernel
-  raises the limits at probe, which is why charging is fast under BaseOS, and
+  raises the limits at probe, which is why charging is fast under FlipBase, and
   the vendor U-Boot raises them too. `my355 charge` writes `USB_CTRL` with
   the input at 2500 mA and the input voltage floor at 4.5 V (`0xde`), and, like
   the vendor, leaves the charge current register alone: it only sets that from
@@ -891,7 +891,7 @@ walks the SOC up to 100% where this writes it at once.
 ## The boot logo
 
 Mainline U-Boot has no VOP2 driver, so it draws nothing and the kernel brings
-the panel up itself. `rcS` then draws the BaseOS logo into `/dev/fb0`
+the panel up itself. `rcS` then draws the FlipBase logo into `/dev/fb0`
 (`fbsplash 0`, the artwork the vendor path's logo is cropped from) and lights
 the backlight. It does neither when the tree carries `logo,offset`, which is
 the vendor U-Boot handing its own logo over.
@@ -908,7 +908,7 @@ One cold boot, 2026-09-19:
 
 So the logo was up for about 1.1 s, arriving 1.4 s after the vendor's; since
 the changes below, it arrives at 2.00 s, about 1.0 s after the vendor's. It
-took three fixes, each found on the device with `baseos-frameprobe` (below):
+took three fixes, each found on the device with `flipbase-frameprobe` (below):
 
 - **The panel's waits.** The kernel switches the panel's supply on at 2.02 s,
   then waits `reset-delay-ms` 160, `init-delay-ms` 200, the init sequence's own
@@ -930,7 +930,7 @@ took three fixes, each found on the device with `baseos-frameprobe` (below):
   /dev/fb0` at ~2.3 s to wipe stock's splash, so the logo was erased before the
   panel ever showed it. On the vendor path the same line is harmless: that logo
   sits in the reserved `drm-logo` memory, which the kernel scans out as its own
-  framebuffer, not `fb0`. NextUI now skips the clear on BaseOS.
+  framebuffer, not `fb0`. NextUI now skips the clear on FlipBase.
 
 **What binds the display at ~2.0 s.** The DSI host looks for its panel at
 1.73 s, before `panel-simple` has registered (link order), and defers. This
@@ -1034,14 +1034,14 @@ configures.
 
 ## Measuring it
 
-`baseos-bootinfo` on the device prints U-Boot's bootstage records, which it
+`flipbase-bootinfo` on the device prints U-Boot's bootstage records, which it
 writes into the kernel's tree at hand-off (`/proc/device-tree/bootstage`), and
-`baseos-bootinfo log` the console output a diag build (`./build.sh --diag`)
+`flipbase-bootinfo log` the console output a diag build (`./build.sh --diag`)
 saved, `mmc info` and the SD phase registers included. The default release
 build saves none; the debug build costs 7 ms, and the timings on this page are
 from diag builds except the `-O2` column.
 
-`baseos-bootinfo timeline` prints one line per boot, from power-on (mainline,
+`flipbase-bootinfo timeline` prints one line per boot, from power-on (mainline,
 warm, release build):
 
 ```
@@ -1070,7 +1070,7 @@ does not, besides the console record:
 - Writing ~150 records into the kernel's tree costs **~120 ms after the
   `start_kernel` mark**: compare the first printk, not the hand-off, against a
   build without it.
-- rootfs: `baseos-frameprobe`, started by `/etc/init.d/dev`, which polls the DRM
+- rootfs: `flipbase-frameprobe`, started by `/etc/init.d/dev`, which polls the DRM
   state every 20 ms for a plane scanning out a `nextui.elf` framebuffer and
   writes `/run/boot-first-frame`. The frame figure is an upper bound: the
   polling costs a little CPU during boot. `/run/boot-display.log` records each
@@ -1086,7 +1086,7 @@ A diag build adds the console record and the charge LED; how to read them is in
 
 What 0.7.0 waited on is done: cold boots of the release build, charge mode's
 power key, a paused charge, the low-battery guard, the update from 0.6.0 and
-NextUI's `my355.sh` leaving `/dev/fb0` alone on BaseOS.
+NextUI's `my355.sh` leaving `/dev/fb0` alone on FlipBase.
 
 **Speed.** U-Boot now takes 0.62 s, with the kernel cut to the board, of which
 0.30 s is the read, ~0.1 s decompression and 0.13 s init before the boot script

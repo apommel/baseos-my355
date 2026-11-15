@@ -238,7 +238,7 @@ def cmd_uboot(a) -> int:
         root = Node("")
         root.u32("version", 0)
         root.u32("totalsize", totalsize)
-        root.string("description", "BaseOS my355 U-Boot with the vendor ATF")
+        root.string("description", "FlipBase my355 U-Boot with the vendor ATF")
         root.u32("#address-cells", 1)
         node_images = root.node("images")
         for (name, data, props), pos in zip(payloads, positions):
@@ -253,7 +253,7 @@ def cmd_uboot(a) -> int:
         node_conf = root.node("configurations")
         node_conf.string("default", "conf")
         one = node_conf.node("conf")
-        one.string("description", "BaseOS my355")
+        one.string("description", "FlipBase my355")
         one.u32("rollback-index", 0)
         one.string("firmware", firmware)
         one.raw("loadables", b"".join(n.encode() + b"\0" for n in loadables))
@@ -350,7 +350,7 @@ def cmd_boot(a) -> int:
           f"({100 * len(payload) / len(raw):.0f}%)")
 
     root = Node("")
-    root.string("description", "BaseOS my355")
+    root.string("description", "FlipBase my355")
     # Mandatory once a build has CMD_DATE; fixed, so the FIT reproduces.
     root.u32("timestamp", 0)
     root.u32("#address-cells", 1)
@@ -377,7 +377,7 @@ def cmd_boot(a) -> int:
     node_conf = root.node("configurations")
     node_conf.string("default", "conf")
     one = node_conf.node("conf")
-    one.string("description", "BaseOS my355")
+    one.string("description", "FlipBase my355")
     one.string("kernel", "kernel")
     one.string("fdt", "fdt")
 

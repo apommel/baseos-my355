@@ -11,7 +11,7 @@ DSI uses drm_bridge_connector: pull the CRTC into the commit when TV
 B/C/S/H change so vop2_crtc_atomic_flush reprograms BCSH. Do not set
 connectors_changed (that modesets and blanks the panel).
 
-BaseOS: output mode 3 and BT.709 CSC, as the BSP. The original's mode 0
+FlipBase: output mode 3 and BT.709 CSC, as the BSP. The original's mode 0
 is the BSP's BCSH_OUT_MODE_BLACK, so any change from 50 blacked the panel.
 
 Signed-off-by: Zetarancio <zetarancio@users.noreply.github.com>

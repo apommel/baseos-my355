@@ -1,6 +1,6 @@
 # Hardware
 
-The device BaseOS runs on: Miyoo Flip (`MIYOO RK3566 355 V10 Board`), NextUI
+The device FlipBase runs on: Miyoo Flip (`MIYOO RK3566 355 V10 Board`), NextUI
 platform id **`my355`**. Everything here was read off a running stock unit.
 
 | | |
@@ -12,11 +12,11 @@ platform id **`my355`**. Everything here was read off a running stock unit.
 | Stock kernel | 5.10.160 `#152 SMP Mon May 26 14:30:16 CST 2025` (Rockchip BSP) |
 | Stock U-Boot | 2017.09 (Jun 27 2025 - 23:33:02 +0800) |
 | Stock SPL | 2017.09 (Dec 12 2024 - 10:17:54), DDR blob `V1.18 f366f69a7d` |
-| Frontend | NextUI `my355` (stock runs it from the **right** slot; BaseOS takes that slot and reads the frontend from the left — [rootfs](rootfs.md)) |
+| Frontend | NextUI `my355` (stock runs it from the **right** slot; FlipBase takes that slot and reads the frontend from the left — [rootfs](rootfs.md)) |
 
 > The device-level reverse-engineering wiki lives in
 > [Miyoo-Flip-Mainline-Linux-Reverse-Engineering](https://github.com/Zetarancio/Miyoo-Flip-Mainline-Linux-Reverse-Engineering).
-> This file records only what bears on porting BaseOS, and **corrects two things**
+> This file records only what bears on porting FlipBase, and **corrects two things**
 > that wiki currently states — see [recovery](recovery.md).
 
 ---
@@ -35,7 +35,7 @@ mtdparts=spi-nand0:0x100000@0x200000(vnvm),0x400000@0x300000(uboot),
 ```
 
 There is **no writable U-Boot environment** (`Using default environment`), so `root=`
-cannot be redirected without rewriting `mtd2`. What BaseOS does instead is
+cannot be redirected without rewriting `mtd2`. What FlipBase does instead is
 [the boot chain](boot-chain.md): patch the preloader so the SPL tries the card
 first, and put a U-Boot and a boot image on the card for it to find.
 
@@ -69,7 +69,7 @@ a pak needs goes there. These are why `rcS` is as short as it is:
 - The panel, storage and input are built in. The GPU (`mali_kbase` or
   `panfrost`), WiFi (`8733bu`) and Bluetooth are modules, loaded on demand.
 
-The vendor 5.10 kernel BaseOS booted until 1.3.0 had essentially every driver
+The vendor 5.10 kernel FlipBase booted until 1.3.0 had essentially every driver
 built in, and only one module loaded at runtime (`RTL8189FU`, unused).
 
 ---

@@ -9,16 +9,16 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
 WORK="$HERE/work/images"
 VERSION="$(tr -d " \n" < "$HERE/VERSION")"
-PAYLOAD="$WORK/baseos-my355-$VERSION.bosupd"
+PAYLOAD="$WORK/flipbase-my355-$VERSION.bosupd"
 
 echo "== update round trip =="
-for f in "$WORK/baseos-my355.img" "$PAYLOAD"; do
+for f in "$WORK/flipbase-my355.img" "$PAYLOAD"; do
   [ -f "$f" ] || { echo "  SKIP no $f (run ./build.sh)"; exit 0; }
 done
 docker run --rm \
   -v "$WORK":/work:ro -v "$HERE/src":/src:ro -v "$HERE/tools":/tools:ro \
-  -v "$HERE/board/my355/rootfs-overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
-  -v "$HERE/board/my355/rootfs-overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/sbin/flipbase-update":/test/flipbase-update:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/share/flipbase/log.sh":/usr/share/flipbase/log.sh:ro \
   --tmpfs /data --tmpfs /mnt/SDCARD \
   -e VERSION="$VERSION" \
   alpine:3.20 sh -euc '
@@ -26,7 +26,7 @@ docker run --rm \
   gcc -O2 -o /usr/sbin/gptslot /src/gptslot.c
 
   stub() { rm -f "$1"; printf "#!/bin/sh\n%s\n" "$2" > "$1"; chmod +x "$1"; }
-  stub /usr/bin/baseos-splash ":"
+  stub /usr/bin/flipbase-splash ":"
   stub /sbin/reboot ":"
   stub /bin/sleep ":"
   stub /bin/sync ":"
@@ -34,16 +34,16 @@ docker run --rm \
   eval "$(python3 /tools/mkgpt.py --shell)"
   slice() { dd if=/tmp/card.img bs=512 skip="$1" count="$2" status=none | sha256sum; }
 
-  cp /work/baseos-my355.img /tmp/card.img
+  cp /work/flipbase-my355.img /tmp/card.img
   ln -sf /tmp/card.img /dev/mmcblk1
-  cp "/work/baseos-my355-$VERSION.bosupd" /mnt/SDCARD/
+  cp "/work/flipbase-my355-$VERSION.bosupd" /mnt/SDCARD/
   # An older running version, so the payload is an upgrade.
-  printf "BASEOS_TARGET=my355\nBASEOS_VERSION=0.0.1\nBASEOS_BUILD=old\n" > /etc/baseos-release
+  printf "FLIPBASE_TARGET=my355\nFLIPBASE_VERSION=0.0.1\nFLIPBASE_BUILD=old\n" > /etc/flipbase-release
 
   before_data="$(slice "$MY355_DATA_START" "$MY355_DATA_SECTORS")"
   before_primary="$(slice "$MY355_PRIMARY_START" "$MY355_PRIMARY_SECTORS")"
 
-  sh /test/baseos-update apply
+  sh /test/flipbase-update apply
 
   # The payload came from this very image, so only the rootfs (which the check
   # always rewrites) moves to its second half; uboot and boot already match.
@@ -67,7 +67,7 @@ docker run --rm \
   dd if=/tmp/card.img of=/tmp/new-rootfs.img bs=512 skip="$SLOT_ROOTFS_ACTIVE" \
      count="$SLOT_ROOTFS_SECTORS" status=none
   fsck.erofs --extract=/tmp/new-rootfs /tmp/new-rootfs.img > /dev/null 2>&1
-  grep -qx "BASEOS_VERSION=$VERSION" /tmp/new-rootfs/etc/baseos-release
+  grep -qx "FLIPBASE_VERSION=$VERSION" /tmp/new-rootfs/etc/flipbase-release
 
   grep -q "^$(sed -n "s/^rootfs-sha256=//p" /tmp/.bosupd-manifest) " /data/update/history
 

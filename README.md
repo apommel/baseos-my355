@@ -1,10 +1,10 @@
-# BaseOS for the Miyoo Flip
+# FlipBase for the Miyoo Flip
 
 A minimal Linux that boots the **Miyoo Flip** (Rockchip RK3566, not Miyoo Mini Flip)
 as fast as the hardware allows, then starts a frontend such as NextUI or SpruceOS.
 It has no interface of its own.
 
-BaseOS runs from the SD card and leaves the stock system in place: take the card out
+FlipBase runs from the SD card and leaves the stock system in place: take the card out
 and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 
 ## Features
@@ -23,14 +23,14 @@ and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 
 ## Startup time
 
-| power-on → | stock | **BaseOS** |
+| power-on → | stock | **FlipBase** |
 |---|---|---|
 | the kernel's first line | 4.30 s | **0.59 s** |
 | frontend starts | 15.79 s | **1.31–1.34 s** |
 | `nextui.elf` starts | — | **1.97–2.04 s** |
 | NextUI's first frame | 31.50 s | **2.34–2.39 s** |
 
-Stock measured with USB unplugged; BaseOS over warm reboots by adb, on the
+Stock measured with USB unplugged; FlipBase over warm reboots by adb, on the
 default `gpu=panfrost`. With `gpu=mali` the first frame is at 2.57–2.67 s.
 
 Where the time is saved:
@@ -55,7 +55,7 @@ are kept unchanged. The vendor userland is replaced by a BusyBox init, plus the
 parts of the stock libraries that frontends need. Stock-built frontends run
 unmodified: the kernel presents the interfaces they expect from the vendor
 kernel ([docs/mainline-compat.md](docs/mainline-compat.md)). The GPU driver is
-Mesa's Panfrost, the default, or Rockchip's libmali, picked in `baseos.conf`.
+Mesa's Panfrost, the default, or Rockchip's libmali, picked in `flipbase.conf`.
 
 ## Building
 
@@ -72,7 +72,7 @@ Then:
 ./build.sh
 ```
 
-This writes `work/images/baseos-my355-<version>.img.zip`, the `.bosupd` update
+This writes `work/images/flipbase-my355-<version>.img.zip`, the `.bosupd` update
 and `SHA256SUMS`. Two files come from the stock firmware, the vendor U-Boot
 and the Bluetooth firmware; the build downloads them, checked by hash.
 
@@ -85,7 +85,7 @@ build.sh            run the build in Docker
 configs/            the Buildroot defconfig
 board/my355/        kernel and U-Boot patches and configs, the rootfs overlay,
                     the image scripts, the preloader installer
-package/            BaseOS's own packages: libmali, Mesa's Panfrost, the kernel
+package/            FlipBase's own packages: libmali, Mesa's Panfrost, the kernel
                     modules, the stock firmware, SDL, src/'s tools
 patches/            fixes and hashes for Buildroot's own packages
 src/                boot splash and small helper programs
@@ -98,7 +98,8 @@ docs/               documentation — start at docs/README.md
 ## Relationship to BaseOS for H700
 
 Forked from [BaseOS](https://github.com/pvaibhav/BaseOS) for Allwinner H700
-handhelds, with the same approach: replace the vendor userland, keep what
+handhelds, and called BaseOS until it moved to mainline Linux. The new name keeps
+the lineage and marks it as an independent project. Same approach: replace the vendor userland, keep what
 frontends depend on, measure everything. The hardware is different, so the boot chain, image
 format and build are separate. The boot splash, artwork and some build helpers are
 shared, and the card setup and update system are adapted from it. See [NOTICE](NOTICE).

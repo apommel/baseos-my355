@@ -6,7 +6,7 @@ holds DRM master itself. The vendor kernel lets that through
 (CONFIG_DRM_IGNORE_IOTCL_PERMIT skips every ioctl permission check); mainline
 refuses it with -EACCES. Rather than relax the ioctls for every client, give
 each connector a sysfs attribute per property, named after it, that commits
-it as the kernel. BaseOS's modetest writes those. These are the TV properties
+it as the kernel. FlipBase's modetest writes those. These are the TV properties
 0040 adds; another connector property is one more attribute.
 
 ---

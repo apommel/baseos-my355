@@ -8,6 +8,6 @@ config BR2_PACKAGE_MESA_PANFROST
 	select BR2_PACKAGE_ZLIB
 	help
 	  Mesa's Panfrost and PanVK in /usr/lib/mesa, beside libmali,
-	  which stays the EGL, GLES and GBM provider; baseos-gpu
+	  which stays the EGL, GLES and GBM provider; flipbase-gpu
 	  picks one at boot. Buildroot's mesa3d would provide them
 	  and need LLVM on the target.

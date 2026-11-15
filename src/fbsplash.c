@@ -31,7 +31,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
-#define FONT_PATH "/usr/share/baseos/boot.ttf"
+#define FONT_PATH "/usr/share/flipbase/boot.ttf"
 
 typedef struct {
 	uint8_t rows[7];
@@ -719,8 +719,8 @@ int main(int argc, char **argv) {
 // reject_options()). A file that is missing, unreadable or silent about rotation
 // means 0: every unrotated target, and any rootfs built before the key existed.
 static int panel_rotation(void) {
-	static const char key[] = "BASEOS_PANEL_ROTATION_CCW=";
-	FILE *fp = fopen("/etc/baseos-release", "r");
+	static const char key[] = "FLIPBASE_PANEL_ROTATION_CCW=";
+	FILE *fp = fopen("/etc/flipbase-release", "r");
 	if (!fp)
 		return 0;
 	char line[160];

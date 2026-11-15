@@ -1,6 +1,6 @@
 // Prints when, in seconds from power-on, the uptime clock started: the arch
 // counter, which runs from SoC reset, minus CLOCK_MONOTONIC_RAW. Upstream
-// BaseOS logs it as "before Linux"; added to a /run/boot-* mark, it puts that
+// FlipBase logs it as "before Linux"; added to a /run/boot-* mark, it puts that
 // mark on the power-on clock. Constant for a boot until the first suspend.
 #include <stdint.h>
 #include <stdio.h>

@@ -1,5 +1,5 @@
 #!/bin/sh
-# BaseOS preloader installer. Reads this unit's own mtd5, repairs /pinctrl in the SPL
+# FlipBase preloader installer. Reads this unit's own mtd5, repairs /pinctrl in the SPL
 # device tree, writes it back. Ships no preloader binary: the DDR blob and SPL code
 # stay whatever this unit shipped with. See docs/boot-chain.md.
 HERE="$(dirname "$0")"
@@ -7,9 +7,9 @@ HERE="$(dirname "$0")"
 CARD="${CARD:-$(pwd)}"
 resolved=$(cd "$CARD" 2>/dev/null && pwd -P) && CARD="$resolved"
 
-# Backup and log go next to this, on /data; BaseOS moves them to its exFAT volume.
+# Backup and log go next to this, on /data; FlipBase moves them to its exFAT volume.
 CARDDEV=$(awk -v d="$CARD" '$2 == d { print $1 }' /proc/mounts)
-LOG="$CARD/baseos-preloader.log"
+LOG="$CARD/flipbase-preloader.log"
 MTD=${MTD:-/dev/mtd5}
 MIN_BATTERY=25
 
@@ -22,7 +22,7 @@ finish() {
     exit "${1:-0}"
 }
 
-log "--- BaseOS preloader installer $(date) ---"
+log "--- FlipBase preloader installer $(date) ---"
 progress 5
 
 # Refuse unless the ground is safe.
@@ -39,26 +39,26 @@ fi
 log "battery $CAP%, on charger $AC"
 
 progress 10
-dd if=${MTD}ro of=/tmp/baseos-orig.img bs=2048 2>/dev/null
-BEFORE=$(sha256sum /tmp/baseos-orig.img | cut -c1-64)
+dd if=${MTD}ro of=/tmp/flipbase-orig.img bs=2048 2>/dev/null
+BEFORE=$(sha256sum /tmp/flipbase-orig.img | cut -c1-64)
 log "mtd5 reads as $BEFORE"
 
 progress 20
 if ! AWK_SCRIPT="$HERE/fdtpatch.awk" sh "$HERE/patch-preloader.sh" \
-        /tmp/baseos-orig.img /tmp/baseos-new.img >> "$LOG" 2>&1; then
+        /tmp/flipbase-orig.img /tmp/flipbase-new.img >> "$LOG" 2>&1; then
     log "not patched (see log) - nothing was written"; finish 0
 fi
-AFTER=$(sha256sum /tmp/baseos-new.img | cut -c1-64)
+AFTER=$(sha256sum /tmp/flipbase-new.img | cut -c1-64)
 log "patched image is $AFTER"
 
 # A way back, on the card, before anything is erased.
 progress 30
-cp /tmp/baseos-orig.img "$CARD/mtd5-original-$BEFORE.img" && sync
+cp /tmp/flipbase-orig.img "$CARD/mtd5-original-$BEFORE.img" && sync
 [ "$(sha256sum "$CARD/mtd5-original-$BEFORE.img" | cut -c1-64)" = "$BEFORE" ] \
     || { log "backup to the card did not verify; refusing"; finish 1; }
 log "original backed up to $CARD"
 
-if [ "${BASEOS_DRY:-0}" = "1" ]; then
+if [ "${FLIPBASE_DRY:-0}" = "1" ]; then
     log "dry run - would erase $MTD and write the patched image"
     finish 0
 fi
@@ -70,10 +70,10 @@ while [ $n -lt 3 ]; do
     n=$((n + 1))
     log "flash attempt $n"
     flash_erase "$MTD" 0 0 >> "$LOG" 2>&1
-    nandwrite -p "$MTD" /tmp/baseos-new.img >> "$LOG" 2>&1
+    nandwrite -p "$MTD" /tmp/flipbase-new.img >> "$LOG" 2>&1
     progress $((40 + n * 15))
-    dd if=${MTD}ro of=/tmp/baseos-back.img bs=2048 2>/dev/null
-    if [ "$(sha256sum /tmp/baseos-back.img | cut -c1-64)" = "$AFTER" ]; then
+    dd if=${MTD}ro of=/tmp/flipbase-back.img bs=2048 2>/dev/null
+    if [ "$(sha256sum /tmp/flipbase-back.img | cut -c1-64)" = "$AFTER" ]; then
         # Rebooting only helps from the slot the SPL can boot.
         case "$CARDDEV" in
             /dev/mmcblk1p*) log "readback verified - rebooting into the card"; BOOT=1 ;;
@@ -90,9 +90,9 @@ n=0
 while [ $n -lt 3 ]; do
     n=$((n + 1))
     flash_erase "$MTD" 0 0 >> "$LOG" 2>&1
-    nandwrite -p "$MTD" /tmp/baseos-orig.img >> "$LOG" 2>&1
-    dd if=${MTD}ro of=/tmp/baseos-back.img bs=2048 2>/dev/null
-    if [ "$(sha256sum /tmp/baseos-back.img | cut -c1-64)" = "$BEFORE" ]; then
+    nandwrite -p "$MTD" /tmp/flipbase-orig.img >> "$LOG" 2>&1
+    dd if=${MTD}ro of=/tmp/flipbase-back.img bs=2048 2>/dev/null
+    if [ "$(sha256sum /tmp/flipbase-back.img | cut -c1-64)" = "$BEFORE" ]; then
         log "original restored; device is exactly as it was"; finish 1
     fi
 done

@@ -25,7 +25,7 @@ Subject: [PATCH] misc: stock rkwifi wifi_power
 +/*
 + * Stock's /sys/class/rkwifi/wifi_power, over the vcc_wifi regulator that
 + * powers the RTL8733BU: above 0 powers the chip, 0 cuts it, as the vendor's
-+ * rfkill-wlan reads it. spruceOS and BaseOS's wifibt-power write it; each
++ * rfkill-wlan reads it. spruceOS and FlipBase's wifibt-power write it; each
 + * radio's own switch is its driver's rfkill, as on mainline.
 + */
 +#include <linux/device.h>

@@ -1,0 +1,50 @@
+#!/bin/sh
+# Apply the settings in this card's flipbase.conf. /etc/init.d/dev passes the
+# file; none, or a missing one, means defaults. The cleartext password never
+# leaves the card.
+# From upstream BaseOS (pvaibhav/BaseOS), less its mDNS and H700 audio keys.
+set -eu
+export LC_ALL=C
+umask 022
+
+[ "$#" -le 1 ] || { echo "usage: flipbase-config [FILE]" >&2; exit 2; }
+CONFIG="${1:-/dev/null}"
+RUN="${FLIPBASE_RUN_ROOT:-/run}"
+HOSTNAME_BIN="${FLIPBASE_HOSTNAME_BIN:-/bin/hostname}"
+. "${FLIPBASE_SHARE:-/usr/share/flipbase}/conf.sh"
+
+valid_hostname() {
+	case "$1" in ''|-*|*-|*[!A-Za-z0-9-]*) return 1 ;; esac
+	[ "${#1}" -le 63 ]
+}
+
+conf_get hostname "$CONFIG"
+name=miyoo-flip
+if valid_hostname "$CONF_VALUE"; then name=$CONF_VALUE; fi
+conf_get ssh_password "$CONFIG"
+password=$CONF_VALUE
+CONF_VALUE=
+
+mkdir -p "$RUN"
+# Shadow is built in RAM: the root is read-only, and the card supplies the
+# password again after updates.
+umask 077
+shadow_default="${FLIPBASE_SHADOW_DEFAULT:-/usr/share/flipbase/shadow}"
+shadow_tmp="$RUN/shadow.tmp"
+trap 'rm -f "$shadow_tmp"' EXIT HUP INT TERM
+if [ -n "$password" ]; then
+	# -P reads a file descriptor, keeping the password out of process arguments.
+	hash="$(printf '%s\n' "$password" | "${FLIPBASE_MKPASSWD_BIN:-mkpasswd}" -m sha512 -P 0)"
+	case "$hash" in '$6$'*) ;; *) echo 'flipbase-config: password hashing failed' >&2; exit 1 ;; esac
+	awk -F: -v OFS=: -v hash="$hash" '$1 == "root" { $2 = hash } { print }' \
+		"$shadow_default" > "$shadow_tmp"
+else
+	cat "$shadow_default" > "$shadow_tmp"
+fi
+chmod 600 "$shadow_tmp"
+mv -f "$shadow_tmp" "$RUN/shadow"
+unset password
+umask 022
+printf '%s\n' "$name" > "$RUN/hostname"
+printf '127.0.0.1 localhost %s\n::1 localhost\n' "$name" > "$RUN/hosts"
+"$HOSTNAME_BIN" "$name"

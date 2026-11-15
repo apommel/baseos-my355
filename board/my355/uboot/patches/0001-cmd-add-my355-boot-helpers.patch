@@ -13,7 +13,7 @@ index 5c611fb..7815eed 100644
  	  various media.
  
 +config CMD_MY355
-+	bool "my355 - BaseOS Miyoo Flip boot helpers"
++	bool "my355 - FlipBase Miyoo Flip boot helpers"
 +	depends on BOOTSTAGE
 +	help
 +	  Named bootstage marks, the core clock and fuel gauge state handed
@@ -44,7 +44,7 @@ index 0000000..1dea617
 @@ -0,0 +1,648 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
-+ * BaseOS my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
++ * FlipBase my355 (Miyoo Flip) boot helpers. The unit has no UART attached, so
 + * the boot script records its own timings and saves its own console output.
 + */
 +
@@ -684,7 +684,7 @@ index 0000000..1dea617
 +	"                        light the charge LED until full or unplugged,\n"
 +	"                        then power off. Holding the power key boots");
 +
-+U_BOOT_CMD_WITH_SUBCMDS(my355, "BaseOS my355 boot helpers", my355_help_text,
++U_BOOT_CMD_WITH_SUBCMDS(my355, "FlipBase my355 boot helpers", my355_help_text,
 +	U_BOOT_SUBCMD_MKENT(mark, 2, 1, do_my355_mark),
 +	U_BOOT_SUBCMD_MKENT(log, 3, 1, do_my355_log),
 +	U_BOOT_SUBCMD_MKENT(cpu, 2, 1, do_my355_cpu),

@@ -1,0 +1,7 @@
+config BR2_PACKAGE_FLIPBASE_TOOLS
+	bool "flipbase-tools"
+	select BR2_PACKAGE_FREETYPE
+	help
+	  FlipBase's own programs, from src/: fbsplash, the GPT tools
+	  for expand-to-fill and A/B updates, rebootmode, pwrkeyd,
+	  fatdirty and wifibtd.

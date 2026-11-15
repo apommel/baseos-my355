@@ -3,7 +3,7 @@
 # nothing itself, so stop the other processes and unmount here. Otherwise the
 # ext4 journals replay on the next boot.
 
-. /usr/share/baseos/log.sh
+. /usr/share/flipbase/log.sh
 
 # A frontend can mount over /usr from its card (spruceOS: an overlay on a loop
 # image), and this script would then hold the card. Detach and run again.
@@ -42,7 +42,7 @@ wait_others() {
 }
 
 log "shutdown"
-[ -e /run/baseos-charge ] && log "charger in: restarting to charge"
+[ -e /run/flipbase-charge ] && log "charger in: restarting to charge"
 # ntpd can ignore SIGTERM for seconds (S49ntp), which would use up the wait below.
 [ -x /etc/init.d/S49ntp ] && /etc/init.d/S49ntp stop
 # NextUI exits on SIGTERM after its 2 s power-off screen.
@@ -68,4 +68,4 @@ for m in $(/usr/bin/awk '$2 != "/" && $2 !~ /^\/(proc|sys|dev)(\/|$)/ && $2 !~ /
 done
 
 # Set by poweroff with the charger in: U-Boot then keeps the charge LED lit.
-[ -e /run/baseos-charge ] && /usr/sbin/rebootmode charge
+[ -e /run/flipbase-charge ] && /usr/sbin/rebootmode charge

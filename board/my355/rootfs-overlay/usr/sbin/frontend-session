@@ -7,20 +7,20 @@
 # /userdata included.
 
 SDCARD=/mnt/SDCARD
-. /usr/share/baseos/log.sh
+. /usr/share/flipbase/log.sh
 
 # A session starting is what ends a system-update trial: the OS came up far
 # enough to hand off. Keyed here rather than on the frontend exec because a card
 # with no frontend is a healthy OS, and keying it later would make that state
 # look like a failed update and roll back forever.
-# The builtin test is baseos-update's $STATE, sparing the 8 ms no-op.
-[ -f /data/update/state ] && [ -x /usr/sbin/baseos-update ] && \
-	/usr/sbin/baseos-update confirm 2>/dev/null
+# The builtin test is flipbase-update's $STATE, sparing the 8 ms no-op.
+[ -f /data/update/state ] && [ -x /usr/sbin/flipbase-update ] && \
+	/usr/sbin/flipbase-update confirm 2>/dev/null
 
 # The panel is this device's only output. Ordinary boots never call this — rcS's
 # boot logo stays untouched until the frontend draws its first frame.
 splash() {
-	[ -x /usr/bin/baseos-splash ] && /usr/bin/baseos-splash --important "$@" 2>/dev/null
+	[ -x /usr/bin/flipbase-splash ] && /usr/bin/flipbase-splash --important "$@" 2>/dev/null
 }
 
 # The kernel boots on `performance`; a frontend sets its own governor. Without
@@ -82,7 +82,7 @@ fi
 # On stock it is my355.sh that copies it up — reached through runmiyoo.sh's
 # CUSTOMER_DIR and a /proc/cpuinfo shim — and then deletes miyoo355/ so stock
 # can never reach it again. Replacing that chain means inheriting the copy; the
-# rest of my355.sh is the NAND hook BaseOS exists to replace. miyoo355/ is the
+# rest of my355.sh is the NAND hook FlipBase exists to replace. miyoo355/ is the
 # only customer dir this device reads, so the zip's miyoo/ is left alone.
 if [ ! -f "$SDCARD/.tmp_update/updater" ]; then
 	if [ -d "$SDCARD/miyoo355/app/.tmp_update" ]; then
@@ -91,7 +91,7 @@ if [ ! -f "$SDCARD/.tmp_update/updater" ]; then
 	elif [ -f "$SDCARD/MinUI.zip" ]; then
 		# The zip carries the same .tmp_update. Stock has no such fallback.
 		log "staging .tmp_update from MinUI.zip"
-		/bin/unzip -o "$SDCARD/MinUI.zip" '.tmp_update/*' -d "$SDCARD" >> "$BASEOS_LOG" 2>&1
+		/bin/unzip -o "$SDCARD/MinUI.zip" '.tmp_update/*' -d "$SDCARD" >> "$FLIPBASE_LOG" 2>&1
 	fi
 	# Only once staging is known good, so a failed copy can try again.
 	if [ -f "$SDCARD/.tmp_update/updater" ]; then

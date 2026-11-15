@@ -112,7 +112,7 @@ Result — **all three cases correct**:
 | card | result |
 |---|---|
 | none | stock → MainUI |
-| BaseOS card with a `uboot` partition | **boots BaseOS from SD**, `storagemedia=sd`, `root=/dev/mmcblk1p3` |
+| FlipBase card with a `uboot` partition | **boots FlipBase from SD**, `storagemedia=sd`, `root=/dev/mmcblk1p3` |
 | card without one | falls through to stock |
 
 Pre-kernel **3.114 s**, against 3.118 s under GammaLoader's loader — no cost
@@ -128,14 +128,14 @@ first flash used. `mtd5` is 2 MiB, 16 erase blocks of 128 KiB, `writesize` 2048,
 unit's own dump**, never a redistributed binary:
 
 ```sh
-python3 tools/mkpreloader.py mtd5-spl.img baseos-preloader.img
+python3 tools/mkpreloader.py mtd5-spl.img flipbase-preloader.img
 ```
 
 Stage the image *and both rollbacks* in `/tmp` (tmpfs, RAM) before erasing, so recovery
 never needs a host transfer, and check their md5 on the device. Then:
 
 ```sh
-flash_erase /dev/mtd5 0 0 && nandwrite -p /dev/mtd5 /tmp/baseos-preloader.img
+flash_erase /dev/mtd5 0 0 && nandwrite -p /dev/mtd5 /tmp/flipbase-preloader.img
 md5sum /dev/mtd5ro          # must equal the generated image — check BEFORE rebooting
 ```
 
@@ -155,21 +155,21 @@ this depends on.
 
 ### Installing it from a card
 
-A BaseOS card patches the preloader by itself on first boot, with no host and no adb.
+A FlipBase card patches the preloader by itself on first boot, with no host and no adb.
 Stock boots, notices `miyoo355_fw.img` on the card, and runs it as root; the installer
-reads `mtd5`, repairs the device tree, writes it back, and reboots into BaseOS.
+reads `mtd5`, repairs the device tree, writes it back, and reboots into FlipBase.
 
 Verified end to end on 2026-08-23, from a freshly flashed card, on battery:
 
 ```
 18:35:55 mtd5 reads as 36d663ef…            stock preloader
 18:35:57 patched image is 620648c2…
-18:35:58 original backed up to /tmp/baseos-fat      the FAT32 volume, then
+18:35:58 original backed up to /tmp/flipbase-fat      the FAT32 volume, then
 18:35:58 flash attempt 1
 18:35:59 readback verified - rebooting into the card
 ```
 
-Four seconds, first attempt. The device came up in BaseOS at `storagemedia=sd`.
+Four seconds, first attempt. The device came up in FlipBase at `storagemedia=sd`.
 
 Code: [board/my355/preloader-installer](../board/my355/preloader-installer) — `bootstrap.sh` (what
 stock executes), `install.sh` (the procedure), `patch-preloader.sh` + `fdtpatch.awk`
@@ -224,7 +224,7 @@ idempotent.
 Refuses unless `mtd5` is the `spl` partition and the battery is over 25% or on charger.
 Reads `mtd5`, derives the patch, and **copies the original to the card and verifies it
 before erasing anything**. Writes, verifies the readback, and retries up to three
-times; if it still cannot verify, it restores the original and says so. `BASEOS_DRY=1`
+times; if it still cannot verify, it restores the original and says so. `FLIPBASE_DRY=1`
 rehearses everything up to the erase.
 
 **It writes only when it has something to add.** All three cases were exercised on
@@ -250,8 +250,8 @@ logs *move the card to the right-hand slot* instead. Every refusal path finishes
 without rebooting, leaving the device in MainUI exactly as it was.
 
 The backup and log go next to the installer, on `/data`: the card's exFAT volume,
-the one a desktop can read, is not one stock can mount. BaseOS moves both there on its
-first boot ([the card](card.md)); after a failure that never reached BaseOS they stay
+the one a desktop can read, is not one stock can mount. FlipBase moves both there on its
+first boot ([the card](card.md)); after a failure that never reached FlipBase they stay
 on `/data`, readable over stock's adb or from Linux. Until 2026-10-30 the volume was
 FAT32 and the installer mounted it itself, by finding the `TYPE="vfat"` sibling of the
 directory it ran from.
@@ -273,7 +273,7 @@ KERNEL=="mmcblk2*", ATTRS{type}=="SD", RUN+="/usr/share/usbmount/usbmount add sd
 Any partition whose type is in `FILESYSTEMS` (`vfat ext2 ext3 ext4 hfsplus ntfs exfat
 fuseblk`) is mounted into the **first free** mountpoint of that slot's list, and each
 slot has only two: `/media/sdcard0 /media/sdcard2` on the right, `/media/sdcard1
-/media/sdcard3` on the left. GPT attribute bits 62/63 are not consulted. A BaseOS card
+/media/sdcard3` on the left. GPT attribute bits 62/63 are not consulted. A FlipBase card
 offers three filesystems for those two mountpoints, and only `sdcard0`/`sdcard1` is
 consulted for the image.
 
@@ -377,7 +377,7 @@ blob, no `U-Boot SPL`. They begin at the `uboot` partition, so an update never t
 
 ### The `uboot` partition
 
-Create a GPT partition named **`uboot` starting at sector 16384**. For BaseOS it holds
+Create a GPT partition named **`uboot` starting at sector 16384**. For FlipBase it holds
 a FIT of mainline U-Boot with the vendor BL31 and OP-TEE ([U-Boot](uboot.md)); for
 ROCKNIX **no data need be written into it** — `u-boot.itb` is already at that
 sector and the entry merely gives `part_get_info_by_name` something to find.
