@@ -31,14 +31,28 @@ Taken later, from upstream commit 7dec5cb (2026-09-18):
                                 the flipbase.conf parser; reduced to hostname and
                                 ssh_password, with a fixed default hostname
     board/my355/assets/flipbase.conf
-                                its template
+                                its template, since extended with FlipBase's
+                                own settings
     tests/test-flipbase-config.sh its tests, adapted to the above
 
 board/my355/assets/boot.ttf is licensed under the SIL Open Font License; see
 board/my355/assets/OFL.txt.
 
-Everything else — the Rockchip boot chain, the SPI NAND preloader work, the my355
-rootfs, overlay and documentation — is new in this repository.
+Everything else — the Rockchip boot chain, the SPI NAND preloader work, the
+Buildroot tree and packages, the my355 rootfs, overlay and documentation — is new
+in this repository.
+
+MAINLINE LINUX
+--------------
+
+The move to mainline Linux was made possible by Zetarancio's reverse-engineering
+of the Miyoo Flip and their mainline port, zlyme:
+
+    https://github.com/Zetarancio/Miyoo-Flip-Mainline-Linux-Reverse-Engineering
+
+FlipBase's device tree and several of its drivers follow that work, and the
+patches taken from it keep Zetarancio's authorship in their headers. Other pieces
+come from ROCKNIX's Miyoo Flip support and upstream Rockchip patches.
 
 VENDOR FIRMWARE
 ---------------
@@ -64,15 +78,19 @@ KERNEL SOURCES
 --------------
 
 board/my355/linux/ holds patches, drivers and a device tree for Linux, and is
-GPL-2.0 like the kernel it builds into, as each driver's SPDX line says. Several
-pieces come from, or follow, ROCKNIX's and zlyme's Miyoo Flip work and upstream
-Rockchip patches; the origin is noted in the file or in docs/mainline-compat.md.
+GPL-2.0 like the kernel it builds into, as each driver's SPDX line says. The
+patches in package/mali-kbase/ and package/rtl8733bu/ are GPL-2.0 like the
+out-of-tree drivers they apply to. Where a piece comes from Zetarancio, ROCKNIX
+or upstream, the origin is noted in the file or in docs/mainline-compat.md.
+
+The patches in patches/ and package/ for other software are under that
+software's license.
 
 LICENSE
 -------
 
-My own work in this repository — everything listed as new above, except
-board/my355/linux/ — is MIT licensed; see LICENSE. Use it freely.
+My own work in this repository — everything listed as new above, except the
+kernel and driver sources and patches covered above — is MIT licensed; see LICENSE. Use it freely.
 
 The files listed above as upstream's work carry no license, since upstream BaseOS
 ships none; MIT cannot be granted over them. The font is OFL, and the vendor
