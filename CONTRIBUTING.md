@@ -43,7 +43,7 @@ track config or patch edits: rebuild the package, as above.
   `mtd3`) in a directory, and build with `STOCK_FIRMWARE=<dir> ./build.sh`.
 - **Diagnostics:** `./build.sh --diag` builds into its own output directory with
   U-Boot's console saved to the card, a bootstage mark per initcall and per
-  card-init step, and probes for the first frame (`baseos-bootinfo timeline`)
+  card-init step, and probes for the first frame (`flipbase-bootinfo timeline`)
   and what the panel shows (`/run/boot-display.log`). Not for release —
   [diagnostics](docs/diagnostics.md).
 
@@ -54,7 +54,7 @@ looks like a good one. Do not iterate blind —
 [docs/diagnostics.md](docs/diagnostics.md) lists the signals that work, the failure
 signatures, and when to open the case and put a wire on `ttyS2` at 1500000 baud.
 
-The decisive trick: put the BaseOS card in the **left** slot. It is not in the SPL
+The decisive trick: put the FlipBase card in the **left** slot. It is not in the SPL
 boot order, so the device boots stock from NAND and mounts the card under `/media/`,
 where everything the failed boot wrote is readable over adb.
 

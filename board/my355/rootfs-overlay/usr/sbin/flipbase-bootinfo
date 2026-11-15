@@ -1,0 +1,96 @@
+#!/bin/sh
+# What the bootloader left behind (docs/uboot.md).
+#
+#   flipbase-bootinfo          which U-Boot booted, and its bootstage timings
+#   flipbase-bootinfo log      the console output a debug build saved to the card
+#   flipbase-bootinfo timeline this boot's milestones, power-on to first frame
+#   flipbase-bootinfo startup  the line rcS logs once per boot
+#
+# Timings come from /proc/device-tree/bootstage, which U-Boot writes at hand-off
+# in arch-counter microseconds — power-on-relative, like the kernel's printk.
+# The log is the last 64 KiB of the `boot` partition (GPT entry 2, whichever
+# half it points at), written just before the hand-off and again if it fails.
+
+BOOT_PART=/dev/mmcblk1p2
+LOG_SECTORS=128
+BS=/proc/device-tree/bootstage
+
+# A big-endian cell as a decimal.
+be32() { printf '%d' "0x$(od -An -tx1 "$1" | tr -d ' \n')"; }
+
+# Seconds from power-on, the clock the figures in docs/boot-time.md use. printk
+# starts at kernel entry, so U-Boot's hand-off is added to it; uptime ~75 ms
+# later, so bootclock's offset is added to it. The first frame needs a --diag
+# rootfs (flipbase-frameprobe).
+
+timeline() {
+	pk() { dmesg | awk -F'[][]' -v re="$1" -v b="$base" '$0 ~ re {printf "%.3f", $2 + b; exit}'; }
+	started() { cut -d')' -f2 "/proc/$1/stat" | awk '{printf "%.2f", $20 / 100}'; }
+
+	uboot=-
+	for rec in "$BS"/*/; do
+		[ "$(tr -d '\000' < "$rec/name" 2>/dev/null)" = start_kernel ] &&
+			uboot=$(awk -v t="$(be32 "$rec/mark")" 'BEGIN {printf "%.3f", t / 1e6}')
+	done
+	base=0
+	[ "$uboot" != - ] && base=$uboot
+	up=$(/usr/sbin/bootclock 2>/dev/null) || up=$base
+	probe=$(pk 'fe2b0000.mmc: Version')
+	card=$(pk 'mmc1: new')
+	for p in /proc/[0-9]*; do
+		case "$(cat "$p/comm" 2>/dev/null)" in
+		nextui.elf) nui=$(started "${p#/proc/}") ;;
+		esac
+	done
+	at() { if [ -n "$1" ]; then awk -v u="$1" -v o="$up" 'BEGIN {printf "%.2f", u + o}'; else echo -; fi; }
+	mk() { at "$(cat "/run/boot-$1" 2>/dev/null)"; }
+
+	printf 'uboot %s  printk %s  init %s  backlight %s  handoff %s  logo %s  nextui %s  frame %s' \
+		"$uboot" "$(pk 'Booting Linux')" "$(pk 'Run /init')" "$(mk backlight)" \
+		"$(mk frontend-exec)" "$(mk logo)" "$(at "$nui")" "$(mk first-frame)"
+	printf '  (card %s ms' "$(awk -v a="$probe" -v b="$card" \
+		'BEGIN {if (a && b) printf "%.0f", (b - a) * 1000; else printf "-"}')"
+	dmesg | grep -q 'mmcblk1p4): recovery complete' && printf ', journal replayed'
+	echo ')'
+}
+
+case "${1:-}" in
+log)
+	[ -b "$BOOT_PART" ] || { echo "no $BOOT_PART" >&2; exit 1; }
+	size=$(cat "/sys/class/block/${BOOT_PART##*/}/size")
+	dd if="$BOOT_PART" bs=512 skip=$((size - LOG_SECTORS)) count="$LOG_SECTORS" \
+		2>/dev/null | tr -d '\000'
+	exit 0 ;;
+timeline)
+	timeline
+	exit 0 ;;
+startup)
+	# The first three as upstream BaseOS logs them, which calls the hand-off "menu".
+	awk -v k="$(/usr/sbin/bootclock 2>/dev/null)" -v h="$(cat /run/boot-frontend-exec 2>/dev/null)" \
+		-v l="$(cat /run/boot-logo 2>/dev/null)" 'BEGIN {
+		if (k == "" || h == "") { print "Startup: no timings"; exit }
+		printf "Startup: %.2f s before Linux, %.2f s Linux to frontend, %.2f s total", k, h, k + h
+		if (l != "") printf "; logo on screen at %.2f s", k + l
+		print "" }'
+	exit 0 ;;
+"") ;;
+*) echo "usage: flipbase-bootinfo [log|timeline|startup]" >&2; exit 2 ;;
+esac
+
+[ -r /proc/device-tree/chosen/u-boot,version ] &&
+	echo "U-Boot $(tr -d '\000' < /proc/device-tree/chosen/u-boot,version)"
+[ -d "$BS" ] || { echo "no bootstage records in the device tree"; exit 0; }
+
+# Marks in time order with the step from the previous one; accumulated
+# durations after them.
+for rec in "$BS"/*/; do
+	name=$(tr -d '\000' < "$rec/name")
+	if [ -r "$rec/mark" ]; then
+		echo "m $(be32 "$rec/mark") $name"
+	elif [ -r "$rec/accum" ]; then
+		echo "a $(be32 "$rec/accum") $name"
+	fi
+done | sort -k1,1r -k2,2n | awk '
+	BEGIN { printf "%10s %10s  %s\n", "at (ms)", "step (ms)", "stage" }
+	$1 == "m" { printf "%10.1f %10.1f  %s\n", $2 / 1000, ($2 - prev) / 1000, $3; prev = $2 }
+	$1 == "a" { if (!acc++) print "accumulated:"; printf "%10s %10.1f  %s\n", "", $2 / 1000, $3 }'

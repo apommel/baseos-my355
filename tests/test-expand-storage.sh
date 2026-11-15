@@ -40,18 +40,18 @@ docker run --rm \
 echo "== expand-storage =="
 docker run --rm \
   -v "$HERE/board/my355/rootfs-overlay/usr/sbin/expand-storage":/test/expand-storage:ro \
-  -v "$HERE/board/my355/rootfs-overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/share/flipbase/log.sh":/usr/share/flipbase/log.sh:ro \
   --tmpfs /data \
   alpine:3.20 sh -euc '
   mknod /dev/mmcblk1 b 7 0
   mknod /dev/mmcblk1p5 b 7 1
   for f in cp mkdir rm sync touch; do [ -e /bin/$f ] || ln -s "$(which $f)" /bin/$f; done
-  mkdir -p /usr/share/baseos
-  echo readme > /usr/share/baseos/card-readme.txt
-  echo conf > /usr/share/baseos/baseos.conf
+  mkdir -p /usr/share/flipbase
+  echo readme > /usr/share/flipbase/card-readme.txt
+  echo conf > /usr/share/flipbase/flipbase.conf
 
   stub() { rm -f "$1"; printf "%s\n" "#!/bin/sh" "$2" > "$1"; chmod 755 "$1"; }
-  stub /usr/bin/baseos-splash "echo \"\$*\" >> /tmp/splash.log"
+  stub /usr/bin/flipbase-splash "echo \"\$*\" >> /tmp/splash.log"
   # mkfs empties the mount point, as a format would.
   stub /bin/mount "mkdir -p /tmp/.primary"
   stub /bin/umount "exit 0"
@@ -61,7 +61,7 @@ docker run --rm \
     rm -rf /tmp/splash.log /tmp/mkfs.log /tmp/ran /tmp/.primary /data/*
     # Where stock leaves the backup and log of the preloader installer.
     echo original > /data/mtd5-original-abc.img
-    echo log > /data/baseos-preloader.log
+    echo log > /data/flipbase-preloader.log
   }
 
   # An expanded card: nothing runs at all, not even gptgrow.
@@ -83,12 +83,12 @@ docker run --rm \
   stub /usr/sbin/gptgrow "exit 0"
   sh /test/expand-storage
   [ "$(tail -1 /tmp/splash.log)" = "--important 100 EXPANDING STORAGE" ]
-  grep -qx -- "-L BASEOS /dev/mmcblk1p5" /tmp/mkfs.log
+  grep -qx -- "-L FLIPBASE /dev/mmcblk1p5" /tmp/mkfs.log
   grep -qx readme /tmp/.primary/README.txt
-  grep -qx conf /tmp/.primary/baseos.conf
+  grep -qx conf /tmp/.primary/flipbase.conf
   grep -qx original /tmp/.primary/mtd5-original-abc.img
-  grep -qx log /tmp/.primary/baseos-preloader.log
-  [ ! -e /data/mtd5-original-abc.img ] && [ ! -e /data/baseos-preloader.log ]
+  grep -qx log /tmp/.primary/flipbase-preloader.log
+  [ ! -e /data/mtd5-original-abc.img ] && [ ! -e /data/flipbase-preloader.log ]
   [ -e /data/expanded ] && [ ! -e /data/expand-grown ]
 
   # A gptgrow error touches nothing.

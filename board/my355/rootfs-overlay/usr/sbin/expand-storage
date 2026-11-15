@@ -9,11 +9,11 @@ PART=/dev/mmcblk1p5             # `primary`, GPT entry 5 (tools/mkgpt.py)
 MNT=/tmp/.primary
 GROWN=/data/expand-grown
 DONE=/data/expanded
-README=/usr/share/baseos/card-readme.txt
-. /usr/share/baseos/log.sh
+README=/usr/share/flipbase/card-readme.txt
+. /usr/share/flipbase/log.sh
 
-splash() { [ -x /usr/bin/baseos-splash ] && \
-	/usr/bin/baseos-splash --important "$1" "EXPANDING STORAGE" 2>/dev/null; }
+splash() { [ -x /usr/bin/flipbase-splash ] && \
+	/usr/bin/flipbase-splash --important "$1" "EXPANDING STORAGE" 2>/dev/null; }
 
 [ -e "$DONE" ] && exit 0
 [ -b "$PART" ] || exit 0
@@ -21,7 +21,7 @@ splash() { [ -x /usr/bin/baseos-splash ] && \
 # 0 = grown, 1 = already fills the card, 2 = error. $GROWN covers a power cut
 # before the format below.
 if [ ! -e "$GROWN" ]; then
-	/usr/sbin/gptgrow "$DISK" primary >> "$BASEOS_LOG" 2>&1
+	/usr/sbin/gptgrow "$DISK" primary >> "$FLIPBASE_LOG" 2>&1
 	case "$?" in
 		0) log "grown"; /bin/touch "$GROWN"; /bin/sync ;;
 		1) /bin/touch "$DONE"; exit 0 ;;  # not a card we grew: leave it alone
@@ -30,16 +30,16 @@ if [ ! -e "$GROWN" ]; then
 fi
 splash 30
 
-/usr/sbin/mkfs.exfat -L BASEOS "$PART" >> "$BASEOS_LOG" 2>&1 || { log "mkfs.exfat failed"; exit 1; }
+/usr/sbin/mkfs.exfat -L FLIPBASE "$PART" >> "$FLIPBASE_LOG" 2>&1 || { log "mkfs.exfat failed"; exit 1; }
 splash 70
 
 /bin/mkdir -p "$MNT" && /bin/mount -t exfat "$PART" "$MNT" ||
 	{ log "cannot mount the new filesystem"; exit 1; }
 /bin/cp "$README" "$MNT/README.txt"
-/bin/cp /usr/share/baseos/baseos.conf "$MNT/"
+/bin/cp /usr/share/flipbase/flipbase.conf "$MNT/"
 moved=
-for f in /data/mtd5-original-*.img /data/baseos-preloader.log; do
-	[ -f "$f" ] && /bin/cp "$f" "$MNT/" 2>> "$BASEOS_LOG" && moved="$moved $f"
+for f in /data/mtd5-original-*.img /data/flipbase-preloader.log; do
+	[ -f "$f" ] && /bin/cp "$f" "$MNT/" 2>> "$FLIPBASE_LOG" && moved="$moved $f"
 done
 /bin/sync
 /bin/umount "$MNT"

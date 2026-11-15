@@ -24,7 +24,7 @@ Subject: [PATCH] Bluetooth: stock rtk_btusb, loading btusb
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Stands in for the vendor's rtk_btusb.ko, at the path NextUI's bt_init.sh
-+ * insmods: its loading is what tells BaseOS (wifibtd) to power the chip.
++ * insmods: its loading is what tells FlipBase (wifibtd) to power the chip.
 + * Bluetooth itself is mainline's btusb, loaded after 8733bu: the other order
 + * resets the shared chip and takes wlan0 down.
 + */

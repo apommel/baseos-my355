@@ -1,4 +1,4 @@
-// gptslot — A/B slot arithmetic for the BaseOS GPT.
+// gptslot — A/B slot arithmetic for the FlipBase GPT.
 //
 //   gptslot /dev/mmcblk1 geometry       print eval-able SLOT_* variables
 //   gptslot /dev/mmcblk1 flip NAME...   point those entries at their other half
@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
 	if (err) return fail(err);
 
 	struct slot s[NSLOTS];
-	if (derive(&g, s) != 0) return fail("not a BaseOS A/B layout");
+	if (derive(&g, s) != 0) return fail("not a FlipBase A/B layout");
 
 	if (!flip) {
 		for (int i = 0; i < NSLOTS; i++)

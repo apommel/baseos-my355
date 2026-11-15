@@ -1,14 +1,14 @@
 #!/bin/sh
-# Offline tests for baseos-update: the engine on stubs, with 1 MiB slots so a
+# Offline tests for flipbase-update: the engine on stubs, with 1 MiB slots so a
 # whole round trip costs 3 MiB. Runs in a container; no device needed.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "== baseos-update =="
+echo "== flipbase-update =="
 docker run --rm \
-  -v "$HERE/board/my355/rootfs-overlay/usr/sbin/baseos-update":/test/baseos-update:ro \
-  -v "$HERE/board/my355/rootfs-overlay/usr/share/baseos/log.sh":/usr/share/baseos/log.sh:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/sbin/flipbase-update":/test/flipbase-update:ro \
+  -v "$HERE/board/my355/rootfs-overlay/usr/share/flipbase/log.sh":/usr/share/flipbase/log.sh:ro \
   --tmpfs /data --tmpfs /mnt/SDCARD \
   alpine:3.20 sh -euc '
   apk add -q python3
@@ -31,14 +31,14 @@ docker run --rm \
               echo SLOT_ROOTFS_ACTIVE=8192; echo SLOT_ROOTFS_INACTIVE=10240 ;;
     flip) shift 2; echo \"\$*\" >> /tmp/flip.log ;;
     esac"
-  stub /usr/bin/baseos-splash "echo \"\$*\" >> /tmp/splash.log"
+  stub /usr/bin/flipbase-splash "echo \"\$*\" >> /tmp/splash.log"
   stub /sbin/reboot "echo rebooted >> /tmp/reboot.log"
   # apply() holds rcS with a sleep after asking for the reboot init will do.
   stub /bin/sleep ":"
   stub /bin/sync ":"
 
-  printf "BASEOS_TARGET=my355\nBASEOS_VERSION=0.3.0\nBASEOS_BUILD=abc\n" \
-    > /etc/baseos-release
+  printf "FLIPBASE_TARGET=my355\nFLIPBASE_VERSION=0.3.0\nFLIPBASE_BUILD=abc\n" \
+    > /etc/flipbase-release
 
   cat > /mkpayload.py <<"PY"
 import gzip, hashlib, io, sys, tarfile
@@ -74,14 +74,14 @@ PY
     dd if=/dev/zero of=/dev/mmcblk1 bs=1M count=6 status=none
   }
   # payload TARGET VERSION BUILD [flaw]
-  payload() { python3 /mkpayload.py "/mnt/SDCARD/baseos-my355-$2.bosupd" "$@"; }
-  force() { mv "/mnt/SDCARD/baseos-my355-$1.bosupd" "/mnt/SDCARD/force-baseos-my355-$1.bosupd"; }
+  payload() { python3 /mkpayload.py "/mnt/SDCARD/flipbase-my355-$2.bosupd" "$@"; }
+  force() { mv "/mnt/SDCARD/flipbase-my355-$1.bosupd" "/mnt/SDCARD/force-flipbase-my355-$1.bosupd"; }
   no_flip() { [ ! -e /tmp/flip.log ] || { echo "flipped: $1" >&2; exit 1; }; }
   refused() { grep -q "UPDATE FAILED" /tmp/splash.log; }
 
   # No payload on either card: nothing happens at all.
   reset
-  sh /test/baseos-update apply
+  sh /test/flipbase-update apply
   no_flip "with no payload"
   [ ! -e /tmp/splash.log ]
 
@@ -94,7 +94,7 @@ PY
     badslots) payload my355 0.4.0 def badslots ;;
     version) payload my355 latest def ;;
     esac
-    if sh /test/baseos-update apply; then echo "$flaw was accepted" >&2; exit 1; fi
+    if sh /test/flipbase-update apply; then echo "$flaw was accepted" >&2; exit 1; fi
     no_flip "a $flaw mismatch"
     refused
   done
@@ -103,7 +103,7 @@ PY
   # committed: the GPT is what makes a slot live, and it is untouched.
   reset
   payload my355 0.4.0 def corrupt
-  if sh /test/baseos-update apply; then echo "corrupt payload accepted" >&2; exit 1; fi
+  if sh /test/flipbase-update apply; then echo "corrupt payload accepted" >&2; exit 1; fi
   no_flip "a failed verify"
   refused
   [ ! -f /data/update/state ]
@@ -111,7 +111,7 @@ PY
   # The good case: all three halves written, all three flipped, once.
   reset
   payload my355 0.4.0 def
-  sh /test/baseos-update apply
+  sh /test/flipbase-update apply
   [ "$(cat /tmp/flip.log)" = "uboot boot rootfs" ]
   for pair in uboot:1 boot:3 rootfs:5; do
     dd if=/dev/mmcblk1 bs=1M skip="${pair#*:}" count=1 of=/tmp/got.bin status=none
@@ -127,16 +127,16 @@ PY
   grep -q " 0.4.0 def$" /data/update/history
   grep -qx "attempts=0" /data/update/state
   [ -e /tmp/reboot.log ]
-  # One log, written to both copies: /data and the card (overlay/usr/share/baseos/log.sh).
-  for f in /data/baseos.log /mnt/SDCARD/baseos.log; do
-    grep -q "baseos-update: flipped to 0.4.0" "$f" || { echo "nothing logged to $f" >&2; exit 1; }
+  # One log, written to both copies: /data and the card (overlay/usr/share/flipbase/log.sh).
+  for f in /data/flipbase.log /mnt/SDCARD/flipbase.log; do
+    grep -q "flipbase-update: flipped to 0.4.0" "$f" || { echo "nothing logged to $f" >&2; exit 1; }
   done
 
   grep -qx "regions=uboot boot rootfs" /data/update/state
 
   # Same payload still on the card next boot: recorded in history, never redone.
   rm -f /tmp/flip.log
-  sh /test/baseos-update apply
+  sh /test/flipbase-update apply
   no_flip "an already-applied payload"
 
   # Regions already running the payload image are neither written nor flipped,
@@ -145,7 +145,7 @@ PY
   payload my355 0.4.0 def
   dd if=/tmp/expect-uboot.bin of=/dev/mmcblk1 bs=1M seek=0 conv=notrunc status=none
   dd if=/tmp/expect-boot.bin of=/dev/mmcblk1 bs=1M seek=2 conv=notrunc status=none
-  sh /test/baseos-update apply
+  sh /test/flipbase-update apply
   [ "$(cat /tmp/flip.log)" = "rootfs" ]
   grep -qx "regions=rootfs" /data/update/state
   for at in 1 3; do
@@ -154,27 +154,27 @@ PY
   done
   rm -f /tmp/flip.log
   sed -i "s/^attempts=.*/attempts=2/" /data/update/state
-  sh /test/baseos-update boot-check
+  sh /test/flipbase-update boot-check
   [ "$(cat /tmp/flip.log)" = "rootfs" ]
 
   # Nor is one older than the running version.
   reset
   payload my355 0.2.0 old
-  sh /test/baseos-update apply
+  sh /test/flipbase-update apply
   no_flip "an older payload"
 
   # Numeric, legacy suffix ignored, rebuilds taken. Pairs are payload:running.
   release() {
-    printf "BASEOS_TARGET=my355\nBASEOS_VERSION=%s\nBASEOS_BUILD=abc\n" "$1" > /etc/baseos-release
+    printf "FLIPBASE_TARGET=my355\nFLIPBASE_VERSION=%s\nFLIPBASE_BUILD=abc\n" "$1" > /etc/flipbase-release
   }
   for pair in 0.10.0:0.9.0 1.0:0.9.9 1.2.0:1.2.0-beta.1 0.3.0:0.3.0; do
     reset; release "${pair#*:}"; payload my355 "${pair%:*}" def
-    sh /test/baseos-update apply
+    sh /test/flipbase-update apply
     [ -e /tmp/flip.log ] || { echo "not taken: $pair" >&2; exit 1; }
   done
   for pair in 0.9.0:0.10.0 1.1.0:1.2.0-beta.1; do
     reset; release "${pair#*:}"; payload my355 "${pair%:*}" def
-    sh /test/baseos-update apply
+    sh /test/flipbase-update apply
     no_flip "$pair"
   done
 
@@ -183,15 +183,15 @@ PY
   for run in older applied; do
     rm -f /tmp/flip.log
     payload my355 0.2.0 old; force 0.2.0
-    sh /test/baseos-update apply
+    sh /test/flipbase-update apply
     [ -e /tmp/flip.log ] || { echo "forced $run payload not taken" >&2; exit 1; }
-    [ ! -e /mnt/SDCARD/force-baseos-my355-0.2.0.bosupd ]
+    [ ! -e /mnt/SDCARD/force-flipbase-my355-0.2.0.bosupd ]
   done
   # One it cannot delete is never committed.
   reset
   payload my355 0.2.0 old; force 0.2.0
   rm /bin/rm; printf "#!/bin/sh\nexit 1\n" > /bin/rm; chmod +x /bin/rm
-  if sh /test/baseos-update apply; then echo "unremovable forced payload accepted" >&2; exit 1; fi
+  if sh /test/flipbase-update apply; then echo "unremovable forced payload accepted" >&2; exit 1; fi
   ln -sf /bin/busybox /bin/rm
   no_flip "a forced payload it could not remove"
   [ ! -f /data/update/state ]
@@ -201,11 +201,11 @@ PY
   reset
   mkdir -p /data/update
   printf "trial=0.4.0\nattempts=0\nsha=x\n" > /data/update/state
-  sh /test/baseos-update boot-check
+  sh /test/flipbase-update boot-check
   grep -qx "attempts=1" /data/update/state
-  sh /test/baseos-update boot-check
+  sh /test/flipbase-update boot-check
   grep -qx "attempts=2" /data/update/state
-  sh /test/baseos-update boot-check
+  sh /test/flipbase-update boot-check
   [ "$(cat /tmp/flip.log)" = "uboot boot rootfs" ]
   [ ! -f /data/update/state ]
   grep -q "RESTORING SYSTEM" /tmp/splash.log
@@ -215,7 +215,7 @@ PY
   mkdir -p /data/update
   touch /mnt/SDCARD/done.bosupd
   printf "trial=0.4.0\nattempts=1\nsha=x\npayload=/mnt/SDCARD/done.bosupd\n" > /data/update/state
-  sh /test/baseos-update confirm
+  sh /test/flipbase-update confirm
   [ ! -f /data/update/state ]
   [ ! -f /mnt/SDCARD/done.bosupd ]
 

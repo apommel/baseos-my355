@@ -8,7 +8,7 @@ working unmodified. Where the mainline build stands against it is under
 ## How this was gathered
 
 - **Trace.** On 2026-10-25, a static aarch64 `strace` 6.10 was attached
-  under BaseOS 1.3.0, stock kernel. It followed the NextUI `launch.sh` with
+  under FlipBase 1.3.0, stock kernel. It followed the NextUI `launch.sh` with
   `-f`, plus the daemons it had already started. It recorded opens, execs,
   ioctls, file checks, writes, sockets and mounts. About 7 minutes, 3 217
   execs.
@@ -53,13 +53,13 @@ detect pin, userspace keeps it.
    run time, and nothing stock can tell the difference.
 2. **A small compatibility driver**, when stock reads an attribute that only
    the vendor kernel has.
-3. **A wrapper for a command BaseOS already ships.** `modetest` and `amixer`
+3. **A wrapper for a command FlipBase already ships.** `modetest` and `amixer`
    come from our rootfs, not from the card.
 4. **An `LD_PRELOAD` path remapper**, as the last resort, for fixed
    `/sys/class/gpio` numbers and the like. It only reaches dynamically linked
    programs, and it runs inside every emulator.
 
-Anything under "BaseOS-owned" below is ours to change. Only stock-built code
+Anything under "FlipBase-owned" below is ours to change. Only stock-built code
 constrains the design.
 
 ## Stock-built dependencies
@@ -89,7 +89,7 @@ constrains the design.
 | cpufreq `policy0`: governors `schedutil`/`performance`/`conservative`, `scaling_{min,max}_freq`, `scaling_setspeed`, `scaling_available_frequencies`; `cpu1`–`cpu3/online` | `governor.sh`, Settings | — | Standard interfaces, but different frequency steps; `second_max` and `mid` are picked by position | Stock's list, 1992 MHz included and not marked turbo, so `second_max` is 1800 MHz as on stock. Mainline stops at 1800, which made it 1608 |
 | `/sys/class/devfreq/fde60000.gpu/{governor,min_freq}`, `/sys/class/devfreq/dmc/governor` | `GC.pak`, tools | present | kbase on mainline keeps `fde60000.gpu`; the DMC is `dmc`, named after its node | Node named `dmc`; the `performance` and `powersave` devfreq governors are built in |
 | `/sys/devices/platform/fde60000.gpu/utilisation`: busy percentage over 100 ms, blocking | minarch's debug overlay (`PLAT_cpu_monitor`) | Rockchip's addition to kbase | Not in ROCKNIX's kbase or Panfrost: reads as 0% | Done: `mali-kbase`'s `0003` adds it from kbase's DVFS counters, and `stock/0066` from Panfrost's devfreq ones |
-| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `hardware/0102`, a driver after zlyme's, sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since BaseOS runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
+| Sleep: pre-sleep hooks, `killall -STOP` keymon, batmon and audiomon, stop `wpa_supplicant`, write `deep` to `/sys/power/mem_sleep`, then `mem` to `/sys/power/state` with up to 5 attempts, then resume, `-CONT` the daemons and restart WiFi. While asleep, the lid is read from `hallvalue` | `suspend` (run by NextUI) | vendor suspend; worked even under strace | `deep` comes from PSCI; BL31 needs stock's sleep mode, which no mainline driver sends | `hardware/0102`, a driver after zlyme's, sends it from stock's `rockchip,pm-rk3568` node; the RK817 rails take stock's sleep states, except `vccio_sd`, kept on since FlipBase runs from the card. USB host0's OHCI also claims the PHY's 480 MHz, as stock's `utmi` does: mainline's dtsi omits it, and suspend froze the SoC in that OHCI's callback. Lid and power key sleep and wake in NextUI (2026-10-26) |
 | HDMI: polls `/sys/class/drm/card0-HDMI-A-1/status`. On connect, sound moves to the `rockchiphdmi` card, the panel goes to brightness 0, and rumble is skipped | NextUI, keymon, libmsettings | — | The connector name holds if rockchip-drm is `card0`; the card name needs the DT | as above |
 | `insmod /system/lib/modules/RTL8189FU.ko`, `insmod /lib/modules/rtk_btusb.ko` | `wifi_init.sh`, `bt_init.sh` | vendor modules | Fail harmlessly on mainline | Load our own modules first |
 | `wlan0`, nl80211, `/dev/rfkill` (`rfkill.elf`), `iw`, `wpa_cli`, `bluetoothctl`, `hciconfig`, `hcitool`, `bluealsa` | NextUI, radio scripts | — | Standard interfaces; the 8733bu driver names its interface `wlan0` | Keep `wlan0` |
@@ -98,7 +98,7 @@ constrains the design.
 | `mkswap` and `swapon` on `/mnt/UDISK/n64_swap` | N64.pak | — | `CONFIG_SWAP=y`; the path must exist | config, rootfs |
 | `/dev/uinput`, `/dev/input/js0`, `/dev/shm`, `/dev/snd/*` | various | — | standard | — |
 
-## BaseOS-owned (ours to change)
+## FlipBase-owned (ours to change)
 
 - `wifibt-power`, which writes `/sys/class/rkwifi/wifi_power` (also written by
   spruceOS, so stock-facing) and finds the chip by its USB ID, `0bda:b733`:
@@ -123,16 +123,16 @@ spruceOS's g2p0; `/dev/miyooio` is replaced by the `miyoo-player1` driver
 Buildroot builds Linux 7.2.10 from `board/my355/linux`: the device tree and
 the patches, each split in two, our drivers among them. `hardware/` makes the
 board work on mainline and could go upstream; `stock/` is the vendor
-interface on top, BaseOS-only. The out-of-tree `mali_kbase` and `8733bu` are
+interface on top, FlipBase-only. The out-of-tree `mali_kbase` and `8733bu` are
 kernel-module packages with their own patches. `linux.config` is arm64
 `defconfig` cut to this board, keeping only the modules something loads, since
 nothing loads a hotplugged device's module. 27.2 → 16.5 MB Image, 855 → 20
 modules (2026-10-28). It is
-the only kernel BaseOS builds since the vendor path was removed
+the only kernel FlipBase builds since the vendor path was removed
 ([decisions](decisions.md)); the comparisons with "main" below are against
 the last vendor-kernel build.
 
-It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
+It boots to FlipBase with adb, checked on 2026-10-25. These match stock:
 
 - `mmcblk1` for the boot slot, `mmcblk2` for the second slot
 - event0 `gpio-keys-polled` with stock's codes for menu and volume
@@ -146,7 +146,7 @@ It boots to BaseOS with adb, checked on 2026-10-25. These match stock:
 - the reboot modes, so a shutdown with the charger in restarts into charge mode
 - `/dev/mali0` (r54p2), `card0` with `DSI-1` and `HDMI-A-1`
 
-`baseos-compat-check` checks the table's rows on a running unit, one `ok` or
+`flipbase-compat-check` checks the table's rows on a running unit, one `ok` or
 `FAIL` line each, and exits 1 on any mismatch. Its first run (2026-11-01)
 passed everything except the `conservative` cpufreq governor, which
 `governor.sh` sets in one of its modes: arm64's `defconfig` builds it as a
@@ -228,8 +228,8 @@ Different from stock, found on the first boots:
 - **Crash record.** Stock's ramoops region (960 KiB at `0x110000`, below
   System RAM) with `PSTORE_RAM` and `PSTORE_CONSOLE`; neither was in the
   mainline config at first, so `rcS` had nothing to keep (2026-10-30).
-- **GPU drivers.** `gpu=` in `baseos.conf` picks `panfrost` (the default) or
-  `mali`, read by `baseos-gpu` once the frontend card is mounted.
+- **GPU drivers.** `gpu=` in `flipbase.conf` picks `panfrost` (the default) or
+  `mali`, read by `flipbase-gpu` once the frontend card is mounted.
   Both are packages: Rockchip's newest G52 libmali (g29p1, from
   `libmali-next`) with its wrappers, hook and Vulkan ICD, and Mesa's
   Panfrost and PanVK in `/usr/lib/mesa` (`mesa-panfrost`), mounted over libmali's names and
@@ -324,7 +324,7 @@ Different from stock, found on the first boots:
   keyboard key, so anything reading both devices saw each press twice. It
   keeps menu and volume for keymon, and the game buttons are only on
   `MIYOO Player1`. Menu is on both, as keymon needs it. For software that
-  reads only a keyboard, `keyboard_input=on` in baseos.conf (or the driver's
+  reads only a keyboard, `keyboard_input=on` in flipbase.conf (or the driver's
   sysfs `keyboard`) adds `MIYOO Player1 Keyboard`, typing stock's codes for
   every game button but menu; off by default, as it brings the doubles back.
 - **The lid.** `hall-mh248` probes before the PMIC's power key, so it is
@@ -365,7 +365,7 @@ Different from stock, found on the first boots:
     insmod fails.
   Each radio's on/off is its driver's rfkill, which NextUI's `rfkill.elf`
   already targets. zlyme's `rtl8733bu-power`, its own pair of rfkills
-  cutting the chip, is left out: BaseOS's `wifibt-power` already decides
+  cutting the chip, is left out: FlipBase's `wifibt-power` already decides
   that. Its finding that the cut for suspend has to come in the late phase
   is for the suspend work. `wireless-regdb` is in the rootfs.
 - **External controllers.** Their HID drivers are built in, as nothing loads
@@ -467,7 +467,7 @@ six warm reboots each on `gpu=mali`:
 At the default class the prefetch held rcS's own reads behind it. The
 recorded list (46 files, 49 MB; 38 and 47.6 MB on the root) followed the
 frontend and `gpu=` of the boot that recorded it, and needed a tool, so the
-whole library is read instead, from `baseos-gpu`: ~70 ms behind, and the
+whole library is read instead, from `flipbase-gpu`: ~70 ms behind, and the
 same on every boot. Main draws at 2.93–2.98.
 
 Mainline printk starts at kernel entry, not power-on, so U-Boot's hand-off

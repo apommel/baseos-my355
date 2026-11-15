@@ -3,7 +3,7 @@
 # finds its libraries.
 set -eu
 T="$1"
-ASSETS="$BR2_EXTERNAL_BASEOS_PATH/board/my355/assets"
+ASSETS="$BR2_EXTERNAL_FLIPBASE_PATH/board/my355/assets"
 PATCHELF="$HOST_DIR/bin/patchelf"
 
 rm -rf "$T"/usr/share/man "$T"/usr/share/doc "$T"/usr/share/licenses \
@@ -15,22 +15,22 @@ rm -f "$T"/usr/bin/hb-* "$T"/usr/lib/libharfbuzz-*.so* "$T"/usr/lib/libinproctra
 ln -sf "$(cd "$T"/usr/lib/modules && echo */kernel/drivers/bluetooth/rtk_btusb.ko)" \
     "$T"/usr/lib/modules/rtk_btusb.ko
 
-install -D -m 0644 -t "$T"/usr/share/baseos \
-    "$ASSETS"/boot.ttf "$ASSETS"/card-readme.txt "$ASSETS"/baseos.conf
+install -D -m 0644 -t "$T"/usr/share/flipbase \
+    "$ASSETS"/boot.ttf "$ASSETS"/card-readme.txt "$ASSETS"/flipbase.conf
 
 # All from VERSION, so they cannot drift. NextUI's About screen reads
 # /usr/miyoo/version.
-printf 'BASEOS_VERSION=%s\nBASEOS_BUILD=%s\n' "$BASEOS_VERSION" "$BASEOS_BUILD" \
-    >> "$T"/etc/baseos-release
+printf 'FLIPBASE_VERSION=%s\nFLIPBASE_BUILD=%s\n' "$FLIPBASE_VERSION" "$FLIPBASE_BUILD" \
+    >> "$T"/etc/flipbase-release
 cat > "$T"/usr/lib/os-release <<EOF
-NAME="BaseOS"
-ID=baseos
-VERSION_ID=$BASEOS_VERSION
-PRETTY_NAME="BaseOS $BASEOS_VERSION (my355)"
+NAME="FlipBase"
+ID=flipbase
+VERSION_ID=$FLIPBASE_VERSION
+PRETTY_NAME="FlipBase $FLIPBASE_VERSION (my355)"
 HOME_URL="https://github.com/apommel/baseos-my355"
 EOF
 mkdir -p "$T"/usr/miyoo
-echo "BaseOS $BASEOS_VERSION" > "$T"/usr/miyoo/version
+echo "FlipBase $FLIPBASE_VERSION" > "$T"/usr/miyoo/version
 
 # Frontends put their own libcrypto, libzstd, ... first in LD_LIBRARY_PATH:
 # DT_RPATH, unlike DT_RUNPATH, is searched before it. Mesa keeps its own.

@@ -1,3 +1,0 @@
-BASEOS_TARGET=my355
-# fbsplash reads this. The Flip's 640x480 panel is mounted upright.
-BASEOS_PANEL_ROTATION_CCW=0

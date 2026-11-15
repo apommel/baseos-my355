@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the my355 (Miyoo Flip) SD card partition table from scratch.
 
-The Flip's boot chain lives in internal SPI NAND, so a BaseOS card owns its
+The Flip's boot chain lives in internal SPI NAND, so a FlipBase card owns its
 whole table. Three names are load-bearing:
 
     uboot    the SPL locates U-Boot by `part_get_info_by_name("uboot")`
@@ -21,7 +21,7 @@ Layout:
     5 primary  rest    exFAT, the only desktop-visible volume
 
 Each of the three updatable regions reserves twice what it needs and only ever
-has one half as a partition; rootfs-overlay/usr/sbin/baseos-update writes the other half
+has one half as a partition; rootfs-overlay/usr/sbin/flipbase-update writes the other half
 and flips the entry. The spare halves are unallocated on purpose: they cost no
 visible partition and no desktop OS offers to format them. Every entry except
 `primary` carries GPT attribute bits 62 and 63, so a desktop assigns exactly one

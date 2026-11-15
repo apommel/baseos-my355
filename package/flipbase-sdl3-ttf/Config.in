@@ -1,0 +1,8 @@
+config BR2_PACKAGE_FLIPBASE_SDL3_TTF
+	bool "flipbase-sdl3-ttf"
+	depends on BR2_PACKAGE_FLIPBASE_SDL3
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_HARFBUZZ
+	help
+	  SDL3_ttf against flipbase-sdl3; Buildroot's needs its sdl3.
+	  HarfBuzz shapes complex and right-to-left scripts.

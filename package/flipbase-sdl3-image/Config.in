@@ -1,0 +1,11 @@
+config BR2_PACKAGE_FLIPBASE_SDL3_IMAGE
+	bool "flipbase-sdl3-image"
+	depends on BR2_PACKAGE_FLIPBASE_SDL3
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_JPEG
+	select BR2_PACKAGE_WEBP
+	select BR2_PACKAGE_WEBP_DEMUX # animated WebP
+	select BR2_PACKAGE_WEBP_MUX # WebP save
+	help
+	  SDL3_image against flipbase-sdl3; Buildroot's needs its sdl3.
+	  PNG, JPEG and WebP through the system libraries.

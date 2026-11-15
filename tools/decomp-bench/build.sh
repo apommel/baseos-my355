@@ -8,7 +8,7 @@
 #   O M at -O2
 # After ./build.sh, from the repository root, on an arm64 host:
 #   docker run --rm -v "$PWD/tools/decomp-bench":/z:ro -v "$PWD/work/decomp-bench":/out \
-#     --mount type=volume,src=baseos-buildroot,dst=/u,ro,volume-subpath=output/build/uboot-2026.01 \
+#     --mount type=volume,src=flipbase-buildroot,dst=/u,ro,volume-subpath=output/build/uboot-2026.01 \
 #     debian:bookworm-slim sh /z/build.sh
 # then on the device, with the clock pinned: bench-M lz4 kernel.lz4 5 Image
 set -eu

@@ -22,7 +22,7 @@ PAYLOAD = ("install.sh", "patch-preloader.sh", "fdtpatch.awk")
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
-    ap.add_argument("--version", default="baseos-preloader-1")
+    ap.add_argument("--version", default="flipbase-preloader-1")
     args = ap.parse_args()
 
     header = f"model:miyoo355\nversion:{args.version}\n".encode()

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Miyoo Flip (my355) for BaseOS on mainline Linux.
+ * Miyoo Flip (my355) for FlipBase on mainline Linux.
  *
  * Hardware description after zlyme/ROCKNIX; every name stock-built software
  * reads follows the vendor DTB instead (docs/mainline-compat.md).

@@ -4,12 +4,12 @@
 set -eu
 T="$1"
 
-# The root is read-only: what changes lives in /run or /data. baseos-config
-# writes shadow, hostname and hosts from baseos.conf, starting from this shadow;
+# The root is read-only: what changes lives in /run or /data. flipbase-config
+# writes shadow, hostname and hosts from flipbase.conf, starting from this shadow;
 # rcS restores machine-id; the udhcpc script writes resolv.conf.
-mkdir -p "$T"/usr/share/baseos
-mv "$T"/etc/shadow "$T"/usr/share/baseos/shadow
-chmod 600 "$T"/usr/share/baseos/shadow
+mkdir -p "$T"/usr/share/flipbase
+mv "$T"/etc/shadow "$T"/usr/share/flipbase/shadow
+chmod 600 "$T"/usr/share/flipbase/shadow
 for f in shadow hostname hosts machine-id resolv.conf; do
     rm -f "$T"/etc/$f
     ln -s /run/$f "$T"/etc/$f

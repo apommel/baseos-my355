@@ -1,7 +1,7 @@
 Diagnostics only (--diag): a bootstage mark after every initcall.
 
 The marks land in the kernel's /proc/device-tree/bootstage like the boot
-script's, and baseos-bootinfo prints them in time order with each step's
+script's, and flipbase-bootinfo prints them in time order with each step's
 duration. Two things need room for them:
 
 - reserve_bootstage() sizes the relocated bootstage block from the names

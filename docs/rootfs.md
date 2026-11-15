@@ -1,16 +1,16 @@
 # The rootfs
 
-How the BaseOS userland is assembled, and what it must reproduce so NextUI
+How the FlipBase userland is assembled, and what it must reproduce so NextUI
 behaves exactly as it does on stock.
 
 ## Sources
 
-One Buildroot build (`./build.sh`, `configs/baseos_my355_defconfig`)
+One Buildroot build (`./build.sh`, `configs/flipbase_my355_defconfig`)
 assembles it, with the kernel and U-Boot:
 
 1. **Packages**: a merged `/usr` as the vendor rootfs has, with every library
    and program a frontend uses ([what frontends need](rootfs-interface.md)),
-   and BaseOS's own tools from `src/` (`baseos-tools`).
+   and FlipBase's own tools from `src/` (`flipbase-tools`).
 2. **Static BusyBox** and its applet links — `rcS` calls `/bin/mount` and
    friends by path. Installed first, so a full program wins a name both have.
 3. **`board/my355/rootfs-overlay/`** — `init`, `inittab`, `rcS`, `rcK`, the
@@ -100,13 +100,13 @@ second, and `pidof` alone turned every `restart` into a stop.
 
 ### Version identity
 
-`/etc/baseos-release` carries `BASEOS_TARGET` and the panel rotation `fbsplash`
-reads; `post-build.sh` appends `BASEOS_VERSION` from `VERSION` and a
-`git describe --dirty` `BASEOS_BUILD`, both copied into the `.bosupd` manifest.
+`/etc/flipbase-release` carries `FLIPBASE_TARGET` and the panel rotation `fbsplash`
+reads; `post-build.sh` appends `FLIPBASE_VERSION` from `VERSION` and a
+`git describe --dirty` `FLIPBASE_BUILD`, both copied into the `.bosupd` manifest.
 The build id is only a label; [the card](card.md) says what decides an update.
 
 `/usr/miyoo/version` is written from the same variable and reads
-`BaseOS <version>`. It exists because `PLAT_getOsVersionInfo()` reads that path for the About screen
+`FlipBase <version>`. It exists because `PLAT_getOsVersionInfo()` reads that path for the About screen
 and passes the buffer to `getFile()`, which leaves it untouched when the file is
 missing — so the caller's uninitialised 128-byte stack buffer is what Settings
 renders, and what `settings.cpp` logs at start-up. That is the garbage in the
@@ -125,19 +125,19 @@ kernel  --init=/init-->  /init  --exec-->  busybox init  --sysinit-->  /etc/init
 (see [boot time](boot-time.md)). It stays short because the kernel does the
 work an init script would otherwise do: `devtmpfs` is mounted by the kernel,
 and the panel and storage are built in. The GPU driver is the one module it
-loads (`baseos-gpu`, in the background); WiFi and Bluetooth load with their
+loads (`flipbase-gpu`, in the background); WiFi and Bluetooth load with their
 radio ([mainline compatibility](mainline-compat.md)).
 
 What it does do: tmpfs skeleton, `/data` (`mmcblk1p4`), machine-id,
 **loopback**, zram swap in the background, the first-boot card expansion, the
 frontend card, any pending system update, and the settings, SSH and the USB
 gadget in the background. Of the two update hooks,
-`baseos-update boot-check` after `/data` only runs when a trial is pending (a
+`flipbase-update boot-check` after `/data` only runs when a trial is pending (a
 builtin file test). `apply` after the card mount costs a failed glob
-([the card](card.md)). This card's exFAT partition, where `baseos.conf` and
-payloads may sit, is mounted read-only once for `baseos-gpu`, `apply` and the
+([the card](card.md)). This card's exFAT partition, where `flipbase.conf` and
+payloads may sit, is mounted read-only once for `flipbase-gpu`, `apply` and the
 settings, and unmounted in the background once the settings are read. Each
-mount costs ~10 ms on FAT32 and ~20 on exFAT, which reads its allocation bitmap. `baseos.conf` is reached through `/run/baseos.conf`,
+mount costs ~10 ms on FAT32 and ~20 on exFAT, which reads its allocation bitmap. `flipbase.conf` is reached through `/run/flipbase.conf`,
 a symlink to wherever the volume is, rather than a copy that would put a cleartext
 password on tmpfs.
 
@@ -177,7 +177,7 @@ through the `/userdata` bind; `resolv.conf`, `machine-id` and `localtime` are
 baked symlinks into those. Root's home, `/root`, links to `/data/root`, which
 `/etc/init.d/dev` creates, so shell history and `.ssh/authorized_keys` persist.
 `/etc/shadow`, `/etc/hostname` and `/etc/hosts` link into `/run`, where
-`baseos-config` writes them at every boot from the card's `baseos.conf`
+`flipbase-config` writes them at every boot from the card's `flipbase.conf`
 ([below](#settings-come-from-the-card)). `passwd` fails; the password is set there.
 
 To change a file on a running device, bind a copy over it until the next
@@ -224,7 +224,7 @@ as well but writes 4–5 times slower; nothing else comes near.
 
 Every NextUI program links libmali, 58 MB, and the first to start faults in
 ~19 MB of it one page at a time: 0.53 s at boot, most of the frontend's
-start. `baseos-gpu` reads the selected stack's library (libmali, or Mesa's
+start. `flipbase-gpu` reads the selected stack's library (libmali, or Mesa's
 `libgallium`) with `cat` in the background, in the idle I/O class so the
 rest of boot's reads go first. A list of the ranges a boot used, recorded
 and replayed, did ~70 ms better, but followed whichever frontend and `gpu=`
@@ -235,23 +235,23 @@ clusters, zstd or squashfs decode slower than ext4 reads.
 
 ### Settings come from the card
 
-`baseos.conf`, at the root of this card's exFAT volume (`mmcblk1p5`), holds the
+`flipbase.conf`, at the root of this card's exFAT volume (`mmcblk1p5`), holds the
 settings a user may change: `hostname` (default `miyoo-flip`) and `ssh_password`
 (default `root`). The format and parser are upstream's; its `mdns` and
-`headphone_pop_fix` keys are not carried. `/etc/init.d/dev` runs `baseos-config`
-before it starts `dropbear`: it reads `/run/baseos.conf`, which `rcS` links to the
+`headphone_pop_fix` keys are not carried. `/etc/init.d/dev` runs `flipbase-config`
+before it starts `dropbear`: it reads `/run/flipbase.conf`, which `rcS` links to the
 file where that volume is mounted. That is off the boot path,
 since `dev` is in the background and nothing before SSH needs either setting. The
 file is card data, parsed and never sourced; the cleartext password goes through
 `mkpasswd -P 0` into `/run/shadow`, built from the baked copy in
-`/usr/share/baseos/shadow`. `S41dhcpcd` sends the hostname with its DHCP requests,
+`/usr/share/flipbase/shadow`. `S41dhcpcd` sends the hostname with its DHCP requests,
 so the router can name the lease. `expand-storage` puts a commented template on
 the card on first boot, unless one is already there.
 
 ### One log
 
 Everything that logs writes the same file, through `log()` in
-`/usr/share/baseos/log.sh`: `rcS`, `rcK`, `expand-storage`, `baseos-update`,
+`/usr/share/flipbase/log.sh`: `rcS`, `rcK`, `expand-storage`, `flipbase-update`,
 `usb-gadget-adb` and `frontend-session`. Each line carries the script's own name,
 so one file reads as the chronology of a boot:
 
@@ -263,7 +263,7 @@ so one file reads as the chronology of a boot:
 2.99 usb-gadget-adb: UDC bound -> fcc00000.usb
 ```
 
-The file is `/data/baseos.log`, copied line for line to `/mnt/SDCARD/baseos.log`
+The file is `/data/flipbase.log`, copied line for line to `/mnt/SDCARD/flipbase.log`
 when a frontend card is mounted — `/data` is ext4 and needs the trick in
 [diagnostics](diagnostics.md) to read, while the card copy opens on any computer.
 Both **append across boots**, as upstream BaseOS does: `rcS`'s boot record is
@@ -284,7 +284,7 @@ Two things bypass `log()` and land on `/data` only, never on the card. `adbd`'s
 own output, because it runs for the whole session and the card copy is on
 removable FAT. And the raw stderr of the tools the scripts drive — `dd`,
 `fsck.fat`, `fsck.exfat`, `gunzip`, `gptslot`, `mkfs.exfat`, `unzip` — which is redirected straight at
-`$BASEOS_LOG`, so it carries no tag and is only there for the failure it
+`$FLIPBASE_LOG`, so it carries no tag and is only there for the failure it
 describes. The card copy stays tagged throughout, which is the one a user reads.
 
 ### Loopback is load-bearing
@@ -293,7 +293,7 @@ describes. The card copy stays tagged throughout, which is the one a user reads.
 as fatal — it never reaches `usb_ffs_init`, so no endpoints appear and the UDC bind
 silently does nothing. Without `lo` there is no adb. This is loopback-only and
 unrelated to the network listener disabled above. Stock has `lo` up; nothing else
-in BaseOS needs it.
+in FlipBase needs it.
 
 ## adb over USB
 
@@ -349,13 +349,13 @@ measured at about 0.03% of one core.
 
 ## NextUI compatibility
 
-The contract: starting NextUI from BaseOS must behave exactly as from stock,
+The contract: starting NextUI from FlipBase must behave exactly as from stock,
 differing only in which slot the card is in. NextUI itself is slot-agnostic —
 nothing in `my355.sh` or `MinUI.pak/launch.sh` names a block device — so the whole
 burden is in reproducing what stock's `runmiyoo.sh` sets up.
 
 `mount-frontend` mounts the frontend card at `/mnt/SDCARD`, and
-`/mnt/sdcard` is a symlink for the lowercase path stock uses. BaseOS takes the
+`/mnt/sdcard` is a symlink for the lowercase path stock uses. FlipBase takes the
 right slot because it is the only slot the SPL can boot from, so the frontend card
 normally goes in the **left** slot (`mmcblk2p1`); this card's own exFAT partition
 (`mmcblk1p5`) is the single-card fallback.
@@ -407,14 +407,14 @@ stock hook is aligned with spruceOS's: `runmiyoo.sh` only waits for the card,
 swaps a left-slot card carrying `.tmp_update/updater` onto `/mnt/sdcard`, and runs
 that `updater`. Everything else lives on the card, in `.tmp_update/my355.sh`:
 
-| in NextUI's `my355.sh` | why | on BaseOS |
+| in NextUI's `my355.sh` | why | on FlipBase |
 |---|---|---|
 | `$SDCARD/.userdata/my355/userdata` skeleton and first-run `system.json` | decides volume, brightness, keymap on first launch | runs as on stock; the image ships an empty `/userdata` to bind onto |
 | `mount --bind` it onto `/userdata` | `wpa_supplicant.conf`, `system.json` and BT pairings live there; the internal userdata partition corrupts | same |
 | `mount --bind /run/bluetooth_fix` over `/userdata/bluetooth` | BlueZ names pairing files by MAC, which FAT32 rejects | same |
-| "Please use the right SD slot" when `/mnt/sdcard` is `mmcblk2*` | a stock limitation | not triggered, but only because `/proc/mounts` lists `/mnt/SDCARD`; `/mnt/sdcard` is a symlink here. BaseOS must keep the card on `/mnt/SDCARD`: mounting it at the lowercase path would power off every boot |
+| "Please use the right SD slot" when `/mnt/sdcard` is `mmcblk2*` | a stock limitation | not triggered, but only because `/proc/mounts` lists `/mnt/SDCARD`; `/mnt/sdcard` is a symlink here. FlipBase must keep the card on `/mnt/SDCARD`: mounting it at the lowercase path would power off every boot |
 
-So BaseOS writes nothing to the card beyond staging `.tmp_update`, and anything
+So FlipBase writes nothing to the card beyond staging `.tmp_update`, and anything
 before the hand-off that touches `/userdata` sees the empty root directory —
 `S36load_wifi_modules` refuses to seed it for that reason.
 
@@ -434,7 +434,7 @@ runmiyoo.sh   CUSTOMER_DIR=/media/sdcard{0,1}/miyoo355/   (sdcard1 wins if prese
 
 `init.sh` there is the NAND hook — unsquash `/dev/mtd3ro`, swap
 `/usr/miyoo/bin/runmiyoo.sh` for NextUI's, `flashcp` it back — which is exactly
-what BaseOS replaces. It runs every time and replaces an installed hook only
+what FlipBase replaces. It runs every time and replaces an installed hook only
 when its `PAYLOAD_VERSION` is newer, since the hook is shared with spruceOS. The `cp` is not, and dropping it with the rest meant a
 card that had never booted on stock had no `updater` to hand off to.
 `frontend-session` now does that copy, and the `rm -rf miyoo355` after it, leaving
@@ -459,10 +459,10 @@ it ships `miyoo355/` and `trimui/` only.
 
 NextUI's my355 build names four init scripts — from `etc/wifi/wifi_init.sh`,
 `etc/bluetooth/bt_init.sh` and `platform.c`. They live on the frontend card, so
-BaseOS has to answer to the names; the contents are ours. Stock's `rcS` runs
+FlipBase has to answer to the names; the contents are ours. Stock's `rcS` runs
 `for i in /etc/init.d/S??*`, so on stock all four also start at boot.
 
-| script | BaseOS | at boot? |
+| script | FlipBase | at boot? |
 |---|---|---|
 | `S36load_wifi_modules` | loads `8733bu` and seeds `/userdata/cfg/wpa_supplicant.conf`. Also WiFi's side of the WiFi/BT chip's power ([power](power.md)) | no — the frontend calls it when WiFi goes on or off |
 | `S41dhcpcd` | BusyBox `udhcpc`, not the vendor `dhcpcd` | no — the frontend calls it when WiFi goes on |
@@ -481,7 +481,7 @@ missing. A card that had never booted stock therefore ran no supplicant, and
 `wpa_cli scan` had nothing to answer NextUI: an empty list with the chip
 enumerated, `wlan0` up and rfkill clear. It read as a radio fault and was a
 missing file — one the reporter fixed unknowingly by booting stock to test, which
-ran the real `S36`. BaseOS ships its own template and seeds it the same way,
+ran the real `S36`. FlipBase ships its own template and seeds it the same way,
 minus stock's placeholder `network={ ssid="SSID" }` stanza, which cannot
 associate and which NextUI would list as a saved network.
 
@@ -509,7 +509,7 @@ link-local IPv6 address, with no IPv4 route and no resolver.
 NextUI drives the whole sequence from its own `etc/bluetooth/bt_init.sh` on the
 card: `insmod /lib/modules/rtk_btusb.ko`, `rfkill.elf unblock`, wait for
 `/sys/class/bluetooth/hci0`, `/etc/init.d/S40bluetooth start`, then
-`bluealsa -p a2dp-source` and a run of `bluetoothctl` calls. BaseOS supplies the
+`bluealsa -p a2dp-source` and a run of `bluetoothctl` calls. FlipBase supplies the
 parts that script expects to find in the OS:
 
 | | |
@@ -534,11 +534,11 @@ NextUI's `my355.sh` shadows that directory with a tmpfs because FAT32
 rejects BlueZ's MAC-named files — so as on stock, pairings do not survive a
 reboot.
 
-BaseOS also cuts the WiFi/BT chip's power while both radios are off, which
+FlipBase also cuts the WiFi/BT chip's power while both radios are off, which
 `bt_init.sh` cannot see: `wifibtd` turns its `insmod` and its rfkill switching
 into the Bluetooth half of that decision ([power](power.md)).
 
-Exercised on BaseOS, on the vendor kernel and the harvest: `bt_init.sh` loads
+Exercised on FlipBase, on the vendor kernel and the harvest: `bt_init.sh` loads
 `rtk_btusb` from `/lib/modules`, `hci0` comes up with the same BD address as stock (so the
 firmware harvest is right), `S40bluetooth start` returns in 0.05 s,
 `bluetoothctl show` reports a powered BlueZ 5.62 adapter, `bluealsa` stays up,
@@ -568,7 +568,7 @@ different Miyoo platform, so it cannot succeed on this hardware either way.
 
 ### Bluetooth audio quality is a radio problem, not a rootfs one
 
-A2DP dropouts under emulation are **not** a missing BaseOS piece. `dmesg` shows
+A2DP dropouts under emulation are **not** a missing FlipBase piece. `dmesg` shows
 `rtk_btcoex: count_a2dp_packet_timeout` once a second with the count falling from
 143 to ~102, each dip alongside an `RTW: Turbo EDCA` change: WiFi and Bluetooth
 share one 2.4 GHz front-end and the driver time-slices it. minarch logs
@@ -591,13 +591,13 @@ platform. Useful when reading [upstream](https://github.com/pvaibhav/BaseOS) for
 |---|---|---|
 | curl | static, built in a container | Buildroot's, over the OpenSSL 3 `wpa_supplicant` uses too |
 | DHCP | BusyBox `udhcpc` + event script | same, behind the `S41dhcpcd` name |
-| NTP entry point | NextUI calls `timedatectl set-ntp`, so BaseOS ships a `timedatectl` shim over a `baseos-ntp` supervisor, with the preference on `/data` | NextUI calls `/etc/init.d/S49ntp` directly, so the init script *is* the shim |
+| NTP entry point | NextUI calls `timedatectl set-ntp`, so FlipBase ships a `timedatectl` shim over a `flipbase-ntp` supervisor, with the preference on `/data` | NextUI calls `/etc/init.d/S49ntp` directly, so the init script *is* the shim |
 | clock at boot | `hwclock -u -s` in `rcS` | the kernel, from the RTC, plus `S49ntp` |
 | `/etc/localtime` | → `/run/localtime`, restored by `timedatectl apply` | → `/userdata/localtime`, stock's target |
 | zoneinfo | whole tree | whole tree minus `right/` |
 | OS version string | not implemented for this platform in NextUI | `/usr/miyoo/version`, generated from `VERSION` |
 | service shims | `systemctl`, `timedatectl` | `/etc/init.d/S*` |
-| `baseos.conf` | applied by `rcS` before any service, sharing the update's mount of TF1; `hostname`, `mdns`, `ssh_password`, `headphone_pop_fix` | applied by the backgrounded `dev`; `hostname` and `ssh_password`, and the hostname also goes to DHCP |
+| `flipbase.conf` | applied by `rcS` before any service, sharing the update's mount of TF1; `hostname`, `mdns`, `ssh_password`, `headphone_pop_fix` | applied by the backgrounded `dev`; `hostname` and `ssh_password`, and the hostname also goes to DHCP |
 
 NextUI's NTP preference is not a second mechanism competing with ours: it is
 stored in NextUI's config, which the OS cannot read, and acted on only when the
@@ -611,8 +611,8 @@ regardless of the stored toggle.
 This device has no console, so `fbsplash` — built from `src/fbsplash.c` with
 freetype — is the only way to tell the owner anything.
 It reads panel geometry from the framebuffer and rotation from
-`/etc/baseos-release` (`BASEOS_PANEL_ROTATION_CCW=0`; the Flip's 640x480 panel is
-upright). `baseos-splash` wraps it and only ever overlays a status pill.
+`/etc/flipbase-release` (`FLIPBASE_PANEL_ROTATION_CCW=0`; the Flip's 640x480 panel is
+upright). `flipbase-splash` wraps it and only ever overlays a status pill.
 
 **The boot logo.** When the bootloader handed none to the kernel (no
 `logo,offset` in the display route: the mainline U-Boot path), `rcS` runs

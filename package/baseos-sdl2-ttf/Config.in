@@ -1,6 +1,0 @@
-config BR2_PACKAGE_BASEOS_SDL2_TTF
-	bool "baseos-sdl2-ttf"
-	depends on BR2_PACKAGE_SDL2_COMPAT
-	select BR2_PACKAGE_FREETYPE
-	help
-	  SDL2_ttf against sdl2-compat; Buildroot's needs sdl2.

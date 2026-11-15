@@ -1,7 +1,7 @@
 #!/bin/sh
-# baseos.conf, then the dev conveniences (SSH, SFTP, ADB). rcS backgrounds this.
+# flipbase.conf, then the dev conveniences (SSH, SFTP, ADB). rcS backgrounds this.
 
-. /usr/share/baseos/log.sh
+. /usr/share/flipbase/log.sh
 
 # Host keys on /data: stock regenerates them onto tmpfs every boot, so its
 # fingerprint keeps changing. /root links to /data/root, the root is read-only.
@@ -11,7 +11,7 @@ for t in rsa ed25519; do
 	[ -f "$k" ] || /usr/bin/dropbearkey -t "$t" -f "$k" >/dev/null 2>&1
 done
 
-/usr/sbin/baseos-config /run/baseos.conf 2>> "$BASEOS_LOG" || log "baseos-config failed"
+/usr/sbin/flipbase-config /run/flipbase.conf 2>> "$FLIPBASE_LOG" || log "flipbase-config failed"
 
 /usr/sbin/dropbear -r /data/dropbear/dropbear_rsa_host_key \
                    -r /data/dropbear/dropbear_ed25519_host_key 2>/dev/null
@@ -20,6 +20,6 @@ done
 [ -x /usr/sbin/usb-gadget-adb ] && /usr/sbin/usb-gadget-adb &
 
 # Only in a --diag rootfs: times the frontend's first frame.
-[ -x /usr/sbin/baseos-frameprobe ] && /usr/sbin/baseos-frameprobe &
+[ -x /usr/sbin/flipbase-frameprobe ] && /usr/sbin/flipbase-frameprobe &
 
 mark /run/boot-dev-done

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a BaseOS `.bosupd` update payload from a composed image.
+"""Build a FlipBase `.bosupd` update payload from a composed image.
 
 The payload carries the `uboot`, `boot` and `rootfs` slots of a finished image,
 each gzipped whole, plus a manifest. Applying it writes those exact bytes into
@@ -97,11 +97,12 @@ def main() -> int:
 
     # The card judges the manifest but runs the filesystem; they must agree.
     stamps = {
-        f"BASEOS_VERSION={version}".encode(): False,
-        f"BASEOS_BUILD={build}".encode(): False,
+        f"FLIPBASE_VERSION={version}".encode(): False,
+        f"FLIPBASE_BUILD={build}".encode(): False,
     }
 
     members, fields = [], [
+        # The BaseOS name, which units still running BaseOS check.
         ("format", "baseos-update/2"),
         ("target", target),
         ("version", version),

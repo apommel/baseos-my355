@@ -1,6 +1,6 @@
 # Power
 
-What the Flip draws on battery, where it goes, and what BaseOS can change.
+What the Flip draws on battery, where it goes, and what FlipBase can change.
 Measured 2026-10-20 on battery from `current_now` × `voltage_now`, with a probe
 that runs detached and changes one thing per point. The gauge refreshes
 `current_now` about every 5 s, so a 20 s point holds 3–4 real readings and
@@ -9,7 +9,7 @@ differences under ~100 mW are noise. The CPU's time per rate comes from
 a game pushes `schedutil` over the 600 → 1416 MHz step with the sampler's own
 processes, 40% of samples at 1416 MHz where the counters said 2%.
 
-These figures are from the vendor kernel, which BaseOS ran until 1.3.0. The
+These figures are from the vendor kernel, which FlipBase ran until 1.3.0. The
 mainline kernel's, measured against them, are in
 [mainline compatibility](mainline-compat.md); they agree within run-to-run
 noise.
@@ -79,7 +79,7 @@ None is kept:
 ## Deep sleep
 
 **~12 mA asleep** on mainline since 2026-11-13, from 26.6 mA. Stock sleeps at
-12.6 mA and BaseOS 1.3.1, on the vendor kernel, at 13.2 mA: a full battery now
+12.6 mA and FlipBase 1.3.1, on the vendor kernel, at 13.2 mA: a full battery now
 lasts ~10 days asleep, where it lasted ~4.7.
 
 Each point is one RTC-woken deep sleep, unplugged, with WiFi stopped as
@@ -93,7 +93,7 @@ is still unexplained).
 | sleep | mA |
 |---|---|
 | stock, one card | 12.6 |
-| BaseOS 1.3.1, vendor kernel, two cards | 13.2 |
+| FlipBase 1.3.1, vendor kernel, two cards | 13.2 |
 | mainline as it was | 26.6 |
 | … with `Playback Path` off | 31.0 |
 | … with the RK817 codec powered down over suspend | 26.7 |
@@ -257,7 +257,7 @@ most 2 s, while a `wpa_supplicant` zombie exists.
 
 spruceOS calls neither `S36` nor `bt_init.sh` on the Flip: it loads `rtk_btusb`
 at boot and turns WiFi off by writing `wifi_power` 0 itself. So WiFi always
-counts as wanted and BaseOS never cuts the chip under it, and only a want powers
+counts as wanted and FlipBase never cuts the chip under it, and only a want powers
 the chip on, so a Bluetooth release never undoes spruceOS's cut. Not run on
 the device under spruceOS.
 

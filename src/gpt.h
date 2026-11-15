@@ -1,10 +1,10 @@
-// Shared GPT primitives for the BaseOS partition tools (gptgrow, gptslot).
+// Shared GPT primitives for the FlipBase partition tools (gptgrow, gptslot).
 //
 // Header-only and zero-dependency: both are built static into the rootfs.
 // Table geometry is read from the header rather than assumed, so the tools do
 // not encode the shape tools/mkgpt.py happens to write.
-#ifndef BASEOS_GPT_H
-#define BASEOS_GPT_H
+#ifndef FLIPBASE_GPT_H
+#define FLIPBASE_GPT_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -121,4 +121,4 @@ static const char *gpt_read(int fd, struct gpt *g) {
 	return NULL;
 }
 
-#endif /* BASEOS_GPT_H */
+#endif /* FLIPBASE_GPT_H */

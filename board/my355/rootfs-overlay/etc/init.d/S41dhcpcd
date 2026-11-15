@@ -1,6 +1,6 @@
 #!/bin/sh
 # DHCP on wlan0. Called by NextUI's etc/wifi/wifi_init.sh, which is where the
-# dhcpcd name comes from; BaseOS uses BusyBox udhcpc.
+# dhcpcd name comes from; FlipBase uses BusyBox udhcpc.
 
 IFACE=wlan0
 PIDFILE=/run/udhcpc.$IFACE.pid

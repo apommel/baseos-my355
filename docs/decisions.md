@@ -8,7 +8,7 @@ else lives in the page for the thing it affects.
 
 ### A mainline kernel, replacing the vendor's
 
-Until the `feat/mainline` branch, BaseOS booted the vendor 5.10.160 kernel
+Until the `feat/mainline` branch, FlipBase booted the vendor 5.10.160 kernel
 byte-for-byte and replaced only the userland. That kept hardware support
 complete for free, but froze the port on a 2025 BSP fork with no upstream
 fixes, and the GPU on a g13p0 libmali with no Panfrost or PanVK.
@@ -102,7 +102,7 @@ written ([the card](card.md)).
 
 ### Two cards, not one
 
-BaseOS takes the right slot, because it is the only slot the SPL boots from, and
+FlipBase takes the right slot, because it is the only slot the SPL boots from, and
 reads the frontend from a card in the left slot. One card works too — the boot
 card's own FAT volume is the fallback — but two keeps games and saves on a card
 that can be pulled, reformatted or replaced without touching the one that boots

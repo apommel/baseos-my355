@@ -32,7 +32,7 @@ JSON report lists every symbol.
   rootfs's, linked by 36 programs. [rootfs](rootfs.md) said otherwise.
 - **Every library a frontend links is one with a stable ABI**: glibc, the
   GCC runtime, SDL2, libdrm, zlib, alsa-lib, libdbus, libudev and the GPU
-  stack. None is a vendor fork except the GPU stack, which BaseOS already
+  stack. None is a vendor fork except the GPU stack, which FlipBase already
   builds ([mainline compatibility](mainline-compat.md)).
 - **The rest of stock's userland is programs frontends run by name, and the
   libraries those programs need.** For them, only the command line and
@@ -88,7 +88,7 @@ them.
 | `bluealsa-aplay`, `bash`, `mkfs.ext4` | spruceOS ([rootfs](rootfs.md)) | |
 | `miyoo_inputd` | `MinUI.pak/launch.sh` | already a `rootfs-overlay/` shim |
 
-Also named, all BaseOS's own already: `/etc/init.d/S36load_wifi_modules`,
+Also named, all FlipBase's own already: `/etc/init.d/S36load_wifi_modules`,
 `S40bluetooth`, `S41dhcpcd`, `S49ntp`, `dev`, and `/usr/sbin/poweroff`.
 
 Their private libraries, which go with them: OpenSSL 1.1 (`libssl`,
@@ -115,7 +115,7 @@ frontend touches them, so any current version will do.
 
 Also named, all from `rootfs-overlay/` or the build: `/etc/passwd`, `group`,
 `shells`, `hosts`, `resolv.conf`, `localtime`, `nsswitch.conf`, `fstab`,
-`machine-id`, `os-release`, `/etc/baseos-release` and `/usr/miyoo/version`.
+`machine-id`, `os-release`, `/etc/flipbase-release` and `/usr/miyoo/version`.
 
 ## Tier 5 — no source
 
@@ -130,7 +130,7 @@ stand-in at that path.
 
 ## How the rootfs provides it
 
-Buildroot builds everything above but the firmware (`configs/` and BaseOS's
+Buildroot builds everything above but the firmware (`configs/` and FlipBase's
 own packages in `package/`). One toolchain and
 one glibc for all of it, current releases, and each package configured for
 this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.1:
@@ -159,7 +159,7 @@ Three choices behind it:
   sdl2-compat is how SDL2 programs run on SDL3. It implements the whole SDL2
   ABI, including `SDL_GetWindowWMInfo` on KMS/DRM, and loads `libSDL3.so.0` at
   run time. Buildroot's `sdl3` package turns off HIDAPI, D-Bus and Vulkan, all
-  of which stock's SDL2 had, so BaseOS builds its own (`baseos-sdl3`), and its
+  of which stock's SDL2 had, so FlipBase builds its own (`flipbase-sdl3`), and its
   own SDL2_image and SDL2_ttf, since Buildroot's need its `sdl2`.
 - **libudev-zero**, not eudev: stock ran no udev daemon either, and
   libudev-zero reads kernel events directly. A patch applies its symbol map,

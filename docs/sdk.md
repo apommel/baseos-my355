@@ -5,17 +5,17 @@ headers and pkg-config files, so a frontend builds against exactly what runs on
 the device instead of a stock toolchain and bundled copies.
 
 ```sh
-./build.sh sdk    # → work/images/baseos-my355-sdk.tar.gz
+./build.sh sdk    # → work/images/flipbase-my355-sdk.tar.gz
 ```
 
 It runs on **aarch64 Linux**, natively or in a `linux/arm64` container (as on
 Apple Silicon): Buildroot builds the SDK's tools for the machine that built
-them, and BaseOS builds in an arm64 container.
+them, and FlipBase builds in an arm64 container.
 
 ## Using it
 
 ```sh
-tar -xzf baseos-my355-sdk.tar.gz && cd baseos-my355-sdk
+tar -xzf flipbase-my355-sdk.tar.gz && cd flipbase-my355-sdk
 ./relocate-sdk.sh                  # once, after moving it anywhere
 . ./environment-setup              # CC, CXX, PKG_CONFIG, CROSS_COMPILE, ...
 ```
