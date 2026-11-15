@@ -1,5 +1,5 @@
 #!/bin/sh
-# my355 base OS early init.
+# FlipBase early init (my355).
 #
 # Budget: well under a second on a normal boot. Nothing sleeps; anything slow
 # runs in the background. The only module loaded here is the GPU driver
