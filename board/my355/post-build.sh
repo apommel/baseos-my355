@@ -27,7 +27,7 @@ NAME="FlipBase"
 ID=flipbase
 VERSION_ID=$FLIPBASE_VERSION
 PRETTY_NAME="FlipBase $FLIPBASE_VERSION (my355)"
-HOME_URL="https://github.com/apommel/baseos-my355"
+HOME_URL="https://github.com/apommel/FlipBase"
 EOF
 mkdir -p "$T"/usr/miyoo
 echo "FlipBase $FLIPBASE_VERSION" > "$T"/usr/miyoo/version

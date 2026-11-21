@@ -1,5 +1,5 @@
 FlipBase for the Miyoo Flip
-https://github.com/apommel/baseos-my355
+https://github.com/apommel/FlipBase
 
 This card boots the device. It is not the frontend card.
 

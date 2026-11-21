@@ -6,7 +6,7 @@
 
 STOCK_FIRMWARE_VERSION = 20261015
 STOCK_FIRMWARE_SOURCE = baseos-my355-prepared-$(STOCK_FIRMWARE_VERSION).tar.zst
-STOCK_FIRMWARE_SITE = https://github.com/apommel/baseos-my355/releases/download/prepared-$(STOCK_FIRMWARE_VERSION)
+STOCK_FIRMWARE_SITE = https://github.com/apommel/FlipBase/releases/download/prepared-$(STOCK_FIRMWARE_VERSION)
 STOCK_FIRMWARE_LICENSE = Proprietary
 STOCK_FIRMWARE_REDISTRIBUTE = NO
 STOCK_FIRMWARE_INSTALL_IMAGES = YES
