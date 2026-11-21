@@ -88,7 +88,8 @@ loop on every push and pull request, without a build.
 
 [`.github/workflows/build.yml`](.github/workflows/build.yml) runs the full
 build on GitHub's arm64 runner, then the tests including the round trip. Run
-by hand from the Actions tab, it keeps the images as a workflow artifact. A
+by hand from the Actions tab, it keeps the `.img.zip`, the `.bosupd` and
+`SHA256SUMS` as three separate workflow artifacts. A
 release is a tag matching `VERSION`:
 
 ```sh

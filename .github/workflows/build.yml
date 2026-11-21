@@ -1,7 +1,7 @@
 # The full Buildroot build, then the tests with its output. A v* tag also makes
 # a draft release with the card image, the update and SHA256SUMS, for the notes
 # to be written and published by hand. Run by hand from the Actions tab, it
-# keeps the images as a workflow artifact instead.
+# keeps each of those files as its own workflow artifact instead.
 name: build
 
 on:
@@ -21,7 +21,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # build.sh names the build after `git describe`.
           fetch-depth: 0
@@ -39,7 +39,7 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache
           df -h /
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             work/dl
@@ -55,7 +55,7 @@ jobs:
 
       - name: Build log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-log
           path: |
@@ -63,15 +63,27 @@ jobs:
             work/images/build.log
           if-no-files-found: ignore
 
-      - name: Images
+      # Unzipped, one artifact per file: the card image is a zip already.
+      - name: Card image
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: flipbase-my355
-          path: |
-            work/images/*.img.zip
-            work/images/*.bosupd
-            work/images/SHA256SUMS
+          path: work/images/*.img.zip
+          archive: false
+
+      - name: Update
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: work/images/*.bosupd
+          archive: false
+
+      - name: Checksums
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: work/images/SHA256SUMS
+          archive: false
 
       - name: Draft release
         if: github.ref_type == 'tag'
