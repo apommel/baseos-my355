@@ -8,11 +8,39 @@ the device instead of a stock toolchain and bundled copies.
 ./build.sh sdk    # → work/images/flipbase-my355-sdk.tar.gz
 ```
 
-It runs on **aarch64 Linux**, natively or in a `linux/arm64` container (as on
-Apple Silicon): Buildroot builds the SDK's tools for the machine that built
-them, and FlipBase builds in an arm64 container.
+It runs on the Linux it was built on: **aarch64**, natively or in a
+`linux/arm64` container (as on Apple Silicon), or **x86_64** with
+`FLIPBASE_BUILD_PLATFORM=linux/amd64 ./build.sh sdk`. Buildroot builds the
+SDK's tools for the machine that built them; they compile for aarch64 either
+way. Each release has both, and the image below.
 
-## Using it
+## The Docker image
+
+The SDK ready to use, for x86_64 and arm64 hosts, with make, CMake and Ninja:
+
+```sh
+docker run --rm -v "$PWD":/src ghcr.io/apommel/flipbase-my355-sdk:2.0.0 make
+docker run --rm -v "$PWD":/src ghcr.io/apommel/flipbase-my355-sdk:2.0.0 \
+  sh -c 'cmake -B build -G Ninja && cmake --build build'
+```
+
+Tags follow releases (`2.0.0`, `2.0`, `latest`). Every bash in it has
+`environment-setup` applied, so `$CC`, `pkg-config` and `CMAKE_TOOLCHAIN_FILE`
+point at the SDK, also in a GitHub Actions job:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/apommel/flipbase-my355-sdk:2.0.0
+    steps:
+      - uses: actions/checkout@v7
+      - run: cmake -B build -G Ninja && cmake --build build
+```
+
+The image is [sdk/Dockerfile](../sdk/Dockerfile) on top of the release's SDK.
+
+## Using the tarball
 
 ```sh
 tar -xzf flipbase-my355-sdk.tar.gz && cd flipbase-my355-sdk

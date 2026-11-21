@@ -1,7 +1,8 @@
-# The full Buildroot build, then the tests with its output. A v* tag also makes
-# a draft release with the card image, the update and SHA256SUMS, for the notes
-# to be written and published by hand. Run by hand from the Actions tab, it
-# keeps each of those files as its own workflow artifact instead.
+# The full Buildroot build on arm64, then the tests with its output, and the
+# SDK for arm64 and x86_64 hosts. Every run keeps each file as its own workflow
+# artifact and pushes the SDK image to ghcr.io (sdk/Dockerfile). A v* tag also
+# makes a draft release with the card image, the update, both SDKs and
+# SHA256SUMS, for the notes to be written and published by hand.
 name: build
 
 on:
@@ -12,19 +13,36 @@ on:
 permissions:
   contents: read
 
+# Queued, not cancelled: a build takes hours.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
 jobs:
   build:
-    # The build container is arm64 (build.sh); emulated on x86 it would not
-    # finish within a job's 6 hours.
-    runs-on: ubuntu-24.04-arm
+    strategy:
+      # The arm64 images are still worth keeping when the x86_64 SDK fails.
+      fail-fast: false
+      matrix:
+        include:
+          # The images and tests. Native: emulated on x86 it would not finish
+          # within a job's 6 hours.
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            targets: flipbase-tools-rebuild all sdk
+          # The same tree built natively on x86_64, for the SDK's host tools.
+          - arch: amd64
+            runner: ubuntu-24.04
+            targets: sdk
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
-    permissions:
-      contents: write
+    env:
+      ARCH: ${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # build.sh names the build after `git describe`.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check the tag matches VERSION
         if: github.ref_type == 'tag'
@@ -39,61 +57,142 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache
           df -h /
 
-      - uses: actions/cache@v6
+      # Releases build from scratch: nothing cached reaches them, and a tag's
+      # own cache could not be restored by any other ref.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.ref_type != 'tag'
         with:
           path: |
             work/dl
             ${{ runner.temp }}/buildroot/ccache
-          key: buildroot-${{ github.run_id }}
-          restore-keys: buildroot-
+          key: buildroot-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: buildroot-${{ matrix.arch }}-
 
       - name: Build
-        run: FLIPBASE_BUILD_DIR="$RUNNER_TEMP/buildroot" ./build.sh
+        env:
+          TARGETS: ${{ matrix.targets }}
+        run: |
+          # shellcheck disable=SC2086
+          FLIPBASE_BUILD_PLATFORM="linux/$ARCH" FLIPBASE_BUILD_DIR="$RUNNER_TEMP/buildroot" ./build.sh $TARGETS
+          v="$(tr -d ' \n' < VERSION)"
+          mv work/images/flipbase-my355-sdk.tar.gz "work/images/flipbase-my355-sdk-$v-$ARCH.tar.gz"
 
       - name: Tests
+        if: matrix.arch == 'arm64'
         run: for t in tests/test-*.sh; do "$t" || exit 1; done
 
       - name: Build log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: build-log
+          name: build-log-${{ matrix.arch }}
           path: |
             work/build.log
             work/images/build.log
           if-no-files-found: ignore
 
       # Unzipped, one artifact per file: the card image is a zip already.
+      - name: SDK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: work/images/flipbase-my355-sdk-*.tar.gz
+          archive: false
+
       - name: Card image
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v7
+        if: matrix.arch == 'arm64'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: work/images/*.img.zip
           archive: false
 
       - name: Update
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v7
+        if: matrix.arch == 'arm64'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: work/images/*.bosupd
           archive: false
 
       - name: Checksums
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v7
+        if: matrix.arch == 'arm64'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: work/images/SHA256SUMS
           archive: false
 
+  sdk-image:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: flipbase-my355-sdk-*
+          merge-multiple: true
+          path: sdk
+
+      # The arm64 image's few RUN steps are emulated.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # v2.0.0 → 2.0.0, 2.0 and latest; a run by hand → the branch name.
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/flipbase-my355-sdk
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: sdk
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          merge-multiple: true
+          # The card image is a zip to publish as it is.
+          skip-decompress: true
+          path: dist
+
       - name: Draft release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        working-directory: dist
         run: |
-          v="$(tr -d ' \n' < VERSION)"
-          gh release create "$GITHUB_REF_NAME" --draft \
+          v="${GITHUB_REF_NAME#v}"
+          sha256sum flipbase-my355-sdk-*.tar.gz >> SHA256SUMS
+          cat SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
             --title "FlipBase $GITHUB_REF_NAME for the Miyoo Flip" \
-            --notes "Read the installation instructions in [INSTALL.md](https://github.com/$GITHUB_REPOSITORY/blob/main/INSTALL.md)." \
-            "work/images/flipbase-my355-$v.img.zip" \
-            "work/images/flipbase-my355-$v.bosupd" \
-            work/images/SHA256SUMS
+            --notes "Read the installation instructions in [INSTALL.md](https://github.com/$GITHUB_REPOSITORY/blob/main/INSTALL.md). The SDK is also the image \`ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/flipbase-my355-sdk:$v\` ([SDK](https://github.com/$GITHUB_REPOSITORY/blob/main/docs/sdk.md))." \
+            "flipbase-my355-$v.img.zip" \
+            "flipbase-my355-$v.bosupd" \
+            flipbase-my355-sdk-*.tar.gz \
+            SHA256SUMS

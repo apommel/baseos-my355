@@ -87,19 +87,22 @@ loop on every push and pull request, without a build.
 ## Releases
 
 [`.github/workflows/build.yml`](.github/workflows/build.yml) runs the full
-build on GitHub's arm64 runner, then the tests including the round trip. Run
-by hand from the Actions tab, it keeps the `.img.zip`, the `.bosupd` and
-`SHA256SUMS` as three separate workflow artifacts. A
-release is a tag matching `VERSION`:
+build on GitHub's arm64 runner, then the tests including the round trip, and
+builds the SDK again on x86_64 for hosts of that kind. Every run keeps the
+`.img.zip`, the `.bosupd`, both SDKs and `SHA256SUMS` as separate workflow
+artifacts, and pushes the SDK image to `ghcr.io/<owner>/flipbase-my355-sdk`
+(a run by hand is tagged with its branch). A release is a tag matching
+`VERSION`:
 
 ```sh
 git tag v1.4.0 && git push origin v1.4.0
 ```
 
-The build then makes a **draft** release with the `.img.zip`, the `.bosupd` and
-`SHA256SUMS`. Write the notes and publish it from the releases page, ticking
-**Set as a pre-release** for a test build. Versions are plain `x.y.z`. A build
-from an empty cache takes hours; ccache and the downloads are cached for the next.
+The build then makes a **draft** release with those files, `SHA256SUMS` covering
+the SDKs too, and tags the image `1.4.0`, `1.4` and `latest`. Write the notes
+and publish it from the releases page, ticking **Set as a pre-release** for a
+test build. Versions are plain `x.y.z`. A tag builds from scratch, about three
+hours; a run by hand reuses the ccache and downloads of the last one.
 
 ## Conventions
 

@@ -15,6 +15,8 @@
 # your own instead of the published bundle (CONTRIBUTING.md).
 # FLIPBASE_BUILD_DIR=<absolute dir> keeps the output tree and ccache there
 # instead of the Docker volume, so CI can cache them.
+# FLIPBASE_BUILD_PLATFORM=linux/amd64 builds on x86_64 instead of arm64, for
+# an SDK whose tools run there. The target is aarch64 either way.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -34,10 +36,13 @@ while :; do
   case "${1:-}" in
     --diag) DIAG=1 OUTPUT=output-diag; shift ;;
     --clean) CLEAN=1; shift ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) break ;;
   esac
 done
+PLATFORM="${FLIPBASE_BUILD_PLATFORM:-linux/arm64}"
+# Host tools differ, so each platform needs its own output tree.
+[ "$PLATFORM" = linux/arm64 ] || OUTPUT="$OUTPUT-${PLATFORM#linux/}"
 # src/ is a local package, which Buildroot does not watch for changes.
 TARGETS="${*:-flipbase-tools-rebuild all}"
 STOCK_MOUNT=
@@ -73,7 +78,7 @@ echo "$FLIPBASE_VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' ||
 FLIPBASE_BUILD="$(git -C "$HERE" describe --always --dirty 2>/dev/null || echo unknown)"
 
 echo "== FlipBase $FLIPBASE_VERSION ($FLIPBASE_BUILD): make $TARGETS, log in work/build.log =="
-docker run --rm --platform linux/arm64 \
+docker run --rm --platform "$PLATFORM" \
   -v "${FLIPBASE_BUILD_DIR:-flipbase-buildroot}":/build -v "$DL":/dl -v "$IMAGES":/images \
   -v "$HERE":/flipbase:ro -v "$LIBMALI":/src/libmali:ro $STOCK_MOUNT \
   -e BR_VERSION="$BR_VERSION" -e TARGETS="$TARGETS" -e O="/build/$OUTPUT" \

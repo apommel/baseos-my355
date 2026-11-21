@@ -1,0 +1,13 @@
+# Keeps the pinned actions current, in one pull request a month, with releases
+# at least a week old.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
