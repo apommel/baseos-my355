@@ -300,15 +300,17 @@ Different from stock, found on the first boots:
   uinput, from the vendor `/dev/miyooio` (the `gpio-keys-polled` pins) and the
   stick MCU on `ttyS1`. The `miyoo-player1` driver presents the same device:
   it polls the game buttons' GPIOs, takes menu from event0 and reads the MCU
-  as a serdev, so there is no `/dev/ttyS1`. It registers last, after every
-  other input device. `miyoo_inputd` is a shim that hands the driver
-  `/userdata/joypad.config` and `joypad_right.config` (sysfs
-  `calibration_left`, `calibration_right`, same format) and stays. Turbo is
+  as a serdev, so the serial core makes no `/dev/ttyS1`. It registers last,
+  after every other input device. `miyoo_inputd` is a shim that hands the
+  driver `/userdata/joypad.config` and `joypad_right.config` (sysfs
+  `calibration_left`, `calibration_right`, same format), again whenever
+  `/tmp/miyoo_inputd/cal_update` appears, as the daemon did, and stays. Turbo is
   the driver's too: sysfs `turbo` lists the buttons that repeat while held
   (`a b x y l r l2 r2`, 30 ms down and 30 ms up), and the shim keeps it to
   the files NextUI makes for the daemon, `/tmp/miyoo_inputd/turbo_<button>`
-  under `enable_turbo_input`. Stock's rate was not measured. Joe's Calibrage,
-  which reads `/dev/ttyS1`, would need the driver's `raw` attribute instead.
+  under `enable_turbo_input`. Stock's rate was not measured. `stock/0103`
+  keeps stock's `/dev/ttyS1`, with the MCU's frames as received: read-only,
+  one reader at a time, and not a tty.
 - **Backlight hand-over.** An older `launch.sh` read the duty from
   `/sys/kernel/debug/pwm` in the vendor format, which mainline's does not
   match. The current NextUI reads nothing there, so `rcS` no longer mounts

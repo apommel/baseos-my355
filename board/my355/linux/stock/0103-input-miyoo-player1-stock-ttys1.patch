@@ -1,0 +1,153 @@
+Subject: [PATCH] Input: miyoo-player1: stock's /dev/ttyS1
+
+Stock leaves UART1, the stick MCU, to userspace as /dev/ttyS1. Keep the
+name, read-only, carrying the frames the driver receives.
+
+---
+--- a/drivers/input/joystick/miyoo-player1.c
++++ b/drivers/input/joystick/miyoo-player1.c
+@@ -14,9 +14,12 @@
+  */
+ #include <linux/gpio/consumer.h>
+ #include <linux/input.h>
++#include <linux/kfifo.h>
++#include <linux/miscdevice.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/of.h>
++#include <linux/poll.h>
+ #include <linux/serdev.h>
+ #include <linux/spinlock.h>
+ 
+@@ -94,6 +97,12 @@
+ 	int last[4];			/* X Y RX RY, as last reported */
+ 	u8 frame[FRAME_LEN];
+ 	size_t len;
++	/* /dev/ttyS1, as stock's UART1. */
++	struct miscdevice tty;
++	spinlock_t tty_lock;		/* tty_fifo */
++	DECLARE_KFIFO(tty_fifo, u8, 512);
++	wait_queue_head_t tty_wait;
++	unsigned long tty_open;		/* bit 0: held by a reader */
+ };
+ 
+ static const struct p1_cal p1_cal_default = { 85, 130, 200 };
+@@ -272,9 +281,78 @@
+ 		p1_report_stick(p1, 0, ABS_X, ABS_Y);
+ 		p1_report_stick(p1, 1, ABS_RX, ABS_RY);
+ 		input_sync(p1->input);
++
++		if (!test_bit(0, &p1->tty_open))
++			continue;
++		/* Whole frames only, so a slow reader drops frames, not bytes. */
++		spin_lock_irqsave(&p1->tty_lock, flags);
++		if (kfifo_avail(&p1->tty_fifo) >= FRAME_LEN)
++			kfifo_in(&p1->tty_fifo, p1->frame, FRAME_LEN);
++		spin_unlock_irqrestore(&p1->tty_lock, flags);
++		wake_up_interruptible(&p1->tty_wait);
+ 	}
+ 	return count;
++}
++
++/* Read-only and not a tty; one reader at a time. */
++static int p1_tty_open(struct inode *inode, struct file *file)
++{
++	struct p1 *p1 = container_of(file->private_data, struct p1, tty);
++	unsigned long flags;
++
++	if (test_and_set_bit(0, &p1->tty_open))
++		return -EBUSY;
++	spin_lock_irqsave(&p1->tty_lock, flags);
++	kfifo_reset(&p1->tty_fifo);
++	spin_unlock_irqrestore(&p1->tty_lock, flags);
++	return stream_open(inode, file);
++}
++
++static int p1_tty_release(struct inode *inode, struct file *file)
++{
++	struct p1 *p1 = container_of(file->private_data, struct p1, tty);
++
++	clear_bit(0, &p1->tty_open);
++	return 0;
++}
++
++static ssize_t p1_tty_read(struct file *file, char __user *buf, size_t count,
++			   loff_t *ppos)
++{
++	struct p1 *p1 = container_of(file->private_data, struct p1, tty);
++	u8 tmp[64];
++	unsigned int n;
++	int ret;
++
++	count = min(count, sizeof(tmp));
++	while (!(n = kfifo_out_spinlocked(&p1->tty_fifo, tmp, count,
++					  &p1->tty_lock))) {
++		if (file->f_flags & O_NONBLOCK)
++			return -EAGAIN;
++		ret = wait_event_interruptible(p1->tty_wait,
++					       !kfifo_is_empty(&p1->tty_fifo));
++		if (ret)
++			return ret;
++	}
++	return copy_to_user(buf, tmp, n) ? -EFAULT : n;
+ }
++
++static __poll_t p1_tty_poll(struct file *file, poll_table *wait)
++{
++	struct p1 *p1 = container_of(file->private_data, struct p1, tty);
++
++	poll_wait(file, &p1->tty_wait, wait);
++	return kfifo_is_empty(&p1->tty_fifo) ? 0 : EPOLLIN | EPOLLRDNORM;
++}
++
++static const struct file_operations p1_tty_fops = {
++	.owner = THIS_MODULE,
++	.open = p1_tty_open,
++	.release = p1_tty_release,
++	.read = p1_tty_read,
++	.poll = p1_tty_poll,
++	.llseek = noop_llseek,
++};
+ 
+ static const struct serdev_device_ops p1_serdev_ops = {
+ 	.receive_buf = p1_receive,
+@@ -484,6 +562,9 @@
+ 	if (!p1)
+ 		return -ENOMEM;
+ 	spin_lock_init(&p1->lock);
++	spin_lock_init(&p1->tty_lock);
++	INIT_KFIFO(p1->tty_fifo);
++	init_waitqueue_head(&p1->tty_wait);
+ 	mutex_init(&p1->kbd_lock);
+ 	for (i = 0; i < 4; i++)
+ 		p1->cal[i / 2][i % 2] = p1_cal_default;
+@@ -550,13 +631,28 @@
+ 		.name = "miyoo-player1",
+ 		.id_table = p1_ids,
+ 	};
+-	return input_register_handler(&p1->handler);
++	ret = input_register_handler(&p1->handler);
++	if (ret)
++		return ret;
++
++	/* The serial core makes none: the UART is the driver's. */
++	p1->tty = (struct miscdevice) {
++		.minor = MISC_DYNAMIC_MINOR,
++		.name = "ttyS1",
++		.fops = &p1_tty_fops,
++		.parent = dev,
++	};
++	ret = misc_register(&p1->tty);
++	if (ret)
++		input_unregister_handler(&p1->handler);
++	return ret;
+ }
+ 
+ static void p1_remove(struct serdev_device *serdev)
+ {
+ 	struct p1 *p1 = serdev_device_get_drvdata(serdev);
+ 
++	misc_deregister(&p1->tty);
+ 	input_unregister_handler(&p1->handler);
+ 	mutex_lock(&p1->kbd_lock);
+ 	if (p1->kbd)
