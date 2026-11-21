@@ -14,6 +14,13 @@ interface of its own.
 FlipBase runs from the SD card and leaves the stock system in place: take the card out
 and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
 
+## Formerly BaseOS for the Miyoo Flip
+
+Until 1.3.1, this project was BaseOS for the Miyoo Flip, on the vendor kernel.
+It was renamed FlipBase with 2.0.0, which moved to mainline Linux.
+
+The 1.x branch, on the vendor kernel, will continue to be maintained.
+
 ## Features
 
 - **Fast boot.** NextUI is on screen about 2.4 s after power-on, instead of 31.5 s.
@@ -120,9 +127,8 @@ name. Some pieces also come from [ROCKNIX](https://rocknix.org). See [NOTICE](NO
 ## Relationship to BaseOS for H700
 
 FlipBase is inspired by, and forked from, [BaseOS](https://github.com/pvaibhav/BaseOS)
-for Allwinner H700 handhelds. It was called BaseOS until it moved to mainline
-Linux; the new name keeps the lineage and marks it as an independent project.
-Same approach: replace the vendor userland, keep what frontends depend on,
-measure everything. The hardware is different, so the boot chain, image format
+for Allwinner H700 handhelds; the new name keeps the lineage and marks it as an
+independent project. Same approach: replace the vendor userland, keep what
+frontends depend on, measure everything. The hardware is different, so the boot chain, image format
 and build are separate. The boot splash, artwork and some build helpers are
 shared, and the card setup and update system are adapted from it.
