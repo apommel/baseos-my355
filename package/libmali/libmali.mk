@@ -20,10 +20,13 @@ LIBMALI_CONF_OPTS = \
 	-Dopencl-icd=false \
 	-Dkhr-header=true
 
-# NextUI and its cores link the hook by stock's name. No OpenCL loader here,
+# NextUI and its cores link the hook by stock's name, and some SDL2 builds
+# dlopen the unversioned EGL and GLES names, as stock has. No OpenCL loader here,
 # and no Wayland or X11 for the Vulkan layers.
 define LIBMALI_STOCK_NAMES
 	ln -sf libmali-hook.so.1 $(TARGET_DIR)/usr/lib/libmali_hook.so.1
+	ln -sf libEGL.so.1 $(TARGET_DIR)/usr/lib/libEGL.so
+	ln -sf libGLESv2.so.2 $(TARGET_DIR)/usr/lib/libGLESv2.so
 	rm -f $(TARGET_DIR)/usr/lib/libOpenCL.so* $(TARGET_DIR)/usr/lib/libMaliOpenCL.so*
 	rm -rf $(TARGET_DIR)/etc/OpenCL $(TARGET_DIR)/usr/share/vulkan/implicit_layer.d
 endef
