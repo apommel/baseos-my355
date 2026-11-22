@@ -750,13 +750,6 @@ int main(int argc, char **argv) {
 	int fd = open("/dev/fb0", O_RDWR);
 	if (fd < 0)
 		return 1;
-	// The first unblank is the first modeset, the panel's ~0.2 s power-up: in a
-	// child, it runs while the logo renders. The buffer is black until then.
-	pid_t unblank = fork();
-	if (unblank == 0) {
-		ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK);
-		_exit(0);
-	}
 	struct fb_var_screeninfo v;
 	struct fb_fix_screeninfo f;
 	if (ioctl(fd, FBIOGET_VSCREENINFO, &v) < 0 || ioctl(fd, FBIOGET_FSCREENINFO, &f) < 0) {
@@ -772,6 +765,14 @@ int main(int argc, char **argv) {
 	if (fb == MAP_FAILED) {
 		close(fd);
 		return 1;
+	}
+	// The first unblank is the first modeset, the panel's ~0.2 s power-up: in a
+	// child, it runs while the logo renders. Forked after the queries above, which
+	// would wait on the fb_info lock it holds throughout.
+	pid_t unblank = fork();
+	if (unblank == 0) {
+		ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK);
+		_exit(0);
 	}
 
 	present(fb, &v, &f, panel_rotation(), prog, msg, pill);

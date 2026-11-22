@@ -8,9 +8,9 @@
 # and the shell waits forever on a console this device does not have.
 # See docs/card.md.
 
-# The logo first, so the panel's power-up in the first modeset runs beside init
-# and rcS. Unblanking starts it before fbsplash has loaded its libraries. The
-# kernel line is flipbase-bootinfo's logo marker: no /proc yet.
+# The logo first. The kernel starts the panel's power-up when fb0 registers
+# (patch 0106); the unblank starts it for a kernel without that. The kernel line
+# is flipbase-bootinfo's logo marker: no /proc yet.
 /bin/mount -t sysfs -o nodev,noexec,nosuid sys /sys
 echo 0 > /sys/class/graphics/fb0/blank &
 { /usr/bin/fbsplash 0 </dev/null >/dev/null 2>&1 &&

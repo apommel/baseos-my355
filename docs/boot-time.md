@@ -6,10 +6,11 @@ Superseded tables and the measurements that led here are in
 
 **2026-11-22, Linux 7.3.5 and U-Boot 2026.10**, four warm reboots, USB attached:
 U-Boot hands off at 0.645 s, the kernel's clock starts at 0.722, `Run /init` at
-1.10–1.12, the panel streams the logo at ~1.35 (DRM debug: encoder enable),
-the hand-off at 1.31–1.34 and `nextui.elf` starts at 1.88–1.90. The same
-morning, before the fixes in *2026-11-22* below: hand-off 1.56–1.59, logo on
-the panel ~1.75, `nextui.elf` 2.05–2.14.
+1.10–1.12, `fbsplash` has drawn the logo by 1.16–1.19 and the panel streams it
+from ~1.21 (DRM debug: encoder enable), the hand-off is at 1.29–1.34 and
+`nextui.elf` starts at 1.87–1.97. The same morning, before the fixes in
+*2026-11-22* below: hand-off 1.56–1.59, logo on the panel ~1.75, `nextui.elf`
+2.05–2.14.
 
 Measured on the vendor 5.10 kernel, which FlipBase booted until 1.3.0. The
 mainline kernel's figures, against these, are in
@@ -114,7 +115,7 @@ cold and warm apart.
 | marker | what it is | at (warm) |
 |---|---|---|
 | `backlight` | `rcS` lights the backlight; the panel shows nothing yet | 1.13–1.16 s |
-| `logo` | `fbsplash` returns: its pan is a blocking commit, so the first modeset and the panel's power-up are behind it, and the logo is on the glass | 1.27–1.31 s |
+| `logo` | `fbsplash` returns, once its unblank and pan have waited for the first modeset. Since the kernel starts that modeset itself (2026-11-22) it is an upper bound: the logo is drawn before the panel comes on and shows from its encoder enable, ~0.1 s earlier | 1.31–1.34 s |
 | `nextui` | `nextui.elf` starts | 2.27–2.35 s |
 | `frame` | NextUI's first framebuffer on the panel (`--diag`, `flipbase-frameprobe`) | — |
 
@@ -355,6 +356,9 @@ Profiled with the DRM debug log (`drm.debug=0x16`), `initcall_debug` and
 | **zstd without `-mstrict-align` again**: the 2026.10 bump broke the per-object flags ([U-Boot](uboot.md), *zstd*) | decompression 336 → 107 ms, everything after it 0.23 s sooner |
 | **`/init` unblanks `fb0` and starts `fbsplash`** before `busybox init`, instead of `rcS` starting it after its mounts | the modeset, the panel's ~0.21 s power-up, starts ~33 ms after `Run /init` instead of ~150 |
 | `fbsplash` unblanks in a child before rendering | the modeset no longer waits for its render |
+| **the kernel commits the fbdev mode once `fb0` registers**, from a worker (patch 0106): nothing did before userspace unblanked, as there is no fbcon | the panel's power-up starts at printk 0.278 instead of 0.421; it streams from ~1.21 s instead of ~1.35 |
+| `fbsplash` forks its unblank after querying and mapping `fb0`: `FBIOBLANK` holds the fb_info lock through the modeset, and `FBIOGET_VSCREENINFO` waited on it whenever the child got there first | with the kernel's commit in flight, the render no longer waits for the panel |
+| **`fbsplash` linked statically**, with only the FreeType modules a TrueType font needs built in | `Run /init` to its `main` 86–87 → 48 ms, its render 26–31 → 10 ms: the logo is drawn at 1.16–1.19 s, before the panel is on, instead of 1.22–1.24 |
 | the panel's waits by `fsleep`: `msleep(0)` and `msleep(1)` slept a 4 ms jiffy or two | pre-enable to enable 220 → 210 ms |
 | `rcS` forks `flipbase-update` only when a `*.bosupd` is there; `frontend-session` reads `/proc/mounts` with builtins and skips a second `mount-frontend` | ~30 ms to hand-off |
 
@@ -368,10 +372,18 @@ change to device order under suspend).
 **The panel, 210 ms from the first commit:** ~141 ms the init sequence's own
 waits (120 after sleep-out), 10 ms `dw_mipi_dsi_mode_set` waiting for a
 `PHY_LOCK` the external Innosilicon D-PHY never reports, the rest the
-sequence's ~25 commands sent in LP mode. One boot in several the kernel starts
-it by itself at ~0.28 s: a connector hotplug landing after `fb0` registers makes
-the fbdev helper commit from a worker, and the panel streams at ~1.21 s.
-Triggering that on every boot is a small kernel change, not made yet.
+sequence's ~25 commands sent in LP mode. With the commit at bind it now runs
+from printk 0.278 to 0.488 beside the rest of the kernel's init, and `Run /init`
+did not move. The panel is the logo's limit again: anything sooner needs a
+shorter init sequence or an earlier `fb0`.
+
+**musl, tried for `fbsplash`, not kept.** A static musl build (Alpine, FreeType
+without zlib, bzip2, PNG, HarfBuzz or Brotli, `-Os`) drew the same pixels and
+reached `main` 37–38 ms after `Run /init`, against 48 for static glibc, but
+rendered in 18–20 ms against 10: the logo was drawn at the same moment. Static
+glibc needs no second toolchain. Warm, any build takes ~15 ms; the shared
+build's cost at boot was reading and relocating five libraries from the EROFS
+root while `rcS` starts.
 
 **Initcalls on 7.3.5**, 606 of them, 0.283 s: `deferred_probe_initcall` 52 ms
 (the boot card's controller and its init), `rk3x_i2c_driver_init` 42,

@@ -1,0 +1,72 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] drm/fbdev-client: commit the mode once fbdev is set up
+
+Without fbcon, nothing commits the fbdev mode until userspace opens or
+unblanks /dev/fb0. On the Miyoo Flip that first commit powers the DSI panel
+up, ~0.21 s of init sequence, so it started only once /init ran, and the
+boot logo waited for it.
+
+Queue the commit on an unbound workqueue as soon as the initial config has
+registered fb0. The probe path does not wait for it; a later unblank finds
+the CRTC active and only waits on the modeset lock if it is still running.
+
+---
+--- a/drivers/gpu/drm/clients/drm_fbdev_client.c
++++ b/drivers/gpu/drm/clients/drm_fbdev_client.c
+@@ -7,6 +7,9 @@
+ #include <drm/drm_fourcc.h>
+ #include <drm/drm_print.h>
+ 
++#include <linux/slab.h>
++#include <linux/workqueue.h>
++
+ #include "drm_client_internal.h"
+ 
+ /*
+@@ -55,6 +58,36 @@
+ 	return 0;
+ }
+ 
++struct drm_fbdev_commit_work {
++	struct work_struct work;
++	struct drm_fb_helper *fb_helper;
++};
++
++static void drm_fbdev_commit_work_fn(struct work_struct *work)
++{
++	struct drm_fbdev_commit_work *cw =
++		container_of(work, struct drm_fbdev_commit_work, work);
++
++	drm_fb_helper_restore_fbdev_mode_unlocked(cw->fb_helper, false);
++	kfree(cw);
++}
++
++/*
++ * Without fbcon nothing commits the fbdev mode until userspace opens or
++ * unblanks the device, so a panel's power-up waits for init. Start it here,
++ * off the probe path.
++ */
++static void drm_fbdev_commit_async(struct drm_fb_helper *fb_helper)
++{
++	struct drm_fbdev_commit_work *cw = kzalloc(sizeof(*cw), GFP_KERNEL);
++
++	if (!cw)
++		return;
++	INIT_WORK(&cw->work, drm_fbdev_commit_work_fn);
++	cw->fb_helper = fb_helper;
++	queue_work(system_unbound_wq, &cw->work);
++}
++
+ static int drm_fbdev_client_hotplug(struct drm_client_dev *client)
+ {
+ 	struct drm_fb_helper *fb_helper = drm_fb_helper_from_client(client);
+@@ -75,6 +108,9 @@
+ 	if (ret)
+ 		goto err_drm_fb_helper_fini;
+ 
++	if (fb_helper->info)
++		drm_fbdev_commit_async(fb_helper);
++
+ 	return 0;
+ 
+ err_drm_fb_helper_fini:
