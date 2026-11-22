@@ -120,7 +120,7 @@ spruceOS's g2p0; `/dev/miyooio` is replaced by the `miyoo-player1` driver
 
 ## Status
 
-Buildroot builds Linux 7.2.10 from `board/my355/linux`: the device tree and
+Buildroot builds Linux 7.3.5 from `board/my355/linux`: the device tree and
 the patches, each split in two, our drivers among them. `hardware/` makes the
 board work on mainline and could go upstream; `stock/` is the vendor
 interface on top, FlipBase-only. The out-of-tree `mali_kbase` and `8733bu` are

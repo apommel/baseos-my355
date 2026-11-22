@@ -7,21 +7,22 @@ image_decomp(). bootm decompresses after relocation, with the MMU on and
 DRAM mapped as Normal memory, where that bit is all that could forbid an
 unaligned access.
 
+---
 diff --git a/boot/image.c b/boot/image.c
-index abac2c70..68bf556b 100644
+index 185d52ba..1281e808 100644
 --- a/boot/image.c
 +++ b/boot/image.c
-@@ -27,6 +27,9 @@
- #include <asm/global_data.h>
+@@ -22,6 +22,9 @@
+ 
  #include <linux/errno.h>
  #include <asm/io.h>
 +#if defined(CONFIG_ARM64) && !defined(USE_HOSTCC)
 +#include <asm/system.h>
 +#endif
  
- DECLARE_GLOBAL_DATA_PTR;
- 
-@@ -454,6 +457,11 @@ int image_decomp(int comp, ulong load, ulong image_start, int type,
+ /* Set this if we have less than 4 MB of malloc() space */
+ #if CONFIG_SYS_MALLOC_LEN < (4096 * 1024)
+@@ -448,6 +451,11 @@ int image_decomp(int comp, ulong load, ulong image_start, int type,
  {
  	int ret = -ENOSYS;
  
@@ -34,7 +35,7 @@ index abac2c70..68bf556b 100644
  	print_decomp_msg(comp, type, load == image_start, load);
  
 diff --git a/lib/Makefile b/lib/Makefile
-index 07702cef..3145b3a4 100644
+index 222378a8..f1650f07 100644
 --- a/lib/Makefile
 +++ b/lib/Makefile
 @@ -47,6 +47,8 @@ obj-$(CONFIG_SMBIOS_PARSER) += smbios-parser.o

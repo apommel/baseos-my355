@@ -1,9 +1,11 @@
 Subject: [PATCH] drm/panel: generic MIPI DSI panel
 
 ---
+diff --git a/drivers/gpu/drm/panel/Kconfig b/drivers/gpu/drm/panel/Kconfig
+index cbdf7b8f7..295e2e374 100644
 --- a/drivers/gpu/drm/panel/Kconfig
 +++ b/drivers/gpu/drm/panel/Kconfig
-@@ -1349,3 +1349,7 @@
+@@ -1416,3 +1416,7 @@ config DRM_PANEL_XINPENG_XPP055C272
  	  XPP055C272 controller for 720x1280 LCD panels with MIPI/RGB/SPI
  	  system interfaces.
  endmenu
@@ -11,16 +13,21 @@ Subject: [PATCH] drm/panel: generic MIPI DSI panel
 +config DRM_PANEL_GENERIC_DSI
 +	tristate "Generic MIPI DSI panel described in the device tree"
 +	depends on DRM_PANEL && OF && DRM_MIPI_DSI && BACKLIGHT_CLASS_DEVICE
+diff --git a/drivers/gpu/drm/panel/Makefile b/drivers/gpu/drm/panel/Makefile
+index 3b523cf37..757c4c2c3 100644
 --- a/drivers/gpu/drm/panel/Makefile
 +++ b/drivers/gpu/drm/panel/Makefile
-@@ -131,3 +131,4 @@
+@@ -137,3 +137,4 @@ obj-$(CONFIG_DRM_PANEL_VISIONOX_VTDR6130) += panel-visionox-vtdr6130.o
  obj-$(CONFIG_DRM_PANEL_VISIONOX_R66451) += panel-visionox-r66451.o
  obj-$(CONFIG_DRM_PANEL_WIDECHIPS_WS2401) += panel-widechips-ws2401.o
  obj-$(CONFIG_DRM_PANEL_XINPENG_XPP055C272) += panel-xinpeng-xpp055c272.o
 +obj-$(CONFIG_DRM_PANEL_GENERIC_DSI) += panel-generic-dsi.o
---- a/drivers/gpu/drm/panel/panel-generic-dsi.c
+diff --git a/drivers/gpu/drm/panel/panel-generic-dsi.c b/drivers/gpu/drm/panel/panel-generic-dsi.c
+new file mode 100644
+index 000000000..bee15b17c
+--- /dev/null
 +++ b/drivers/gpu/drm/panel/panel-generic-dsi.c
-@@ -0,0 +1,701 @@
+@@ -0,0 +1,702 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Generic MIPI-DSI panel driver
@@ -47,6 +54,7 @@ Subject: [PATCH] drm/panel: generic MIPI DSI panel
 +
 +#include <drm/drm_mipi_dsi.h>
 +#include <drm/drm_modes.h>
++#include <drm/drm_of.h>
 +#include <drm/drm_panel.h>
 +
 +#define DRIVER_NAME "panel-generic-dsi"
@@ -315,7 +323,7 @@ Subject: [PATCH] drm/panel: generic MIPI DSI panel
 +
 +        release_firmware(fw);
 +    } else {
-+        //ret = of_drm_get_panel_orientation(dev->of_node, &ctx->orientation);
++        //ret = drm_of_get_panel_orientation(dev->of_node, &ctx->orientation);
 +        const char *line;
 +        char * buf;
 +        size_t linescnt, i;
@@ -636,7 +644,7 @@ Subject: [PATCH] drm/panel: generic MIPI DSI panel
 +        return ret;
 +    }
 +
-+    ret = of_drm_get_panel_orientation(dev->of_node, &ctx->orientation);
++    ret = drm_of_get_panel_orientation(dev->of_node, &ctx->orientation);
 +    if (ret < 0) {
 +        dev_err(dev, "%pOF: failed to get orientation %d\n", dev->of_node, ret);
 +        return ret;

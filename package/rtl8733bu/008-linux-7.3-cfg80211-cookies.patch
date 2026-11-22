@@ -1,0 +1,69 @@
+Subject: [PATCH] cfg80211: take the remain-on-channel and mgmt_tx cookies from Linux 7.3
+
+Linux 7.3 assigns these cookies in cfg80211 and passes them in by value,
+where the driver used to make its own and return it. Use the given one.
+The rest of each function reads it through the same pointer as before.
+
+---
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+index 93aa90c..1552fbd 100644
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -7762,12 +7762,20 @@ static s32 cfg80211_rtw_remain_on_channel(struct wiphy *wiphy,
+ #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0))
+ 	enum nl80211_channel_type channel_type,
+ #endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
++	unsigned int duration, u64 cookie_val
++#else
+ 	unsigned int duration, u64 *cookie
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0))
+ 	, const u8 *rx_addr
+ #endif
+ 	)
+ {
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
++	/* 7.3 assigns the cookie in cfg80211 and passes it in. */
++	u64 *cookie = &cookie_val;
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0))
+ 	/* 7.2 added the address the off-channel frame is addressed to.
+ 	 * This driver does not filter on it. The dwell and channel are unchanged. */
+@@ -7817,7 +7825,9 @@ static s32 cfg80211_rtw_remain_on_channel(struct wiphy *wiphy,
+ #endif
+ #endif
+ 
++#if !(LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
+ 	*cookie = ATOMIC_INC_RETURN(&prochinfo->ro_ch_cookie_gen);
++#endif
+ 
+ 	RTW_INFO(FUNC_ADPT_FMT"%s ch:%u duration:%d, cookie:0x%llx\n"
+ 		, FUNC_ADPT_ARG(padapter), wdev == wiphy_to_pd_wdev(wiphy) ? " PD" : ""
+@@ -8366,8 +8376,15 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy,
+ #else
+ 	struct cfg80211_mgmt_tx_params *params,
+ #endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
++	u64 cookie_val)
++#else
+ 	u64 *cookie)
++#endif
+ {
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
++	u64 *cookie = &cookie_val;
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)) || defined(COMPAT_KERNEL_RELEASE)
+ 	struct ieee80211_channel *chan = params->chan;
+ 	const u8 *buf = params->buf;
+@@ -8451,8 +8468,10 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy,
+ 	dvobj = adapter_to_dvobj(padapter);
+ 	pwdev_priv = adapter_wdev_data(padapter);
+ 
++#if !(LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0))
+ 	/* cookie generation */
+ 	*cookie = pwdev_priv->mgmt_tx_cookie++;
++#endif
+ 
+ #ifdef CONFIG_DEBUG_CFG80211
+ 	RTW_INFO(FUNC_ADPT_FMT"%s len=%zu, ch=%d"

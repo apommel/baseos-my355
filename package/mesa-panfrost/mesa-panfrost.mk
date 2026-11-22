@@ -68,12 +68,11 @@ endef
 
 # host-mesa3d builds panfrost_compile only for mesa3d's own panfrost. Its
 # gallium driver needs bison and flex, ordered by hand as mesa3d.mk is already
-# evaluated here; cpp_rtti as in Buildroot master.
+# evaluated here.
 HOST_MESA3D_GALLIUM_DRIVERS-y += panfrost
 HOST_MESA3D_TOOLS += panfrost
 HOST_MESA3D_DEPENDENCIES += host-bison host-flex
 $(HOST_MESA3D_TARGET_CONFIGURE): | host-bison host-flex
-HOST_MESA3D_CONF_OPTS += -Dcpp_rtti=false
 HOST_MESA3D_INSTALL_PANFROST_COMPILE = \
 	$(INSTALL) -D -m 0755 $(@D)/buildroot-build/src/panfrost/clc/panfrost_compile \
 		$(HOST_DIR)/bin/panfrost_compile

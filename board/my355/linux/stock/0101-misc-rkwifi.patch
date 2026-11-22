@@ -1,24 +1,31 @@
 Subject: [PATCH] misc: stock rkwifi wifi_power
 
 ---
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 7364931da..e0f772e03 100644
 --- a/drivers/misc/Kconfig
 +++ b/drivers/misc/Kconfig
-@@ -652,3 +652,7 @@
- source "drivers/misc/amd-sbi/Kconfig"
+@@ -587,3 +587,7 @@ source "drivers/misc/amd-sbi/Kconfig"
  source "drivers/misc/rp1/Kconfig"
+ source "drivers/misc/issei/Kconfig"
  endmenu
 +
 +config MISC_RKWIFI
 +	tristate "Stock rkwifi wifi_power, over a regulator"
 +	depends on REGULATOR && OF
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index e8d8d5d88..0fa74ee97 100644
 --- a/drivers/misc/Makefile
 +++ b/drivers/misc/Makefile
-@@ -74,3 +74,4 @@
- obj-y				+= keba/
+@@ -71,3 +71,4 @@ obj-y				+= keba/
  obj-y				+= amd-sbi/
  obj-$(CONFIG_MISC_RP1)		+= rp1/
+ obj-$(CONFIG_INTEL_SSEI)	+= issei/
 +obj-$(CONFIG_MISC_RKWIFI) += rkwifi.o
---- a/drivers/misc/rkwifi.c
+diff --git a/drivers/misc/rkwifi.c b/drivers/misc/rkwifi.c
+new file mode 100644
+index 000000000..d605dde89
+--- /dev/null
 +++ b/drivers/misc/rkwifi.c
 @@ -0,0 +1,120 @@
 +// SPDX-License-Identifier: GPL-2.0

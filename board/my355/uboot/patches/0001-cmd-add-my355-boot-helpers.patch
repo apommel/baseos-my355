@@ -4,13 +4,14 @@ charge LED while charging off, and a copy of the console record the boot
 script can save to the card. The Flip has no UART attached, so this is how a
 failed boot reports what happened.
 
+---
 diff --git a/cmd/Kconfig b/cmd/Kconfig
-index 5c611fb..7815eed 100644
+index ff90a870..973eb91d 100644
 --- a/cmd/Kconfig
 +++ b/cmd/Kconfig
-@@ -1640,6 +1640,15 @@ config CMD_PART
- 	  Read and display information about the partition table on
- 	  various media.
+@@ -1695,6 +1695,15 @@ config CMD_PART_DUPCHECK
+ 	  labels (PARTLABELs). Returns failure if any duplicates are found,
+ 	  making it suitable for use in boot scripts.
  
 +config CMD_MY355
 +	bool "my355 - FlipBase Miyoo Flip boot helpers"
@@ -25,10 +26,10 @@ index 5c611fb..7815eed 100644
  	bool "pci - Access PCI devices"
  	help
 diff --git a/cmd/Makefile b/cmd/Makefile
-index 2547990..2ba004c 100644
+index ce772e55..16266040 100644
 --- a/cmd/Makefile
 +++ b/cmd/Makefile
-@@ -142,6 +142,7 @@ obj-$(CONFIG_ENV_SUPPORT) += nvedit.o
+@@ -141,6 +141,7 @@ obj-$(CONFIG_ENV_SUPPORT) += nvedit.o
  obj-$(CONFIG_CMD_NVEDIT_EFI) += nvedit_efi.o
  obj-$(CONFIG_CMD_ONENAND) += onenand.o
  obj-$(CONFIG_CMD_OSD) += osd.o
@@ -38,7 +39,7 @@ index 2547990..2ba004c 100644
  ifdef CONFIG_PCI
 diff --git a/cmd/my355.c b/cmd/my355.c
 new file mode 100644
-index 0000000..1dea617
+index 00000000..d8e0d08a
 --- /dev/null
 +++ b/cmd/my355.c
 @@ -0,0 +1,648 @@

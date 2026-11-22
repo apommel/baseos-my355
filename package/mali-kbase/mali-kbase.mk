@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-# The pin known to build against Linux 7.2.
+# The pin known to build against Linux 7.3.
 MALI_KBASE_VERSION = 39da994bb6fc8819e5e8c1873907dd21d17e53c1
 MALI_KBASE_SITE = $(call github,rocknix,mali_kbase,$(MALI_KBASE_VERSION))
 MALI_KBASE_LICENSE = GPL-2.0

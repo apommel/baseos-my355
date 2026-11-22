@@ -20,8 +20,8 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BR_VERSION="2026.08.1"
-BR_SHA256="34fb7bea8a213ffde39cc02e61703391560f26e0850f03138c722d0b09880f2b"
+BR_VERSION="2026.08.2"
+BR_SHA256="bc9497c8e3a734c277e541e2f7fcf9a6275dc92f75bd2f753b05981c54be8705"
 # Rockchip's libmali-next: the repository holds every GPU's blobs, so only
 # the G52's is checked out.
 LIBMALI_COMMIT="bf621d15f009509557d6b28f81427651695cac20"

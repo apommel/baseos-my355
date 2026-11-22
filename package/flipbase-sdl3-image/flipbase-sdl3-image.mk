@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-FLIPBASE_SDL3_IMAGE_VERSION = 3.4.6
+FLIPBASE_SDL3_IMAGE_VERSION = 3.4.8
 FLIPBASE_SDL3_IMAGE_SOURCE = SDL3_image-$(FLIPBASE_SDL3_IMAGE_VERSION).tar.gz
 FLIPBASE_SDL3_IMAGE_SITE = https://www.libsdl.org/projects/SDL_image/release
 FLIPBASE_SDL3_IMAGE_DL_SUBDIR = sdl3_image

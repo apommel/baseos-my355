@@ -1,3 +1,4 @@
-# From Buildroot's sdl3_image.hash
-sha256  d2e4637ae700f72e5196b8fbd749850ed2e5e1e09c5a5be8d06ff55aaccf3b01  SDL3_image-3.4.6.tar.gz
+# Locally calculated after checking
+# https://www.libsdl.org/projects/SDL_image/release/SDL3_image-3.4.8.tar.gz.sig
+sha256  e8223b424bc7541cf84ffff5cf7e4f24ec3711c60462cb1bd6dc1d7bd7f25477  SDL3_image-3.4.8.tar.gz
 sha256  e36997fe492c48e7ed873065cc3a694f38e8189a328d3709099ffdc9a8843f4c  LICENSE.txt

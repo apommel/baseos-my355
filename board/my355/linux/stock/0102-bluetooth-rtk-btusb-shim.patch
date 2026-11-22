@@ -1,9 +1,11 @@
 Subject: [PATCH] Bluetooth: stock rtk_btusb, loading btusb
 
 ---
+diff --git a/drivers/bluetooth/Kconfig b/drivers/bluetooth/Kconfig
+index 4e8c24d75..890e8ee59 100644
 --- a/drivers/bluetooth/Kconfig
 +++ b/drivers/bluetooth/Kconfig
-@@ -473,3 +473,7 @@
+@@ -473,3 +473,7 @@ config BT_INTEL_PCIE
  	  Say Y here to compiler support for Intel Bluetooth PCIe device into
  	  the kernel or say M to compile it as module (btintel_pcie)
  endmenu
@@ -11,14 +13,19 @@ Subject: [PATCH] Bluetooth: stock rtk_btusb, loading btusb
 +config BT_RTK_BTUSB_SHIM
 +	tristate "Stock rtk_btusb, loading btusb"
 +	depends on BT_HCIBTUSB
+diff --git a/drivers/bluetooth/Makefile b/drivers/bluetooth/Makefile
+index e6b1c1180..3d41bfe92 100644
 --- a/drivers/bluetooth/Makefile
 +++ b/drivers/bluetooth/Makefile
-@@ -50,3 +50,4 @@
- hci_uart-$(CONFIG_BT_HCIUART_MRVL)	+= hci_mrvl.o
- hci_uart-$(CONFIG_BT_HCIUART_AML)	+= hci_aml.o
+@@ -52,3 +52,4 @@ hci_uart-$(CONFIG_BT_HCIUART_AML)	+= hci_aml.o
  hci_uart-objs				:= $(hci_uart-y)
+ 
+ CONTEXT_ANALYSIS := y
 +obj-$(CONFIG_BT_RTK_BTUSB_SHIM) += rtk_btusb.o
---- a/drivers/bluetooth/rtk_btusb.c
+diff --git a/drivers/bluetooth/rtk_btusb.c b/drivers/bluetooth/rtk_btusb.c
+new file mode 100644
+index 000000000..727540ad8
+--- /dev/null
 +++ b/drivers/bluetooth/rtk_btusb.c
 @@ -0,0 +1,25 @@
 +// SPDX-License-Identifier: GPL-2.0

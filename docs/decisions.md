@@ -15,7 +15,7 @@ fixes, and the GPU on a g13p0 libmali with no Panfrost or PanVK.
 
 | | vendor kernel (to 1.3.0) | **mainline — chosen** |
 |---|---|---|
-| kernel / DTB | 5.10.160 from `mtd2`, its DTB rewritten at build | Linux 7.2 from source, our own `rk3566-miyoo-flip.dts` |
+| kernel / DTB | 5.10.160 from `mtd2`, its DTB rewritten at build | Linux 7.3 from source, our own `rk3566-miyoo-flip.dts` |
 | GPU | kbase g18p0, libmali g13p0 | ROCKNIX's `mali_kbase` (libmali g29p1) or Panfrost and PanVK, picked by `gpu=` |
 | stock interface | native | a thin layer: device tree names, three small drivers and eight patches (`board/my355/linux/stock`), a `modetest` wrapper ([mainline-compat](mainline-compat.md)) |
 | not upstream | everything | `mali_kbase` and `8733bu` (packages); the panel, gamepad, CPU-bin, DMC and suspend-config drivers (patches) |

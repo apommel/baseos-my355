@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-FLIPBASE_SDL3_VERSION = 3.4.12
+FLIPBASE_SDL3_VERSION = 3.4.20
 FLIPBASE_SDL3_SOURCE = SDL3-$(FLIPBASE_SDL3_VERSION).tar.gz
 FLIPBASE_SDL3_SITE = http://www.libsdl.org/release
 FLIPBASE_SDL3_DL_SUBDIR = sdl3

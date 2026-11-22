@@ -133,12 +133,12 @@ stand-in at that path.
 Buildroot builds everything above but the firmware (`configs/` and FlipBase's
 own packages in `package/`). One toolchain and
 one glibc for all of it, current releases, and each package configured for
-this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.1:
+this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.2:
 
 | | stock | now |
 |---|---|---|
 | glibc, GCC runtime | 2.36, GCC 11 | 2.44, GCC 15.3 |
-| SDL2 | 2.0.18–2.0.22 | sdl2-compat 2.32.74 over SDL3 3.4.12 |
+| SDL2 | 2.0.18–2.0.22 | sdl2-compat 2.32.74 over SDL3 3.4.20 |
 | SDL2_image, SDL2_ttf | harvested | 2.8.12, 2.24.0 |
 | alsa-lib, alsa-utils | harvested | 1.2.16 |
 | libdrm | harvested | 2.4.134 |
@@ -146,7 +146,7 @@ this device: no systemd, X11, Wayland or PulseAudio. Buildroot 2026.08.1:
 | D-Bus | 1.12.20 | 1.16.2 |
 | BlueZ, bluez-alsa | 5.62, 4.0.0 | 5.86, 4.3.1 |
 | wpa_supplicant | 2.9 | 2.12 |
-| curl, OpenSSL | 7.79.1, 1.1.1l | 8.22.0, 3.6.5 |
+| curl, OpenSSL | 7.79.1, 1.1.1l | 8.23.0, 3.6.5 |
 | libmali | g13p0 | g29p1, a Buildroot package |
 | adbd | Android 4.2 `core/adbd`, as a Nexus 4 | the same, `android-tools`, as the Miyoo Flip |
 | dropbear | harvested | 2026.94 |
