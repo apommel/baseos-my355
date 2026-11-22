@@ -232,8 +232,12 @@ Different from stock, found on the first boots:
   `mali`, read by `flipbase-gpu` once the frontend card is mounted.
   Both are packages: Rockchip's newest G52 libmali (g29p1, from
   `libmali-next`) with its wrappers, hook and Vulkan ICD, and Mesa's
-  Panfrost and PanVK in `/usr/lib/mesa` (`mesa-panfrost`), mounted over libmali's names and
-  `/usr/share/vulkan` for Panfrost. The Vulkan loader is Buildroot's.
+  Panfrost and PanVK in `/usr/lib/mesa` (`mesa-panfrost`). The Vulkan loader
+  is Buildroot's.
+  - libmali's EGL, GLES, GBM, `libmali.so.1`, hook and Vulkan ICD names link
+    through `/run/flipbase/gpu`, which `flipbase-gpu` points at `/usr/lib/mali`
+    or `/usr/lib/mesa`. Bind mounts did this until 2026-11-22, but spruceOS's
+    overlay on `/usr` hid them, so libmali's EGL loaded under Panfrost.
   - g29p1's GBM allocates from `/dev/dma_heap/system`; the heaps are built in.
   - NextUI, minarch and nextval link `libmali.so.1` and `libmali_hook.so.1`,
     not `libEGL`, so Mesa's side has a `libmali.so.1` that pulls in its EGL,

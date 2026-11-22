@@ -12,19 +12,16 @@ case "$CONF_VALUE" in
 	*) log "flipbase.conf: unknown gpu=$CONF_VALUE, using panfrost"; gpu=panfrost ;;
 esac
 
+# The GPU library names in /usr/lib and the Vulkan ICDs link through here
+# (post-build.sh).
+/bin/mkdir -p /run/flipbase
 if [ "$gpu" = panfrost ]; then
-	# Everything finds these by soname in /usr/lib, so Mesa's go over libmali's;
-	# NextUI links libmali itself.
-	for l in libmali.so.1 libmali_hook.so.1 libEGL.so.1 libGLESv1_CM.so.1 \
-		libGLESv2.so.2 libgbm.so.1; do
-		/bin/mount --bind "/usr/lib/mesa/$l" "/usr/lib/$l"
-	done
-	# The Vulkan loader reads ICDs from here.
-	/bin/mount --bind /usr/lib/mesa/vulkan /usr/share/vulkan
+	/bin/ln -sfn /usr/lib/mesa /run/flipbase/gpu
 	module=panfrost
 	set -- /usr/lib/mesa/libgallium-*.so
 	lib=$1
 else
+	/bin/ln -sfn /usr/lib/mali /run/flipbase/gpu
 	module=mali_kbase
 	lib=/usr/lib/libmali.so.1
 fi

@@ -32,6 +32,46 @@ EOF
 mkdir -p "$T"/usr/miyoo
 echo "FlipBase $FLIPBASE_VERSION" > "$T"/usr/miyoo/version
 
+# libmali's names that Mesa stands in for link through $GPU, which flipbase-gpu
+# sets: an overlay on /usr hides bind mounts. Redone as each build restores them.
+GPU=/run/flipbase/gpu
+(
+    cd "$T"/usr/lib
+    mkdir -p mali/vulkan
+    # file:name, as a soname may be a link to the file.
+    for pair in libEGL.so.1:libEGL.so.1 libGLESv1_CM.so.1:libGLESv1_CM.so.1 \
+        libGLESv2.so.2:libGLESv2.so.2 libgbm.so.1:libgbm.so.1 \
+        "$(readlink libmali.so.1):libmali.so.1" \
+        "$(readlink libmali-hook.so.1):libmali_hook.so.1"; do
+        f=${pair%:*} name=${pair#*:}
+        [ -L "$f" ] && continue
+        mv -f "$f" mali/
+        [ "$f" = "$name" ] || ln -sfn "$f" mali/"$name"
+        ln -s "$GPU/$name" "$f"
+    done
+    if [ ! -L ../share/vulkan/icd.d ]; then
+        rm -rf mali/vulkan/icd.d
+        mv ../share/vulkan/icd.d mali/vulkan/
+        ln -s "$GPU"/vulkan/icd.d ../share/vulkan/icd.d
+    fi
+)
+
+# Whether $1 resolves through $GPU, to a name both stacks have.
+gpu_link_ok() {
+    p=$1
+    while [ -L "$p" ]; do
+        t=$(readlink "$p")
+        case "$t" in
+            "$GPU"/*)
+                [ -e "$T/usr/lib/mali/${t#"$GPU"/}" ] && [ -e "$T/usr/lib/mesa/${t#"$GPU"/}" ]
+                return ;;
+            /*) p=$T$t ;;
+            *) p=${p%/*}/$t ;;
+        esac
+    done
+    return 1
+}
+
 # Frontends put their own libcrypto, libzstd, ... first in LD_LIBRARY_PATH:
 # DT_RPATH, unlike DT_RUNPATH, is searched before it. Mesa keeps its own.
 find "$T"/usr -type f ! -name "*.ko" | while read -r f; do
@@ -45,7 +85,7 @@ find "$T"/usr -type f ! -name "*.ko" | while read -r f; do
     rpath=$("$PATCHELF" --print-rpath "$f" | sed "s|\$ORIGIN|${dir#"$T"}|g" | tr : " ")
     for n in $needed; do
         for d in /usr/lib $rpath; do
-            if [ -e "$T$d/$n" ]; then continue 2; fi
+            if [ -e "$T$d/$n" ] || gpu_link_ok "$T$d/$n"; then continue 2; fi
         done
         echo "${f#"$T"} needs $n"
     done
