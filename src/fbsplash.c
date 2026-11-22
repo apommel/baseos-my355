@@ -27,6 +27,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -749,6 +750,13 @@ int main(int argc, char **argv) {
 	int fd = open("/dev/fb0", O_RDWR);
 	if (fd < 0)
 		return 1;
+	// The first unblank is the first modeset, the panel's ~0.2 s power-up: in a
+	// child, it runs while the logo renders. The buffer is black until then.
+	pid_t unblank = fork();
+	if (unblank == 0) {
+		ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK);
+		_exit(0);
+	}
 	struct fb_var_screeninfo v;
 	struct fb_fix_screeninfo f;
 	if (ioctl(fd, FBIOGET_VSCREENINFO, &v) < 0 || ioctl(fd, FBIOGET_FSCREENINFO, &f) < 0) {
@@ -771,7 +779,10 @@ int main(int argc, char **argv) {
 
 	// Force the panel to scan out this buffer: on Allwinner disp2 "smooth boot"
 	// kernels the display can stay latched to U-Boot's logo until a pan/unblank.
-	ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK);
+	if (unblank > 0)
+		waitpid(unblank, NULL, 0);
+	else
+		ioctl(fd, FBIOBLANK, FB_BLANK_UNBLANK);
 	v.xoffset = 0;
 	v.yoffset = 0;
 	if (ioctl(fd, FBIOPAN_DISPLAY, &v) < 0) {

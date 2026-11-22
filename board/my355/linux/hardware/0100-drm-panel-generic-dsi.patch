@@ -407,7 +407,7 @@ index 000000000..bee15b17c
 +            dev_dbg(dev, "iseq %02x len=%d -> %d\n", iseq->dcs, iseq->len, ret);
 +        }
 +        if (iseq->wait) {
-+            msleep(iseq->wait);
++            fsleep(iseq->wait * 1000);
 +        }
 +        iseq = iseq->link;
 +    }
@@ -478,13 +478,13 @@ index 000000000..bee15b17c
 +    }
 +
 +    if (ctx->enable_gpio) { gpiod_set_value_cansleep(ctx->enable_gpio, 1); }
-+    msleep(ctx->delays.prepare);
++    fsleep(ctx->delays.prepare * 1000);
 +
 +    gpiod_set_value_cansleep(ctx->reset_gpio, 1);
-+    msleep(ctx->delays.reset);
++    fsleep(ctx->delays.reset * 1000);
 +    gpiod_set_value_cansleep(ctx->reset_gpio, 0);
 +
-+    msleep(ctx->delays.init);
++    fsleep(ctx->delays.init * 1000);
 +
 +    ret = generic_panel_init_sequence(ctx);
 +    if (ret < 0) {
@@ -504,7 +504,7 @@ index 000000000..bee15b17c
 +        goto disable_iovcc;
 +    }
 +
-+    msleep(ctx->delays.enable);
++    fsleep(ctx->delays.enable * 1000);
 +
 +    //msleep(ctx->delays.ready);
 +

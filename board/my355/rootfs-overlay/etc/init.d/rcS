@@ -11,7 +11,8 @@
 . /usr/share/flipbase/log.sh
 
 /bin/mount -t proc  -o nodev,noexec,nosuid proc /proc
-/bin/mount -t sysfs -o nodev,noexec,nosuid sys  /sys
+# /init mounted sysfs already, to unblank the panel.
+grep -q " /sys sysfs " /proc/mounts || /bin/mount -t sysfs -o nodev,noexec,nosuid sys /sys
 grep -q ' /dev devtmpfs ' /proc/mounts || /bin/mount -t devtmpfs dev /dev
 /bin/mkdir -p /dev/pts /dev/shm
 /bin/mount -t devpts -o gid=5,mode=620 devpts /dev/pts
@@ -26,11 +27,9 @@ mark /run/boot-rcS-start
 printf "cset name='Playback Mux' SPK\ncset name='Headphone Switch' off\n" |
 	/usr/bin/amixer -q -c 0 -s &
 
-# The boot logo and backlight. In the background: its pan waits for the panel.
-# Once the frontend has its hand-off too, the boot's timings go in the log.
+# The backlight; /init has the logo on its way. Once the frontend has its
+# hand-off, the boot's timings go in the log.
 {
-	/usr/bin/fbsplash 0
-	mark /run/boot-logo
 	n=0
 	while [ ! -e /run/boot-frontend-exec ] && [ "$n" -lt 300 ]; do
 		/bin/usleep 10000
@@ -174,8 +173,14 @@ conf_get keyboard_input
 
 mark /run/boot-update-start
 # A *.bosupd on either card writes the reserved half of each region, verifies it
-# and flips the GPT. An ordinary boot costs a failed glob.
-[ -x /usr/sbin/flipbase-update ] && /usr/sbin/flipbase-update apply
+# and flips the GPT. The globs spare an ordinary boot the script's start; an own
+# volume that would not mount leaves the search to flipbase-update.
+payload=
+[ -n "$conf_dir" ] || payload=1
+for p in /mnt/SDCARD/*.bosupd ${own:+$own/*.bosupd}; do
+	[ -f "$p" ] && payload=1 && break
+done
+[ -n "$payload" ] && [ -x /usr/sbin/flipbase-update ] && /usr/sbin/flipbase-update apply
 
 # Settings, SSH and adb over USB, backgrounded so they never serialise boot.
 {
