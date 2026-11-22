@@ -62,15 +62,16 @@ diff --git a/lib/zstd/Makefile b/lib/zstd/Makefile
 index 2003e184..037e86e8 100644
 --- a/lib/zstd/Makefile
 +++ b/lib/zstd/Makefile
-@@ -34,3 +34,11 @@ zstd_common-y := \
+@@ -34,3 +34,12 @@ zstd_common-y := \
  		common/error_private.o \
  		common/fse_decompress.o \
  		common/zstd_common.o \
 +
 +# Built with -mstrict-align, zstd's unaligned loads become byte loads: twice as
 +# slow on an RK3566. Decompression runs with the MMU on (boot/image.c). Per
-+# object, because PLATFORM_CPPFLAGS is appended after ccflags-y.
++# object (by its path in this directory, as kbuild keys them), because
++# PLATFORM_CPPFLAGS is appended after ccflags-y.
 +ifdef CONFIG_ARM64
 +$(foreach o,$(zstd_decompress-y) $(zstd_common-y),\
-+	$(eval CFLAGS_REMOVE_$(notdir $(o)) += -mstrict-align))
++	$(eval CFLAGS_REMOVE_$(o) += -mstrict-align))
 +endif

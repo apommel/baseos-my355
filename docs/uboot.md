@@ -422,7 +422,12 @@ pinned 1104 MHz (`tools/decomp-bench/`). Its gzip reads 428 ms against the
 
 * **`-mstrict-align`**, which U-Boot applies to all of arm64, turns zstd's
   unaligned loads and 16-byte copies into byte operations: 2x. gzip, which works
-  bytewise anyway, gains only 428 → 392 ms.
+  bytewise anyway, gains only 428 → 392 ms. Since v2026.10 kbuild keys
+  `CFLAGS_REMOVE_` by an object's path in its directory
+  (`decompress/huf_decompress.o`), and the `notdir` keys the patches used
+  left every object in a subdirectory on `-mstrict-align`, silently:
+  decompression 107 → 336 ms, U-Boot's hand-off 0.645 → 0.874 s, until
+  2026-11-22. Check `.*.o.cmd` after a U-Boot bump.
 * **`ZSTD_LIB_MINIFY`** strips the fast decode paths to save ~50 KB: a further
   1.6x once alignment is fixed, almost nothing before.
 * **The window**: 8 MiB of history does not stay in this SoC's caches; 128–256
