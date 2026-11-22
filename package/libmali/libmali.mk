@@ -14,6 +14,12 @@ LIBMALI_INSTALL_STAGING = YES
 LIBMALI_DEPENDENCIES = libdrm
 LIBMALI_PROVIDES = libegl libgles libgbm
 
+# Buildroot patches no local package. Each rsync restores the sources.
+define LIBMALI_APPLY_PATCHES
+	$(APPLY_PATCHES) $(@D) $(LIBMALI_PKGDIR) \*.patch
+endef
+LIBMALI_POST_RSYNC_HOOKS += LIBMALI_APPLY_PATCHES
+
 LIBMALI_CONF_OPTS = \
 	-Dgpu=bifrost-g52 \
 	-Dlibrary=lib/aarch64-linux-gnu/libmali-bifrost-g52-g29p1.so \
