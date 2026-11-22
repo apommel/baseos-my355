@@ -71,8 +71,8 @@ relocation, the GPT held in the block cache, decompression at 1800 MHz, the
 Flip's own control tree and the zstd decoder at `-O2` — it reaches `Run /init`
 **1.8 s** ahead of the vendor path.
 
-It costs the early boot logo — mainline U-Boot has no VOP2 driver, so `rcS`
-draws it, on the panel at 1.4 s against ~1.0 s — and the charge screen (the
+It costs the early boot logo — mainline U-Boot has no VOP2 driver, so `/init`
+draws it, on the panel at ~1.2 s against ~1.0 s — and the charge screen (the
 charge LED and the low-battery guard are kept). And it has to do by hand what the vendor
 kernel silently relied on the vendor U-Boot for: the OP-TEE reservation, the
 display plane assignment (without it the panel stays black under NextUI) and the

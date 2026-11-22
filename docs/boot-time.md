@@ -14,10 +14,9 @@ from ~1.21 (DRM debug: encoder enable), the hand-off is at 1.29–1.34 and
 
 Measured on the vendor 5.10 kernel, which FlipBase booted until 1.3.0. The
 mainline kernel's figures, against these, are in
-[mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.01–1.05 s,
-hands off at 1.29–1.35 s, shows the logo at 1.27–1.31 s and starts `nextui.elf`
-at 2.27–2.35 s (2026-11-01, warm). The initcall list below has no counterpart there;
-the SD and `rcS` findings carry over.
+[mainline compatibility](mainline-compat.md) and, for today's, the paragraph
+above and *2026-11-22* below. The initcall list below has no counterpart
+there; the SD and `rcS` findings carry over.
 
 Figures are cold boots on hardware with **USB unplugged at power-on** — a
 cable makes U-Boot check the charger first, and that lands in

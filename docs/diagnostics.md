@@ -19,7 +19,7 @@ Ordered by how early they fire.
 
 | signal | proves | how |
 |---|---|---|
-| **boot logo** | `rcS` is running | `fbsplash`, from ~1.4 s |
+| **boot logo** | the kernel ran `/init` | `fbsplash`, from ~1.2 s |
 | **`fbsplash` message** | userspace is running and reached the frontend session | `INSERT SD CARD` and the update/expand bars are drawn from the rootfs |
 | **the log** | how far init got, and what each step did | one file, `/data/flipbase.log`, copied to `flipbase.log` on the frontend card while it is mounted. Every script tags its own lines ([rootfs](rootfs.md)). Persistent, survives a power cut, and appended across boots, so the boot before the one that failed is still there |
 | **adb** | `rcS` completed far enough to start `/etc/init.d/dev` | hot-plug works; no cable is needed at power-on |

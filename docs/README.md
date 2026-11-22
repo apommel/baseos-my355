@@ -54,4 +54,5 @@ stock, exactly as before.
 From there the card supplies a mainline U-Boot, a mainline kernel that presents
 the vendor kernel's interfaces to stock-built software, and a userland built
 from source that keeps the library interface stock-built frontends use. Power-on
-to frontend hand-off is **1.39 s**, against stock's 15.79 s.
+to frontend hand-off is **1.29–1.34 s**, against stock's 15.79 s, with the boot
+logo on the panel from ~1.21 s.

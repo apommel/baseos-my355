@@ -608,18 +608,19 @@ regardless of the stored toggle.
 
 ## Status messages
 
-This device has no console, so `fbsplash` — built from `src/fbsplash.c` with
-freetype — is the only way to tell the owner anything.
+This device has no console, so `fbsplash` — built from `src/fbsplash.c`,
+statically, with the FreeType modules a TrueType font needs — is the only way
+to tell the owner anything.
 It reads panel geometry from the framebuffer and rotation from
 `/etc/flipbase-release` (`FLIPBASE_PANEL_ROTATION_CCW=0`; the Flip's 640x480 panel is
 upright). `flipbase-splash` wraps it and only ever overlays a status pill.
 
-**The boot logo.** When the bootloader handed none to the kernel (no
-`logo,offset` in the display route: the mainline U-Boot path), `rcS` runs
-`fbsplash 0` in the background as soon as `/run` is mounted and lights the
-backlight. The logo reaches the panel when the kernel brings it up, at 1.61 s
-([U-Boot](uboot.md), *The boot logo*), and stays untouched until the frontend
-draws its first frame.
+**The boot logo.** `/init` mounts sysfs and starts `fbsplash 0` in the
+background before it execs BusyBox init, and `rcS` lights the backlight. The
+kernel has started the panel's power-up when `fb0` registered (patch `0106`),
+so the logo is drawn at 1.16–1.19 s and on the panel from ~1.21 s
+([boot time](boot-time.md)). It stays untouched until the frontend draws its
+first frame.
 
 `frontend-session` shows `INSERT SD CARD` when the left slot is empty and
 `ADD FRONTEND TO SD CARD` when a card is in it but carries no frontend — two cards

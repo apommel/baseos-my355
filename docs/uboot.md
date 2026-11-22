@@ -896,10 +896,11 @@ walks the SOC up to 100% where this writes it at once.
 ## The boot logo
 
 Mainline U-Boot has no VOP2 driver, so it draws nothing and the kernel brings
-the panel up itself. `rcS` then draws the FlipBase logo into `/dev/fb0`
-(`fbsplash 0`, the artwork the vendor path's logo is cropped from) and lights
-the backlight. It does neither when the tree carries `logo,offset`, which is
-the vendor U-Boot handing its own logo over.
+the panel up itself. `/init` then draws the FlipBase logo into `/dev/fb0`
+(`fbsplash 0`, the artwork the vendor path's logo is cropped from), and `rcS`
+lights the backlight. Since 2026-11-22 the logo is on the panel at ~1.21 s
+([boot time](boot-time.md)); the 2026-09-19 figures below are the first
+mainline path's.
 
 One cold boot, 2026-09-19:
 
@@ -1114,14 +1115,17 @@ NextUI's `my355.sh` leaving `/dev/fb0` alone on FlipBase.
 5. The fuel gauge: discharge while off is not seen until the kernel's own
    low-voltage handling, as the power-on voltage is not trusted mid-curve.
    Its 13.5 ms should drop with multi-byte reads: re-measure.
-6. A U-Boot boot logo (*The boot logo*, above), if 1.4 s is not enough. The
-   cheaper levers for it are everything before `start_kernel`, which moves it
-   one for one, and the kernel's `rk3x_i2c_driver_init` (146 ms in the last
-   `initcall_debug` profile, [boot time](boot-time.md)): re-profile first.
+6. A U-Boot boot logo (*The boot logo*, above), if ~1.2 s is not enough. It
+   needs a VOP2 driver (Dang Huynh's series for RK3566/8 was under review at
+   v6 in late 2025), a panel driver, the panel's waits split around the kernel
+   read, and a kernel that takes the running panel over without resetting it.
+   Evaluated 2026-11-22 and not taken: ~0.65 s earlier on the counter, weeks
+   of work. Everything before `start_kernel` still moves the logo one for one.
 7. Deferred: watchdog with a boot counter; USB mass storage from U-Boot.
 
 **What mainline gives up**, accepted when it became the default on 2026-09-19:
-the early boot logo (no VOP2 driver; `rcS` draws one at 2.00 s against ~1.0 s),
+the early boot logo (no VOP2 driver; `rcS` drew one at 2.00 s against ~1.0 s,
+`/init` at ~1.2 s since 2026-11-22),
 the charge animation's screen (its LED and the low-battery guard are kept,
 *Charging while off*), and `androidboot.serialno`
 (`usb-gadget-adb` reads the SoC's OTP serial from the device tree's

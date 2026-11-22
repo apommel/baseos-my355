@@ -8,8 +8,8 @@ interface of its own.
 - **Compatible with stock.** Frontends built for the stock firmware run unmodified.
 - **More for frontends that target it.** Current libraries, an SDK to build
   against them, and device features stock doesn't have.
-- **Lean and fast.** A small userland and a kernel cut to this board; NextUI is
-  on screen in under 2.5 s.
+- **Lean and fast.** A small userland and a kernel cut to this board; the
+  frontend starts 1.3 s after power-on.
 
 FlipBase runs from the SD card and leaves the stock system in place: take the card out
 and the Flip boots stock, as before. To install, see [INSTALL.md](INSTALL.md).
@@ -23,7 +23,8 @@ The 1.x branch, on the vendor kernel, will continue to be maintained.
 
 ## Features
 
-- **Fast boot.** NextUI is on screen about 2.4 s after power-on, instead of 31.5 s.
+- **Fast boot.** The boot logo is on screen 1.2 s after power-on, and the
+  frontend starts at 1.3 s instead of 15.8 s.
 - **Stock frontends run unmodified.** The kernel presents the vendor kernel's
   interfaces, and the rootfs keeps the libraries stock-built frontends link.
 - **A modern platform to target.** GCC 15, glibc 2.44, SDL3 and its add-ons,
@@ -36,28 +37,34 @@ The 1.x branch, on the vendor kernel, will continue to be maintained.
   previous one. ROMs, saves and settings are kept.
 - **Longer battery life.** The radio chip is powered down with WiFi and Bluetooth
   off, the memory clock scales with load, and sleep draws as little as stock.
-- **Read-only rootfs.** Pulling the battery or a crash won't corrupt the system
-  or the cards.
+- **Modern filesystems**, from the mainline kernel. The system is compressed,
+  read-only EROFS. SD cards can be exFAT, with no 4 GiB file limit, and zram gives
+  emulators compressed swap in RAM.
 - **The essentials work:** HDMI, WiFi, Bluetooth audio, USB audio, SSH and adb.
 
 ## Startup time
 
 | power-on → | stock | **FlipBase** |
 |---|---|---|
-| the kernel's first line | 4.30 s | **0.59 s** |
-| frontend starts | 15.79 s | **1.31–1.34 s** |
-| `nextui.elf` starts | — | **1.97–2.04 s** |
-| NextUI's first frame | 31.50 s | **2.34–2.39 s** |
+| the kernel starts | 4.30 s | **0.65 s** |
+| boot logo on screen | — | **1.21 s** |
+| frontend starts | 15.79 s | **1.29–1.34 s** |
 
-Stock measured with USB unplugged; FlipBase over warm reboots by adb, on the
-default `gpu=panfrost`. With `gpu=mali` the first frame is at 2.57–2.67 s.
+Stock measured with USB unplugged, its U-Boot's logo not timed; FlipBase over
+warm reboots by adb.
+
+From the frontend's start on, the time to its menu depends on the frontend, but
+it is usually much shorter too: the libraries it loads come from FlipBase's
+rootfs on the SD card, not from stock's compressed filesystem on the slow
+internal storage. NextUI, for example, draws its first frame ~1.05 s after it
+starts, against 15.7 s on stock.
 
 Where the time is saved:
 
 - **Stock boot scripts are replaced** by a small BusyBox init, saving 9.9 s.
-- **A mainline U-Boot**, built from source, starts the kernel at 0.59 s
+- **A mainline U-Boot**, built from source, starts the kernel at 0.65 s
   ([docs/uboot.md](docs/uboot.md)).
-- **The kernel is built for this device and stored compressed**: about 6.6 MiB
+- **The kernel is built for this device and stored compressed**: about 7 MiB
   is read from the card instead of 26 MiB, with no framebuffer console and
   shorter panel power-up waits.
 - **The SD card runs at full speed**: 64 MB/s instead of 22 MB/s.
