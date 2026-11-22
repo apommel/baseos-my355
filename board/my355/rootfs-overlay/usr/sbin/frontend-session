@@ -43,6 +43,15 @@ watch_power_key() {
 	echo $! > /run/pwrkeyd.pid
 }
 
+# Sets $SDCARD_DEV to what is mounted on $SDCARD. Builtins: on the hand-off path.
+sdcard_mounted() {
+	SDCARD_DEV=
+	while read -r _d _m _; do
+		[ "$_m" = "$SDCARD" ] && SDCARD_DEV=$_d
+	done < /proc/mounts
+	[ -n "$SDCARD_DEV" ]
+}
+
 # --- the frontend card ------------------------------------------------------
 # rcS is ::sysinit: and mounts once, so a card inserted later would never be
 # seen. Mount here too — same devices, options and order — since init respawns
@@ -52,7 +61,7 @@ watch_power_key() {
 # later has to displace it: drop the mount and let mount-frontend decide again.
 # Safe only here: no frontend is running. A frontend that ran from the fallback
 # leaves its /userdata binds on it.
-if grep -q "^/dev/mmcblk1p5 $SDCARD " /proc/mounts && [ -b /dev/mmcblk2p1 ]; then
+if sdcard_mounted && [ "$SDCARD_DEV" = /dev/mmcblk1p5 ] && [ -b /dev/mmcblk2p1 ]; then
 	log "left-slot card present, re-checking which one carries the frontend"
 	/bin/sync
 	/bin/umount /userdata/bluetooth 2>/dev/null
@@ -62,12 +71,13 @@ fi
 
 i=0
 while [ "$i" -lt 20 ]; do
+	sdcard_mounted && break
 	/usr/sbin/mount-frontend
-	grep -q " $SDCARD " /proc/mounts && break
+	sdcard_mounted && break
 	/bin/sleep 0.5
 	i=$((i + 1))
 done
-if ! grep -q " $SDCARD " /proc/mounts; then
+if ! sdcard_mounted; then
 	log "no card mounted"
 	idle_cpu
 	watch_power_key
