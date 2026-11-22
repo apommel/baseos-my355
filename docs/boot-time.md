@@ -4,6 +4,13 @@ Where the time goes from power-on, what each change was worth, and what is left.
 Superseded tables and the measurements that led here are in
 [history](history.md).
 
+**2026-11-22, Linux 7.3.5 and U-Boot 2026.10**, four warm reboots, USB attached:
+U-Boot hands off at 0.645 s, the kernel's clock starts at 0.722, `Run /init` at
+1.10–1.12, the panel streams the logo at ~1.35 (DRM debug: encoder enable),
+the hand-off at 1.31–1.34 and `nextui.elf` starts at 1.88–1.90. The same
+morning, before the fixes in *2026-11-22* below: hand-off 1.56–1.59, logo on
+the panel ~1.75, `nextui.elf` 2.05–2.14.
+
 Measured on the vendor 5.10 kernel, which FlipBase booted until 1.3.0. The
 mainline kernel's figures, against these, are in
 [mainline compatibility](mainline-compat.md): it reaches `Run /init` at 1.01–1.05 s,
@@ -65,11 +72,14 @@ Every figure is seconds from power-on: Rockchip's arch counter, which runs from
 SoC reset and which U-Boot's bootstage records use. The kernel's clocks start
 later, each at its own point:
 
-* **Mainline.** printk starts at kernel entry, U-Boot's `start_kernel` mark
-  (0.62 s), and `/proc/uptime` ~75 ms after it (0.69–0.70 s). `bootclock`
-  prints that second offset, read off the counter against
-  `CLOCK_MONOTONIC_RAW`. Mainline figures from before 2026-10-31 that came off
-  the uptime clock added U-Boot's hand-off instead, so they read ~75 ms early.
+* **Mainline.** printk and `/proc/uptime` start together, when the kernel
+  registers its clock, ~77 ms after U-Boot's `start_kernel` mark (0.722 s
+  against 0.645 on 7.3.5). `bootclock` prints that offset, read off the counter
+  against `CLOCK_MONOTONIC_RAW`; a line written to `/dev/kmsg` beside an uptime
+  reading agrees within 10 ms. Until 2026-11-22 `timeline` added U-Boot's
+  hand-off to printk, so its `printk`, `init` and card figures, and the
+  kernel-time tables below, read ~77 ms early; uptime figures were right. What
+  the kernel does in those 77 ms is not measured: `nokaslr` does not move it.
 * **Vendor kernel.** printk was power-on-relative and uptime started 0.16–0.19 s
   after the first printk. The offset was pinned per boot by writing an uptime
   reading to `/dev/kmsg` and reading its printk timestamp back, or by a
@@ -334,6 +344,44 @@ sooner, though the libraries still load once; boot hooks that do not hold up
 `nextui.elf`, or a Status LED hook in builtins (~0.2 s); the `mkdir`s and
 `governor.sh` as builtins (~0.05 s). What `nextui.elf` does in its ~1.1 s to
 the menu is not measured: it logs no timestamps.
+
+## 2026-11-22: a U-Boot regression, and the logo from `/init`
+
+Profiled with the DRM debug log (`drm.debug=0x16`), `initcall_debug` and
+`/dev/kmsg` stamps, command-line variants written over the `boot` FIT:
+
+| change | worth |
+|---|---|
+| **zstd without `-mstrict-align` again**: the 2026.10 bump broke the per-object flags ([U-Boot](uboot.md), *zstd*) | decompression 336 → 107 ms, everything after it 0.23 s sooner |
+| **`/init` unblanks `fb0` and starts `fbsplash`** before `busybox init`, instead of `rcS` starting it after its mounts | the modeset, the panel's ~0.21 s power-up, starts ~33 ms after `Run /init` instead of ~150 |
+| `fbsplash` unblanks in a child before rendering | the modeset no longer waits for its render |
+| the panel's waits by `fsleep`: `msleep(0)` and `msleep(1)` slept a 4 ms jiffy or two | pre-enable to enable 220 → 210 ms |
+| `rcS` forks `flipbase-update` only when a `*.bosupd` is there; `frontend-session` reads `/proc/mounts` with builtins and skips a second `mount-frontend` | ~30 ms to hand-off |
+
+Tried, not kept: `rcupdate.rcu_expedited=1` (mainline already expedites until
+`/init`: nothing), `nokaslr` (nothing), reading `busybox` ahead from `/init`
+(nothing: rcS's first eight commands take 14 ms, not the ~80 ms the old
+timeline suggested), `driver_async_probe=` for charger, thermal, SARADC, DMC,
+PMU, DFI, RNG, watchdog, eFuse and OTP (`Run /init` ~10 ms sooner, not worth the
+change to device order under suspend).
+
+**The panel, 210 ms from the first commit:** ~141 ms the init sequence's own
+waits (120 after sleep-out), 10 ms `dw_mipi_dsi_mode_set` waiting for a
+`PHY_LOCK` the external Innosilicon D-PHY never reports, the rest the
+sequence's ~25 commands sent in LP mode. One boot in several the kernel starts
+it by itself at ~0.28 s: a connector hotplug landing after `fb0` registers makes
+the fbdev helper commit from a worker, and the panel streams at ~1.21 s.
+Triggering that on every boot is a small kernel change, not made yet.
+
+**Initcalls on 7.3.5**, 606 of them, 0.283 s: `deferred_probe_initcall` 52 ms
+(the boot card's controller and its init), `rk3x_i2c_driver_init` 42,
+`of_platform_default_populate_init` 32, `clk_debug_init` 23 (debugfs, which
+NextUI's `launch.sh` reads), `rk817_charger_driver_init` 8.
+
+**The kernel's size.** 16.9 MB raw, 7.33 MB zstd, read in 313 ms. Bluetooth
+(~1.06 MB of objects), cfg80211 (0.69), FUSE and overlayfs (0.48) are built in
+but only needed after the hand-off: as modules, ~13% less to read and decode,
+~55 ms.
 
 ## What is left
 
