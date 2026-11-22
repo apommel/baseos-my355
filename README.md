@@ -5,7 +5,8 @@ mainline Linux and a userland built from source, which boots as fast as the
 hardware allows and then starts a frontend such as NextUI or SpruceOS. It has no
 interface of its own.
 
-- **Compatible with stock.** Frontends built for the stock firmware run unmodified.
+- **Compatible with stock.** Frontends built for the stock firmware should run 
+  unmodified.
 - **More for frontends that target it.** Current libraries, an SDK to build
   against them, and device features stock doesn't have.
 - **Lean and fast.** A small userland and a kernel cut to this board; the
@@ -49,9 +50,6 @@ The 1.x branch, on the vendor kernel, will continue to be maintained.
 | the kernel starts | 4.30 s | **0.65 s** |
 | boot logo on screen | — | **1.21 s** |
 | frontend starts | 15.79 s | **1.29–1.34 s** |
-
-Stock measured with USB unplugged, its U-Boot's logo not timed; FlipBase over
-warm reboots by adb.
 
 From the frontend's start on, the time to its menu depends on the frontend, but
 it is usually much shorter too: the libraries it loads come from FlipBase's
