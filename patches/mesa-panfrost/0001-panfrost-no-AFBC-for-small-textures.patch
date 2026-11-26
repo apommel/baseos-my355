@@ -1,0 +1,25 @@
+From: Aurélien Pommel <aurelien.pommel@gmail.com>
+Subject: [PATCH] panfrost: no AFBC for textures of 128x128 or less
+
+A CPU upload into an AFBC texture goes through a linear staging resource
+and a GPU blit, and flushes the batches that use it. The switch to linear
+only follows repeated whole-texture overwrites, so a texture filled once,
+as emulators' texture caches do, pays that on every new texture: the N64
+plugins gles2n64 and Glide64 split each frame into several passes, ~5
+staging flushes per frame in Mario Kart 64. At this size AFBC saves little
+bandwidth. Same code in Mesa 26.3.1 and main.
+---
+--- a/src/gallium/drivers/panfrost/pan_resource.c
++++ b/src/gallium/drivers/panfrost/pan_resource.c
+@@ -639,6 +639,11 @@
+       return false;
+    }
+ 
++   /* Small textures are mostly filled from the CPU, once: AFBC gains little
++    * there and each upload costs a staging blit and a batch flush. */
++   if (pres->base.width0 * pres->base.height0 <= 128 * 128)
++      return false;
++
+    /* For one tile, AFBC is a loss compared to u-interleaved */
+    if (pres->base.width0 <= 16 && pres->base.height0 <= 16)
+       return false;

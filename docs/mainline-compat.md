@@ -249,6 +249,12 @@ Different from stock, found on the first boots:
   - NextUI asks for GLES 3.2, and Panfrost has 3.1 on the G52: its shaders
     are 3.0, so `MESA_GLES_VERSION_OVERRIDE=3.2`. The shader cache is on
     `/data`.
+  - Mesa has one patch (`patches/mesa-panfrost`): no AFBC for textures of
+    128×128 or less. A CPU upload into an AFBC texture costs a staging blit
+    and a batch flush, and emulators' texture caches fill each texture once.
+    On the N64 benchmark, Mario Kart 64 on gles2n64 and Glide64 ran 10–15 %
+    faster, the 60 uncapped runs 1.5 % on average, none outside run-to-run
+    noise below (2026-11-26).
   - PanVK has the G52 behind `PAN_I_WANT_A_BROKEN_VULKAN_DRIVER=1`, set for
     the frontend, and gives Vulkan 1.0; libmali gives 1.3. Both have
     `VK_KHR_display`. libmali's Wayland and X11 layer is left out. Stock
