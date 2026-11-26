@@ -1,7 +1,7 @@
 #!/bin/sh
 # The vendor-kernel interfaces stock-built software relies on, checked on the
-# running kernel: one line per row of docs/mainline-compat.md, ok or FAIL with
-# what was found. Exit status 1 if any failed. Read-only, except that gpio150
+# running kernel: one line per row and stock interface of docs/mainline-compat.md,
+# ok or FAIL with what was found. Exit status 1 if any failed. Read-only, except that gpio150
 # and gpio20 are exported and unexported again if nothing had them yet.
 
 fails=0
@@ -20,14 +20,20 @@ expect "event0 key codes" "c000000000000 2" "$(rd $ev/event0/device/capabilities
 expect "event1 name" "hall wake key" "$(rd $ev/event1/device/name)"
 pad=
 for e in $ev/event*; do
-	[ "$(rd "$e/device/name")" = "MIYOO Player1" ] && pad=$e/device/id
+	[ "$(rd "$e/device/name")" = "MIYOO Player1" ] && pad=$e/device
 done
 if [ -n "$pad" ]; then
+	id=$pad/id
 	expect "MIYOO Player1 identity" "0003 045e:028e 0114" \
-		"$(rd $pad/bustype) $(rd $pad/vendor):$(rd $pad/product) $(rd $pad/version)"
+		"$(rd $id/bustype) $(rd $id/vendor):$(rd $id/product) $(rd $id/version)"
+	# Written by the miyoo_inputd shim from stock's calibration and turbo files.
+	for a in calibration_left calibration_right turbo keyboard; do
+		exists "MIYOO Player1 $a" $pad/device/$a
+	done
 else
 	fail "MIYOO Player1 identity" "no such input device"
 fi
+if [ -c /dev/ttyS1 ]; then ok "/dev/ttyS1"; else fail "/dev/ttyS1" "no character device"; fi
 case "$(rd /sys/devices/platform/hall-mh248/hallvalue)" in
 0|1) ok "hallvalue" ;;
 *) fail "hallvalue" "$(rd /sys/devices/platform/hall-mh248/hallvalue)" ;;
@@ -71,7 +77,7 @@ for n in 150 20; do
 done
 
 # --- power, LEDs, clocks -------------------------------------------------
-for f in battery/capacity battery/status usb/online; do
+for f in battery/capacity battery/status battery/current_now battery/voltage_now usb/online; do
 	exists "power_supply $f" /sys/class/power_supply/$f
 done
 for l in work charger; do

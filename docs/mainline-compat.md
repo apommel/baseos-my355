@@ -66,7 +66,7 @@ constrains the design.
 
 | What | Who | Stock kernel | Mainline gap | Fix |
 |---|---|---|---|---|
-| `/dev/mali0`: kbase ioctls, dma-buf | NextUI, every SDL/GLES program | kbase g18p0 | ROCKNIX `mali_kbase` gives `/dev/mali0` | Done: libmali g29p1 on it, or Mesa with `gpu=panfrost` |
+| `/dev/mali0`: kbase ioctls, dma-buf | NextUI, every SDL/GLES program | kbase g18p0 | ROCKNIX `mali_kbase` gives `/dev/mali0` | Done: libmali g29p1 on it with `gpu=mali`. With `gpu=panfrost` (Mesa) there is no `/dev/mali0`, by design: its presence is how software tells which stack runs |
 | `/dev/dri/card0`: legacy KMS (`SETCRTC`, `PAGE_FLIP`, dumb buffers, PRIME), `SET_MASTER` | NextUI, minarch, tools | rockchip-drm is `card0` | Panfrost also registers a `card` node, so `card0` must stay rockchip-drm | Done: Panfrost is a module, loaded after rockchip-drm |
 | `/sys/class/drm/card0-HDMI-A-1/status` | libmsettings, keymon, NextUI | present | Same name as long as rockchip-drm is `card0` | as above |
 | `modetest -M rockchip -w 179:contrast:N`, `179:saturation:N` | libmsettings `SetRawContrast`, `SetRawSaturation` | vendor VOP2 properties on connector 179, `DSI-1` (`HDMI-A-1` is 164) | zlyme `1013` (our `0040`) adds the TV properties with the same names and range, under other object IDs (`DSI-1` is 59). Setting them needs DRM master, which NextUI holds; the vendor kernel skips the check (`DRM_IGNORE_IOTCL_PERMIT`) | Done: a `modetest` wrapper maps 179 and 164 by `connector_id`, and writes contrast and saturation to the connector's sysfs attributes (`stock/0065`), which commit them as the kernel |
@@ -147,7 +147,10 @@ It boots to FlipBase with adb, checked on 2026-10-25. These match stock:
 - `/dev/mali0` (r54p2), `card0` with `DSI-1` and `HDMI-A-1`
 
 `flipbase-compat-check` checks the table's rows on a running unit, one `ok` or
-`FAIL` line each, and exits 1 on any mismatch. Its first run (2026-11-01)
+`FAIL` line each, and exits 1 on any mismatch. It also checks the stock
+interfaces added since, below: `/dev/ttyS1`, the gamepad's calibration, turbo
+and keyboard attributes, and `current_now` and `voltage_now`. It leaves out
+`/dev/mali0`, which only `gpu=mali` has. Its first run (2026-11-01)
 passed everything except the `conservative` cpufreq governor, which
 `governor.sh` sets in one of its modes: arm64's `defconfig` builds it as a
 module, and cutting `linux.config` to the modules something loads had dropped
